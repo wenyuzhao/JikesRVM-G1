@@ -29,12 +29,12 @@ import org.vmmagic.pragma.*;
  * @see ZGC for an overview of the mark-sweep algorithm.
  *
  * @see ZGC
- * @see ZMutator
+ * @see ZGCMutator
  * @see StopTheWorldCollector
  * @see CollectorContext
  */
 @Uninterruptible
-public class ZCollector extends StopTheWorldCollector {
+public class ZGCCollector extends StopTheWorldCollector {
 
   /****************************************************************************
    * Instance fields
@@ -43,7 +43,7 @@ public class ZCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected ZTraceLocal fullTrace = new ZTraceLocal(global().msTrace, null);
+  protected ZGCTraceLocal fullTrace = new ZGCTraceLocal(global().msTrace, null);
   protected TraceLocal currentTrace = fullTrace;
 
 

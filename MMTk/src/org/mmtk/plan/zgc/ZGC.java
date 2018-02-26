@@ -127,7 +127,7 @@ public class ZGC extends StopTheWorld {
   @Interruptible
   @Override
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_MARK, ZTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, ZGCTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

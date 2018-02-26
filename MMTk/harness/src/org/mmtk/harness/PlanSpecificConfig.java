@@ -127,7 +127,7 @@ public class PlanSpecificConfig {
         "StickyMS");
     register(
         new PlanSpecific("org.mmtk.plan.zgc.ZGC")
-        .addExpectedSpaces("ms"),
+        .addExpectedSpaces("default"),
         "ZGC");
   }
 

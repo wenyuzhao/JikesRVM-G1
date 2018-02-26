@@ -30,12 +30,12 @@ import org.vmmagic.unboxed.*;
  * per-mutator allocator state).
  *
  * @see ZGC
- * @see ZCollector
+ * @see ZGCCollector
  * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class ZMutator extends StopTheWorldMutator {
+public class ZGCMutator extends StopTheWorldMutator {
 
   /****************************************************************************
    * Instance fields

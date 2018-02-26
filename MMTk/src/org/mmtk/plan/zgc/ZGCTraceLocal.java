@@ -26,7 +26,7 @@ import org.vmmagic.unboxed.*;
  * closure over a mark-sweep space.
  */
 @Uninterruptible
-public final class ZTraceLocal extends TraceLocal {
+public final class ZGCTraceLocal extends TraceLocal {
   /****************************************************************************
    * Instance fields
    */
@@ -36,7 +36,7 @@ public final class ZTraceLocal extends TraceLocal {
    */
   private final ObjectReferenceDeque modBuffer;
 
-  public ZTraceLocal(Trace trace, ObjectReferenceDeque modBuffer) {
+  public ZGCTraceLocal(Trace trace, ObjectReferenceDeque modBuffer) {
     super(ZGC.SCAN_MARK, trace);
     this.modBuffer = modBuffer;
   }
