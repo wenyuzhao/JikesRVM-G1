@@ -15,30 +15,22 @@ package org.mmtk.plan.zgc;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.Trace;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.HeaderByte;
-import org.mmtk.utility.deque.ObjectReferenceDeque;
 
 import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.*;
 
 /**
- * This class implements the thread-local functionality for a transitive
- * closure over a mark-sweep space.
+ * This class implements the thread-local core functionality for a transitive
+ * closure over the heap graph.
  */
 @Uninterruptible
 public final class ZGCTraceLocal extends TraceLocal {
-  /****************************************************************************
-   * Instance fields
-   */
 
   /**
-   *
+   * @param trace the associated global trace
    */
-  private final ObjectReferenceDeque modBuffer;
-
-  public ZGCTraceLocal(Trace trace, ObjectReferenceDeque modBuffer) {
-    super(ZGC.SCAN_MARK, trace);
-    this.modBuffer = modBuffer;
+  public ZGCTraceLocal(Trace trace) {
+    super(trace);
   }
 
 
@@ -52,43 +44,18 @@ public final class ZGCTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(ZGC.MARK_SWEEP, object)) {
-      return ZGC.msSpace.isLive(object);
+    if (Space.isInSpace(ZGC.NOGC, object)) {
+      return ZGC.noGCSpace.isLive(object);
     }
     return super.isLive(object);
   }
 
-  /**
-   * {@inheritDoc}<p>
-   *
-   * In this instance, we refer objects in the mark-sweep space to the
-   * msSpace for tracing, and defer to the superclass for all others.
-   *
-   * @param object The object to be traced.
-   * @return The new reference to the same object instance.
-   */
   @Inline
   @Override
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(ZGC.MARK_SWEEP, object))
-      return ZGC.msSpace.traceObject(this, object);
+    if (Space.isInSpace(ZGC.NOGC, object))
+      return ZGC.noGCSpace.traceObject(this, object);
     return super.traceObject(object);
-  }
-
-  /**
-   * Process any remembered set entries.  This means enumerating the
-   * mod buffer and for each entry, marking the object as unlogged
-   * (we don't enqueue for scanning since we're doing a full heap GC).
-   */
-  @Override
-  protected void processRememberedSets() {
-    if (modBuffer != null) {
-      logMessage(5, "clearing modBuffer");
-      while (!modBuffer.isEmpty()) {
-        ObjectReference src = modBuffer.pop();
-        HeaderByte.markAsUnlogged(src);
-      }
-    }
   }
 }

@@ -12,39 +12,41 @@
  */
 package org.mmtk.plan.zgc;
 
-import org.mmtk.plan.*;
-import org.mmtk.policy.MarkSweepLocal;
+import org.mmtk.plan.MutatorContext;
+import org.mmtk.policy.ImmortalLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
+import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.*;
 
 /**
- * This class implements <i>per-mutator thread</i> behavior
- * and state for the <i>MS</i> plan, which implements a full-heap
- * mark-sweep collector.<p>
+ * This class implements <i>per-mutator thread</i> behavior and state
+ * for the <i>NoGC</i> plan, which simply allocates (without ever collecting
+ * until the available space is exhausted.<p>
  *
- * Specifically, this class defines <i>MS</i> mutator-time allocation
- * and per-mutator thread collection semantics (flushing and restoring
- * per-mutator allocator state).
+ * Specifically, this class defines <i>NoGC</i> mutator-time allocation
+ * through a bump pointer (<code>def</code>) and includes stubs for
+ * per-mutator thread collection semantics (since there is no collection
+ * in this plan, these remain just stubs).
  *
  * @see ZGC
  * @see ZGCCollector
- * @see StopTheWorldMutator
- * @see MutatorContext
+ * @see org.mmtk.plan.StopTheWorldMutator
+ * @see org.mmtk.plan.MutatorContext
  */
 @Uninterruptible
-public class ZGCMutator extends StopTheWorldMutator {
+public class ZGCMutator extends MutatorContext {
 
-  /****************************************************************************
+  /************************************************************************
    * Instance fields
    */
 
   /**
    *
    */
-  protected MarkSweepLocal ms = new MarkSweepLocal(ZGC.msSpace);
+  private final ImmortalLocal nogc = new ImmortalLocal(ZGC.noGCSpace);
 
 
   /****************************************************************************
@@ -52,39 +54,29 @@ public class ZGCMutator extends StopTheWorldMutator {
    */
 
   /**
-   * {@inheritDoc}<p>
-   *
-   * This class handles the default allocator from the mark sweep space,
-   * and delegates everything else to the superclass.
+   * {@inheritDoc}
    */
   @Inline
   @Override
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == ZGC.ALLOC_DEFAULT) {
-      return ms.alloc(bytes, align, offset);
+      return nogc.alloc(bytes, align, offset);
     }
     return super.alloc(bytes, align, offset, allocator, site);
   }
 
-  /**
-   * {@inheritDoc}<p>
-   *
-   * Initialize the object header for objects in the mark-sweep space,
-   * and delegate to the superclass for other objects.
-   */
   @Inline
   @Override
   public void postAlloc(ObjectReference ref, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator == ZGC.ALLOC_DEFAULT)
-      ZGC.msSpace.postAlloc(ref);
-    else
+    if (allocator != ZGC.ALLOC_DEFAULT) {
       super.postAlloc(ref, typeRef, bytes, allocator);
+    }
   }
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == ZGC.msSpace) return ms;
+    if (space == ZGC.noGCSpace) return nogc;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -98,25 +90,15 @@ public class ZGCMutator extends StopTheWorldMutator {
    */
   @Inline
   @Override
-  public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == ZGC.PREPARE) {
-      super.collectionPhase(phaseId, primary);
-      ms.prepare();
-      return;
-    }
+  public final void collectionPhase(short phaseId, boolean primary) {
+    VM.assertions.fail("GC Triggered in NoGC Plan.");
+    /*
+     if (phaseId == NoGC.PREPARE) {
+     }
 
-    if (phaseId == ZGC.RELEASE) {
-      ms.release();
-      super.collectionPhase(phaseId, primary);
-      return;
-    }
-
-    super.collectionPhase(phaseId, primary);
-  }
-
-  @Override
-  public void flush() {
-    super.flush();
-    ms.flush();
+     if (phaseId == NoGC.RELEASE) {
+     }
+     super.collectionPhase(phaseId, primary);
+     */
   }
 }
