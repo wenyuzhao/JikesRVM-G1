@@ -12,7 +12,7 @@
  */
 package org.mmtk.plan.zgc;
 
-import org.mmtk.plan.PlanConstraints;
+import org.mmtk.plan.StopTheWorldConstraints;
 import org.mmtk.policy.MarkSweepSpace;
 import org.mmtk.policy.SegregatedFreeListSpace;
 import org.vmmagic.pragma.*;
@@ -24,7 +24,7 @@ import org.vmmagic.pragma.*;
  * issues with ordering of static initialization.
  */
 @Uninterruptible
-public class ZGCConstraints extends PlanConstraints {
+public class ZGCConstraints extends StopTheWorldConstraints {
   @Override
   public int gcHeaderBits() {
     return MarkSweepSpace.LOCAL_GC_BITS_REQUIRED;

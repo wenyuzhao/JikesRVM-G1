@@ -32,7 +32,7 @@ import org.vmmagic.pragma.*;
  * @see CollectorContext
  */
 @Uninterruptible
-public class ZGCCollector extends ParallelCollector {
+public class ZGCCollector extends StopTheWorldCollector {
 
   /************************************************************************
    * Instance fields
@@ -41,7 +41,7 @@ public class ZGCCollector extends ParallelCollector {
   /**
    *
    */
-  private final ZGCTraceLocal trace = new ZGCTraceLocal(global().trace);
+  private final ZGCTraceLocal trace = new ZGCTraceLocal(global().msTrace);
   protected final TraceLocal currentTrace = trace;
 
 
@@ -52,27 +52,33 @@ public class ZGCCollector extends ParallelCollector {
   /**
    * Perform a garbage collection
    */
-  @Override
+  /*@Override
   public final void collect() {
     VM.assertions.fail("GC Triggered in NoGC Plan. Is -X:gc:ignoreSystemGC=true ?");
-  }
+  }*/
 
   @Inline
   @Override
   public final void collectionPhase(short phaseId, boolean primary) {
-    VM.assertions.fail("GC Triggered in NoGC Plan.");
-    /*
-    if (phaseId == NoGC.PREPARE) {
+    //VM.assertions.fail("GC Triggered in NoGC Plan.");
+    if (phaseId == ZGC.PREPARE) {
+      super.collectionPhase(phaseId, primary);
+      trace.prepare();
+      return;
     }
 
-    if (phaseId == NoGC.CLOSURE) {
+    if (phaseId == ZGC.CLOSURE) {
+      trace.completeTrace();
+      return;
     }
 
-    if (phaseId == NoGC.RELEASE) {
+    if (phaseId == ZGC.RELEASE) {
+      trace.release();
+      super.collectionPhase(phaseId, primary);
+      return;
     }
 
     super.collectionPhase(phaseId, primary);
-    */
   }
 
   /****************************************************************************

@@ -12,7 +12,7 @@
  */
 package org.mmtk.plan.zgc;
 
-import org.mmtk.plan.MutatorContext;
+import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.MarkSweepLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
@@ -37,7 +37,7 @@ import org.vmmagic.unboxed.*;
  * @see org.mmtk.plan.MutatorContext
  */
 @Uninterruptible
-public class ZGCMutator extends MutatorContext {
+public class ZGCMutator extends StopTheWorldMutator {
 
   /************************************************************************
    * Instance fields
@@ -94,14 +94,18 @@ public class ZGCMutator extends MutatorContext {
   @Inline
   @Override
   public final void collectionPhase(short phaseId, boolean primary) {
-    VM.assertions.fail("GC Triggered in NoGC Plan.");
-    /*
-     if (phaseId == NoGC.PREPARE) {
-     }
+    //VM.assertions.fail("GC Triggered in NoGC Plan.");
+    if (phaseId == ZGC.PREPARE) {
+      super.collectionPhase(phaseId, primary);
+      ms.prepare();
+      return;
+    }
 
-     if (phaseId == NoGC.RELEASE) {
-     }
-     super.collectionPhase(phaseId, primary);
-     */
+    if (phaseId == ZGC.RELEASE) {
+      ms.release();
+      super.collectionPhase(phaseId, primary);
+      return;
+    }
+    super.collectionPhase(phaseId, primary);
   }
 }

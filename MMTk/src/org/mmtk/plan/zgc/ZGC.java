@@ -25,7 +25,7 @@ import org.vmmagic.pragma.*;
  * without a collector.
  */
 @Uninterruptible
-public class ZGC extends Plan {
+public class ZGC extends StopTheWorld {
 
   /*****************************************************************************
    * Class variables
@@ -45,7 +45,7 @@ public class ZGC extends Plan {
   /**
    *
    */
-  public final Trace trace = new Trace(metaDataSpace);
+  public final Trace msTrace = new Trace(metaDataSpace);
 
 
   /*****************************************************************************
@@ -58,16 +58,24 @@ public class ZGC extends Plan {
   @Inline
   @Override
   public final void collectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(false);
-    /*
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(false);
     if (phaseId == PREPARE) {
+      super.collectionPhase(phaseId);
+      msTrace.prepare();
+      msSpace.prepare(true);
+      return;
     }
     if (phaseId == CLOSURE) {
+      msTrace.prepare();
+      return;
     }
     if (phaseId == RELEASE) {
+      msTrace.release();
+      msSpace.release();
+      super.collectionPhase(phaseId);
+      return;
     }
     super.collectionPhase(phaseId);
-    */
   }
 
   /*****************************************************************************
