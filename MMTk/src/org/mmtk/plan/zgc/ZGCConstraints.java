@@ -13,7 +13,8 @@
 package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.PlanConstraints;
-
+import org.mmtk.policy.MarkSweepSpace;
+import org.mmtk.policy.SegregatedFreeListSpace;
 import org.vmmagic.pragma.*;
 
 /**
@@ -26,10 +27,14 @@ import org.vmmagic.pragma.*;
 public class ZGCConstraints extends PlanConstraints {
   @Override
   public int gcHeaderBits() {
-    return 0;
+    return MarkSweepSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return 0;
+    return MarkSweepSpace.GC_HEADER_WORDS_REQUIRED;
+  }
+  @Override
+  public int maxNonLOSDefaultAllocBytes() {
+    return SegregatedFreeListSpace.MAX_FREELIST_OBJECT_BYTES;
   }
 }

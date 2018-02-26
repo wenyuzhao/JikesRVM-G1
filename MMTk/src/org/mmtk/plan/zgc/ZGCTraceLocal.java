@@ -44,8 +44,8 @@ public final class ZGCTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(ZGC.NOGC, object)) {
-      return ZGC.noGCSpace.isLive(object);
+    if (Space.isInSpace(ZGC.MARK_SWEEP, object)) {
+      return ZGC.msSpace.isLive(object);
     }
     return super.isLive(object);
   }
@@ -54,8 +54,8 @@ public final class ZGCTraceLocal extends TraceLocal {
   @Override
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(ZGC.NOGC, object))
-      return ZGC.noGCSpace.traceObject(this, object);
+    if (Space.isInSpace(ZGC.MARK_SWEEP, object))
+      return ZGC.msSpace.traceObject(this, object);
     return super.traceObject(object);
   }
 }

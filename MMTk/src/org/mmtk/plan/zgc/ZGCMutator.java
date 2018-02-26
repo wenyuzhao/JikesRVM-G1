@@ -13,7 +13,7 @@
 package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.MutatorContext;
-import org.mmtk.policy.ImmortalLocal;
+import org.mmtk.policy.MarkSweepLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.vm.VM;
@@ -46,7 +46,7 @@ public class ZGCMutator extends MutatorContext {
   /**
    *
    */
-  private final ImmortalLocal nogc = new ImmortalLocal(ZGC.noGCSpace);
+  private final MarkSweepLocal ms = new MarkSweepLocal(ZGC.msSpace);
 
 
   /****************************************************************************
@@ -60,7 +60,7 @@ public class ZGCMutator extends MutatorContext {
   @Override
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == ZGC.ALLOC_DEFAULT) {
-      return nogc.alloc(bytes, align, offset);
+      return ms.alloc(bytes, align, offset);
     }
     return super.alloc(bytes, align, offset, allocator, site);
   }
@@ -70,13 +70,16 @@ public class ZGCMutator extends MutatorContext {
   public void postAlloc(ObjectReference ref, ObjectReference typeRef,
       int bytes, int allocator) {
     if (allocator != ZGC.ALLOC_DEFAULT) {
-      super.postAlloc(ref, typeRef, bytes, allocator);
+      //super.postAlloc(ref, typeRef, bytes, allocator);
+    	  ZGC.msSpace.postAlloc(ref);
+    } else {
+    	  super.postAlloc(ref, typeRef, bytes, allocator); 
     }
   }
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == ZGC.noGCSpace) return nogc;
+    if (space == ZGC.msSpace) return ms;
     return super.getAllocatorFromSpace(space);
   }
 
