@@ -26,15 +26,15 @@ import org.vmmagic.pragma.*;
  * (through <code>trace</code> and the <code>collectionPhase</code>
  * method).<p>
  *
- * @see MS for an overview of the mark-sweep algorithm.
+ * @see ZGC for an overview of the mark-sweep algorithm.
  *
- * @see MS
- * @see MSMutator
+ * @see ZGC
+ * @see ZMutator
  * @see StopTheWorldCollector
  * @see CollectorContext
  */
 @Uninterruptible
-public class MSCollector extends StopTheWorldCollector {
+public class ZCollector extends StopTheWorldCollector {
 
   /****************************************************************************
    * Instance fields
@@ -43,7 +43,7 @@ public class MSCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected MSTraceLocal fullTrace = new MSTraceLocal(global().msTrace, null);
+  protected ZTraceLocal fullTrace = new ZTraceLocal(global().msTrace, null);
   protected TraceLocal currentTrace = fullTrace;
 
 
@@ -57,18 +57,18 @@ public class MSCollector extends StopTheWorldCollector {
   @Inline
   @Override
   public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == MS.PREPARE) {
+    if (phaseId == ZGC.PREPARE) {
       super.collectionPhase(phaseId, primary);
       fullTrace.prepare();
       return;
     }
 
-    if (phaseId == MS.CLOSURE) {
+    if (phaseId == ZGC.CLOSURE) {
       fullTrace.completeTrace();
       return;
     }
 
-    if (phaseId == MS.RELEASE) {
+    if (phaseId == ZGC.RELEASE) {
       fullTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
@@ -84,8 +84,8 @@ public class MSCollector extends StopTheWorldCollector {
 
   /** @return The active global plan as an <code>MS</code> instance. */
   @Inline
-  private static MS global() {
-    return (MS) VM.activePlan.global();
+  private static ZGC global() {
+    return (ZGC) VM.activePlan.global();
   }
 
   @Override

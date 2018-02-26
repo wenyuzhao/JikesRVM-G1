@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.marksweep;
+package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.MarkSweepSpace;
@@ -39,7 +39,7 @@ import org.vmmagic.unboxed.*;
  * performance properties of MMTk plans.
  */
 @Uninterruptible
-public class MS extends StopTheWorld {
+public class ZGC extends StopTheWorld {
 
   /****************************************************************************
    * Class variables
@@ -127,7 +127,7 @@ public class MS extends StopTheWorld {
   @Interruptible
   @Override
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_MARK, MSTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, ZTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

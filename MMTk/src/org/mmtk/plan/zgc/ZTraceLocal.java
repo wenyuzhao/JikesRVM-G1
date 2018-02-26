@@ -26,7 +26,7 @@ import org.vmmagic.unboxed.*;
  * closure over a mark-sweep space.
  */
 @Uninterruptible
-public final class MSTraceLocal extends TraceLocal {
+public final class ZTraceLocal extends TraceLocal {
   /****************************************************************************
    * Instance fields
    */
@@ -36,8 +36,8 @@ public final class MSTraceLocal extends TraceLocal {
    */
   private final ObjectReferenceDeque modBuffer;
 
-  public MSTraceLocal(Trace trace, ObjectReferenceDeque modBuffer) {
-    super(MS.SCAN_MARK, trace);
+  public ZTraceLocal(Trace trace, ObjectReferenceDeque modBuffer) {
+    super(ZGC.SCAN_MARK, trace);
     this.modBuffer = modBuffer;
   }
 
@@ -52,8 +52,8 @@ public final class MSTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(MS.MARK_SWEEP, object)) {
-      return MS.msSpace.isLive(object);
+    if (Space.isInSpace(ZGC.MARK_SWEEP, object)) {
+      return ZGC.msSpace.isLive(object);
     }
     return super.isLive(object);
   }
@@ -71,8 +71,8 @@ public final class MSTraceLocal extends TraceLocal {
   @Override
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(MS.MARK_SWEEP, object))
-      return MS.msSpace.traceObject(this, object);
+    if (Space.isInSpace(ZGC.MARK_SWEEP, object))
+      return ZGC.msSpace.traceObject(this, object);
     return super.traceObject(object);
   }
 

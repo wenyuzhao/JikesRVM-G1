@@ -29,13 +29,13 @@ import org.vmmagic.unboxed.*;
  * and per-mutator thread collection semantics (flushing and restoring
  * per-mutator allocator state).
  *
- * @see MS
- * @see MSCollector
+ * @see ZGC
+ * @see ZCollector
  * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class MSMutator extends StopTheWorldMutator {
+public class ZMutator extends StopTheWorldMutator {
 
   /****************************************************************************
    * Instance fields
@@ -44,7 +44,7 @@ public class MSMutator extends StopTheWorldMutator {
   /**
    *
    */
-  protected MarkSweepLocal ms = new MarkSweepLocal(MS.msSpace);
+  protected MarkSweepLocal ms = new MarkSweepLocal(ZGC.msSpace);
 
 
   /****************************************************************************
@@ -60,7 +60,7 @@ public class MSMutator extends StopTheWorldMutator {
   @Inline
   @Override
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == MS.ALLOC_DEFAULT) {
+    if (allocator == ZGC.ALLOC_DEFAULT) {
       return ms.alloc(bytes, align, offset);
     }
     return super.alloc(bytes, align, offset, allocator, site);
@@ -76,15 +76,15 @@ public class MSMutator extends StopTheWorldMutator {
   @Override
   public void postAlloc(ObjectReference ref, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator == MS.ALLOC_DEFAULT)
-      MS.msSpace.postAlloc(ref);
+    if (allocator == ZGC.ALLOC_DEFAULT)
+      ZGC.msSpace.postAlloc(ref);
     else
       super.postAlloc(ref, typeRef, bytes, allocator);
   }
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == MS.msSpace) return ms;
+    if (space == ZGC.msSpace) return ms;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -99,13 +99,13 @@ public class MSMutator extends StopTheWorldMutator {
   @Inline
   @Override
   public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == MS.PREPARE) {
+    if (phaseId == ZGC.PREPARE) {
       super.collectionPhase(phaseId, primary);
       ms.prepare();
       return;
     }
 
-    if (phaseId == MS.RELEASE) {
+    if (phaseId == ZGC.RELEASE) {
       ms.release();
       super.collectionPhase(phaseId, primary);
       return;

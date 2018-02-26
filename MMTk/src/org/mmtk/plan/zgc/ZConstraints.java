@@ -26,7 +26,7 @@ import org.vmmagic.pragma.*;
  * issues with ordering of static initialization.
  */
 @Uninterruptible
-public class MSConstraints extends StopTheWorldConstraints {
+public class ZConstraints extends StopTheWorldConstraints {
   @Override
   public int gcHeaderBits() {
     return MarkSweepSpace.LOCAL_GC_BITS_REQUIRED;
