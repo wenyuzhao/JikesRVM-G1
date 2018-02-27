@@ -30,7 +30,8 @@ public final class ZGCTraceLocal extends TraceLocal {
    * @param trace the associated global trace
    */
   public ZGCTraceLocal(Trace trace) {
-    super(trace);
+    // super(trace);
+    super(ZGC.SCAN_MARK, trace); 
   }
 
 

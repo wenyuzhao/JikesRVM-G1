@@ -14,10 +14,12 @@ package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.MarkSweepSpace;
+import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
+import org.vmmagic.unboxed.ObjectReference;
 
 
 /**
@@ -36,7 +38,7 @@ public class ZGC extends StopTheWorld {
    */
   public static final MarkSweepSpace msSpace = new MarkSweepSpace("ms", VMRequest.discontiguous());
   public static final int MARK_SWEEP = msSpace.getDescriptor();
-
+  public static final int SCAN_MARK = 0;
 
   /*****************************************************************************
    * Instance variables
@@ -103,6 +105,14 @@ public class ZGC extends StopTheWorld {
   @Interruptible
   @Override
   protected void registerSpecializedMethods() {
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, ZGCTraceLocal.class);
     super.registerSpecializedMethods();
+  }
+  
+  @Override
+  public boolean willNeverMove(ObjectReference object) {
+    if (Space.isInSpace(MARK_SWEEP, object))
+      return true;
+    return super.willNeverMove(object);
   }
 }
