@@ -108,4 +108,10 @@ public class ZGCMutator extends StopTheWorldMutator {
     }
     super.collectionPhase(phaseId, primary);
   }
+  
+  @Override
+  public void flush() {
+    super.flush();
+    ms.flush();
+  }
 }
