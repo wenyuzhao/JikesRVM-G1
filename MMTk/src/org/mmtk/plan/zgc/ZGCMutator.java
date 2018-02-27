@@ -13,6 +13,7 @@
 package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.policy.CopyLocal;
 import org.mmtk.policy.MarkSweepLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
@@ -46,7 +47,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   /**
    *
    */
-  private final MarkSweepLocal ms = new MarkSweepLocal(ZGC.msSpace);
+  private final CopyLocal nursery = new CopyLocal(ZGC.nurserySpace);
 
 
   /****************************************************************************
@@ -60,7 +61,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == ZGC.ALLOC_DEFAULT) {
-      return ms.alloc(bytes, align, offset);
+      return nursery.alloc(bytes, align, offset);
     }
     return super.alloc(bytes, align, offset, allocator, site);
   }
@@ -71,7 +72,7 @@ public class ZGCMutator extends StopTheWorldMutator {
       int bytes, int allocator) {
     if (allocator == ZGC.ALLOC_DEFAULT) {
       //super.postAlloc(ref, typeRef, bytes, allocator);
-    	  ZGC.msSpace.postAlloc(ref);
+    	  //ZGC.msSpace.postAlloc(ref);
     } else {
     	  super.postAlloc(ref, typeRef, bytes, allocator); 
     }
@@ -79,7 +80,7 @@ public class ZGCMutator extends StopTheWorldMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == ZGC.msSpace) return ms;
+    if (space == ZGC.nurserySpace) return nursery;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -97,12 +98,12 @@ public class ZGCMutator extends StopTheWorldMutator {
     //VM.assertions.fail("GC Triggered in NoGC Plan.");
     if (phaseId == ZGC.PREPARE) {
       super.collectionPhase(phaseId, primary);
-      ms.prepare();
+      nursery.reset();
       return;
     }
 
     if (phaseId == ZGC.RELEASE) {
-      ms.release();
+      //nursery.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -112,6 +113,6 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   public void flush() {
     super.flush();
-    ms.flush();
+    nursery.flush();
   }
 }

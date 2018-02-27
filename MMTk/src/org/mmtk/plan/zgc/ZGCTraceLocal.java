@@ -52,6 +52,8 @@ public final class ZGCTraceLocal extends TraceLocal {
     if (Space.isInSpace(ZGC.MARK_SWEEP, object)) {
       return ZGC.msSpace.isLive(object);
     }
+    if (Space.isInSpace(ZGC.NURSERY, object)) 
+      return ZGC.nurserySpace.isLive(object);
     return super.isLive(object);
   }
 
@@ -61,6 +63,8 @@ public final class ZGCTraceLocal extends TraceLocal {
     if (object.isNull()) return object;
     if (Space.isInSpace(ZGC.MARK_SWEEP, object))
       return ZGC.msSpace.traceObject(this, object);
+    if (Space.isInSpace(ZGC.NURSERY, object)) 
+      return ZGC.nurserySpace.traceObject(this, object, ZGC.ALLOC_DEFAULT);
     return super.traceObject(object);
   }
   
@@ -78,5 +82,10 @@ public final class ZGCTraceLocal extends TraceLocal {
         HeaderByte.markAsUnlogged(src);
       }
     }
+  }
+  
+  @Override 
+  public boolean willNotMoveInCurrentCollection(ObjectReference object) { 
+    return !Space.isInSpace(ZGC.NURSERY, object); 
   }
 }
