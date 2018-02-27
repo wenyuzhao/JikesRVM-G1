@@ -41,7 +41,7 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    *
    */
-  private final ZGCTraceLocal trace = new ZGCTraceLocal(global().msTrace);
+  private final ZGCTraceLocal trace = new ZGCTraceLocal(global().msTrace, null);
   protected final TraceLocal currentTrace = trace;
 
 
