@@ -69,7 +69,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   public void postAlloc(ObjectReference ref, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator != ZGC.ALLOC_DEFAULT) {
+    if (allocator == ZGC.ALLOC_DEFAULT) {
       //super.postAlloc(ref, typeRef, bytes, allocator);
     	  ZGC.msSpace.postAlloc(ref);
     } else {
