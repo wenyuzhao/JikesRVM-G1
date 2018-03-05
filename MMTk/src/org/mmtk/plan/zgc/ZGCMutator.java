@@ -13,6 +13,7 @@
 package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.plan.marksweep.MS;
 import org.mmtk.policy.CopyLocal;
 import org.mmtk.policy.MarkSweepLocal;
 import org.mmtk.policy.Space;
@@ -113,6 +114,6 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   public void flush() {
     super.flush();
-    nursery.flush();
+    // nursery.flush();
   }
 }

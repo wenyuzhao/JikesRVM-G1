@@ -2,6 +2,7 @@ jikesrvm.iml
 
 # Local configuration
 /.ant.properties
+/.idea/
 
 # Files for Eclipse project
 /.project
