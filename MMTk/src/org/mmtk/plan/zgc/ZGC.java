@@ -52,7 +52,7 @@ public class ZGC extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final ZSpace zSpace = new ZSpace("ss0", false, VMRequest.discontiguous());
+  public static final ZSpace zSpace = new ZSpace("z", false, VMRequest.discontiguous());
   public static final int Z = zSpace.getDescriptor();
 
   public final Trace zTrace = new Trace(metaDataSpace);

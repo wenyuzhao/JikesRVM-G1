@@ -127,8 +127,7 @@ public class PlanSpecificConfig {
         "StickyMS");
     register(
         new PlanSpecific("org.mmtk.plan.zgc.ZGC")
-        .heapFactor(18816 / BASE_HEAP)
-        .addExpectedSpaces("ss0", "ss1"),
+        .addExpectedSpaces("z"),
         "ZGC");
   }
 
