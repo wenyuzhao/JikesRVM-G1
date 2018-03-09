@@ -20,6 +20,7 @@ import org.mmtk.policy.CopyLocal;
 import org.mmtk.policy.LargeObjectLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.alloc.ZAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -53,8 +54,7 @@ public class ZGCCollector extends StopTheWorldCollector {
    *
    */
   protected final ZGCTraceLocal trace;
-  protected final CopyLocal ss;
-  protected final LargeObjectLocal los;
+  protected final ZAllocator copy;
 
   /****************************************************************************
    *
@@ -65,7 +65,7 @@ public class ZGCCollector extends StopTheWorldCollector {
    * Constructor
    */
   public ZGCCollector() {
-    this(new ZGCTraceLocal(global().ssTrace));
+    this(new ZGCTraceLocal(global().zTrace));
   }
 
   /**
@@ -73,9 +73,8 @@ public class ZGCCollector extends StopTheWorldCollector {
    * @param tr The trace to use
    */
   protected ZGCCollector(ZGCTraceLocal tr) {
-    ss = new CopyLocal();
-    los = new LargeObjectLocal(Plan.loSpace);
     trace = tr;
+    copy = new ZAllocator(ZGC.zSpace, true);
   }
 
   /****************************************************************************
@@ -90,25 +89,24 @@ public class ZGCCollector extends StopTheWorldCollector {
   @Inline
   public Address allocCopy(ObjectReference original, int bytes,
       int align, int offset, int allocator) {
-    if (allocator == Plan.ALLOC_LOS) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes > Plan.MAX_NON_LOS_COPY_BYTES);
-      return los.alloc(bytes, align, offset);
-    } else {
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
-        VM.assertions._assert(allocator == ZGC.ALLOC_SS);
-      }
-      return ss.alloc(bytes, align, offset);
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
+      VM.assertions._assert(allocator == ZGC.ALLOC_DEFAULT);
     }
+    return copy.alloc(bytes, align, offset);
   }
 
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    ForwardingWord.clearForwardingBits(object);
-    if (allocator == Plan.ALLOC_LOS)
-      Plan.loSpace.initializeHeader(object, false);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == ZGC.ALLOC_DEFAULT);
+    ZGC.zSpace.postCopy(object, bytes, true);
+
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(getCurrentTrace().isLive(object));
+      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
+    }
   }
 
   /****************************************************************************
@@ -123,9 +121,8 @@ public class ZGCCollector extends StopTheWorldCollector {
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == ZGC.PREPARE) {
-      // rebind the copy bump pointer to the appropriate semispace.
-      ss.rebind(ZGC.toSpace());
-      los.prepare(true);
+      copy.reset();
+      trace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -137,7 +134,7 @@ public class ZGCCollector extends StopTheWorldCollector {
 
     if (phaseId == ZGC.RELEASE) {
       trace.release();
-      los.release(true);
+      //zgc.release(true);
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -159,9 +156,9 @@ public class ZGCCollector extends StopTheWorldCollector {
    * @return {@code true} if the given reference is to an object that is within
    * one of the semi-spaces.
    */
-  public static boolean isSemiSpaceObject(ObjectReference object) {
+  /*public static boolean isSemiSpaceObject(ObjectReference object) {
     return Space.isInSpace(ZGC.SS0, object) || Space.isInSpace(ZGC.SS1, object);
-  }
+  }*/
 
   /****************************************************************************
    *

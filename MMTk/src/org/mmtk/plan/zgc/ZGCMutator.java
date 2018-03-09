@@ -16,6 +16,7 @@ import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CopyLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.policy.zgc.ZMutatorLocal;
 import org.mmtk.utility.alloc.Allocator;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -43,7 +44,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final CopyLocal ss;
+  protected final ZMutatorLocal zgc;
 
   /****************************************************************************
    *
@@ -54,17 +55,7 @@ public class ZGCMutator extends StopTheWorldMutator {
    * Constructor
    */
   public ZGCMutator() {
-    ss = new CopyLocal();
-  }
-
-  /**
-   * Called before the MutatorContext is used, but after the context has been
-   * fully registered and is visible to collection.
-   */
-  @Override
-  public void initMutator(int id) {
-    super.initMutator(id);
-    ss.rebind(ZGC.toSpace());
+    zgc = new ZMutatorLocal(ZGC.zSpace);
   }
 
   /****************************************************************************
@@ -78,8 +69,8 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == ZGC.ALLOC_SS)
-      return ss.alloc(bytes, align, offset);
+    if (allocator == ZGC.ALLOC_Z)
+      return zgc.alloc(bytes, align, offset);
     else
       return super.alloc(bytes, align, offset, allocator, site);
   }
@@ -88,13 +79,13 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator == ZGC.ALLOC_SS) return;
+    if (allocator == ZGC.ALLOC_Z) return;
     super.postAlloc(object, typeRef, bytes, allocator);
   }
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == ZGC.copySpace0 || space == ZGC.copySpace1) return ss;
+    if (space == ZGC.zSpace) return zgc;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -111,32 +102,17 @@ public class ZGCMutator extends StopTheWorldMutator {
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == ZGC.PREPARE) {
       super.collectionPhase(phaseId, primary);
+      zgc.prepare();
       return;
     }
 
     if (phaseId == ZGC.RELEASE) {
+      zgc.release();
       super.collectionPhase(phaseId, primary);
-      // rebind the allocation bump pointer to the appropriate semispace.
-      ss.rebind(ZGC.toSpace());
       return;
     }
 
     super.collectionPhase(phaseId, primary);
-  }
-
-
-  /****************************************************************************
-   *
-   * Miscellaneous
-   */
-
-  /**
-   * Show the status of each of the allocators.
-   */
-  public final void show() {
-    ss.show();
-    los.show();
-    immortal.show();
   }
 
 }

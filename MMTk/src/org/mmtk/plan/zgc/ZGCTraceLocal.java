@@ -15,6 +15,7 @@ package org.mmtk.plan.zgc;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -27,7 +28,7 @@ import org.vmmagic.unboxed.ObjectReference;
 public class ZGCTraceLocal extends TraceLocal {
 
   public ZGCTraceLocal(Trace trace, boolean specialized) {
-    super(specialized ? ZGC.SCAN_SS : -1, trace);
+    super(specialized ? ZGC.SCAN_Z : -1, trace);
   }
 
   /**
@@ -48,10 +49,8 @@ public class ZGCTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(ZGC.SS0, object))
-      return ZGC.hi ? ZGC.copySpace0.isLive(object) : true;
-    if (Space.isInSpace(ZGC.SS1, object))
-      return ZGC.hi ? true : ZGC.copySpace1.isLive(object);
+    if (Space.isInSpace(ZGC.Z, object))
+      return ZGC.zSpace.isLive(object);
     return super.isLive(object);
   }
 
@@ -60,10 +59,8 @@ public class ZGCTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(ZGC.SS0, object))
-      return ZGC.copySpace0.traceObject(this, object, ZGC.ALLOC_SS);
-    if (Space.isInSpace(ZGC.SS1, object))
-      return ZGC.copySpace1.traceObject(this, object, ZGC.ALLOC_SS);
+    if (Space.isInSpace(ZGC.Z, object))
+      return ZGC.zSpace.traceObject(this, object, ZGC.ALLOC_Z);
     return super.traceObject(object);
   }
 
@@ -75,7 +72,7 @@ public class ZGCTraceLocal extends TraceLocal {
    */
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
-    return (ZGC.hi && !Space.isInSpace(ZGC.SS0, object)) ||
-           (!ZGC.hi && !Space.isInSpace(ZGC.SS1, object));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ZGC.zSpace.inImmixDefragCollection());
+    return true;
   }
 }

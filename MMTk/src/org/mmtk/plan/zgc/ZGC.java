@@ -18,6 +18,7 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.CopySpace;
 import org.mmtk.policy.Space;
+import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.utility.heap.VMRequest;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -50,18 +51,11 @@ public class ZGC extends StopTheWorld {
    * Class variables
    */
 
-  /** {@code true} if allocating into the "higher" semispace */
-  public static boolean hi = false;
-
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final CopySpace copySpace0 = new CopySpace("ss0", false, VMRequest.discontiguous());
-  public static final int SS0 = copySpace0.getDescriptor();
+  public static final ZSpace zSpace = new ZSpace("ss0", false, VMRequest.discontiguous());
+  public static final int Z = zSpace.getDescriptor();
 
-  /** One of the two semi spaces that alternate roles at each collection */
-  public static final CopySpace copySpace1 = new CopySpace("ss1", true, VMRequest.discontiguous());
-  public static final int SS1 = copySpace1.getDescriptor();
-
-  public final Trace ssTrace;
+  public final Trace zTrace = new Trace(metaDataSpace);
 
   /****************************************************************************
    *
@@ -75,33 +69,13 @@ public class ZGC extends StopTheWorld {
   /**
    *
    */
-  public static final int ALLOC_SS = Plan.ALLOC_DEFAULT;
-
-  public static final int SCAN_SS = 0;
+  public static final int ALLOC_Z = Plan.ALLOC_DEFAULT;
+  public static final int SCAN_Z = 0;
 
   /**
    * Constructor
    */
-  public ZGC() {
-    ssTrace = new Trace(metaDataSpace);
-  }
-
-  /**
-   * @return The to space for the current collection.
-   */
-  @Inline
-  public static CopySpace toSpace() {
-    return hi ? copySpace1 : copySpace0;
-  }
-
-  /**
-   * @return The from space for the current collection.
-   */
-  @Inline
-  public static CopySpace fromSpace() {
-    return hi ? copySpace0 : copySpace1;
-  }
-
+  public ZGC() {}
 
   /****************************************************************************
    *
@@ -114,23 +88,27 @@ public class ZGC extends StopTheWorld {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
-    if (phaseId == ZGC.PREPARE) {
-      hi = !hi; // flip the semi-spaces
-      // prepare each of the collected regions
-      copySpace0.prepare(hi);
-      copySpace1.prepare(!hi);
-      ssTrace.prepare();
+    if (phaseId == SET_COLLECTION_KIND) {
       super.collectionPhase(phaseId);
+      // immixSpace.decideWhetherToDefrag(emergencyCollection, collectWholeHeap, collectionAttempt, userTriggeredCollection);
       return;
     }
-    if (phaseId == CLOSURE) {
-      ssTrace.prepare();
-      return;
-    }
-    if (phaseId == ZGC.RELEASE) {
-      // release the collected region
-      fromSpace().release();
 
+    if (phaseId == ZGC.PREPARE) {
+      super.collectionPhase(phaseId);
+      zSpace.prepare();
+      zTrace.prepare();
+      return;
+    }
+
+    if (phaseId == CLOSURE) {
+      zTrace.prepare();
+      return;
+    }
+
+    if (phaseId == ZGC.RELEASE) {
+      zTrace.release();
+      zSpace.release();
       super.collectionPhase(phaseId);
       return;
     }
@@ -150,7 +128,7 @@ public class ZGC extends StopTheWorld {
   public final int getCollectionReserve() {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
-    return toSpace().reservedPages() + super.getCollectionReserve();
+    return (zSpace.reservedPages() > 0 ? 1 : 0) + super.getCollectionReserve(); // TODO: Fix this
   }
 
   /**
@@ -160,7 +138,7 @@ public class ZGC extends StopTheWorld {
    */
   @Override
   public int getPagesUsed() {
-    return super.getPagesUsed() + toSpace().reservedPages();
+    return super.getPagesUsed() + (zSpace.reservedPages() > 0 ? zSpace.reservedPages() - 1 : 0);
   }
 
   /**
@@ -170,22 +148,18 @@ public class ZGC extends StopTheWorld {
    * @return The number of pages available for allocation, <i>assuming
    * all future allocation is to the semi-space</i>.
    */
-  @Override
-  public final int getPagesAvail() {
-    return(super.getPagesAvail()) >> 1;
-  }
+  // @Override public final int getPagesAvail() { return(super.getPagesAvail()) >> 1; }
 
   @Override
   public boolean willNeverMove(ObjectReference object) {
-    if (Space.isInSpace(SS0, object) || Space.isInSpace(SS1, object))
-      return false;
+    if (Space.isInSpace(Z, object)) return true;
     return super.willNeverMove(object);
   }
 
   @Override
   @Interruptible
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_SS, ZGCTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_Z, ZGCTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }
