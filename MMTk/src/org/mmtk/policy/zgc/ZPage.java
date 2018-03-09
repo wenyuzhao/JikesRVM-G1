@@ -7,9 +7,9 @@ import org.vmmagic.unboxed.Word;
 import static org.mmtk.utility.Constants.*;
 
 public class ZPage {
-    static final int BYTES = BYTES_IN_PAGE;
-    static final int PREV_PAGE_POINTER_OFFSET = BYTES - 8;
-    static final int NEXT_PAGE_POINTER_OFFSET = BYTES - 4;
+    public static final int BYTES = BYTES_IN_PAGE;
+    public static final int PREV_PAGE_POINTER_OFFSET = BYTES - 8;
+    public static final int NEXT_PAGE_POINTER_OFFSET = BYTES - 4;
     public static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES - 1);
 
     private static Address head = Address.zero();

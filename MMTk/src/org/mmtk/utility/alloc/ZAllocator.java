@@ -14,7 +14,7 @@
 package org.mmtk.utility.alloc;
 
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZBlock;
+import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -122,19 +122,19 @@ public class ZAllocator extends Allocator {
     }
 
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZBlock.isAligned(ptr));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(ptr));
     //lineUseCount = LINES_IN_BLOCK;
     cursor = ptr;
-    limit = ptr.plus(ZBlock.BYTES);
+    limit = ptr.plus(ZPage.BYTES);
 
     return alloc(bytes, align, offset);
   }
 
-  private void zeroBlock(Address block) {
+  /*private void zeroBlock(Address block) {
     // FIXME: efficiency check here!
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(block.toWord().and(Word.fromIntSignExtend(ZBlock.BYTES - 1)).isZero());
-    VM.memory.zero(false, block, Extent.fromIntZeroExtend(ZBlock.BYTES));
-  }
+    VM.memory.zero(false, block, Extent.fromIntZeroExtend(ZPage.BYTES));
+  }*/
 
   /** @return the space associated with this squish allocator */
   @Override
