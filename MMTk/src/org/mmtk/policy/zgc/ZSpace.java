@@ -120,9 +120,9 @@ public final class ZSpace extends Space {
     public ZSpace(String name, boolean zeroed, VMRequest vmRequest) {
         super(name, false, false, zeroed, vmRequest);
         if (vmRequest.isDiscontiguous())
-            pr = new FreeListPageResource(this, ZBlock.getRequiredMetaDataPages());
+            pr = new FreeListPageResource(this, 0);
         else
-            pr = new FreeListPageResource(this, start, extent, ZBlock.getRequiredMetaDataPages());
+            pr = new FreeListPageResource(this, start, extent, 0);
         // defrag = new Defrag((FreeListPageResource) pr);
     }
 
@@ -193,7 +193,7 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         Address zPage = acquire(1);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZBlock.isAligned(zPage));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
         if (!zPage.isZero()) ZPage.push(zPage);
         return zPage;
     }
