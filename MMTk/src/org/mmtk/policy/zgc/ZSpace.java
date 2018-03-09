@@ -343,22 +343,20 @@ public final class ZSpace extends Space {
 
                 trace.processNode(newObject);
                 if (VM.VERIFY_ASSERTIONS) {
-                    if (!((getSpaceForObject(newObject) != this) ||
-                        (newObject == object)
-                    )) {
+                    //if (!((getSpaceForObject(newObject) != this) || (newObject == object))) {
                         Log.writeln("   object: ", object);
                         Log.writeln("newObject: ", newObject);
                         Log.write("    space: ");
                         Log.writeln(getName());
-                        Log.writeln(" nursery?: ", nurseryCollection);
-                        Log.writeln("  mature?: ", ZObjectHeader.isMatureObject(object));
+                        //Log.writeln(" nursery?: ", nurseryCollection);
+                        //Log.writeln("  mature?: ", ZObjectHeader.isMatureObject(object));
                         //Log.writeln("  wnmngc?: ", willNotMoveThisNurseryGC(newObject));
                         //Log.writeln("  pinned?: ", ZObjectHeader.isPinnedObject(object));
                         Space otherSpace = getSpaceForObject(newObject);
                         Log.write(" space(o): ");
                         Log.writeln(otherSpace == null ? "<NULL>" : otherSpace.getName());
-                        VM.assertions._assert(false);
-                    }
+                        //VM.assertions._assert(false);
+                    //}
                 }
                 return newObject;
             }
