@@ -1,6 +1,7 @@
 package org.mmtk.policy.zgc;
 
 import com.sun.org.apache.xerces.internal.impl.dv.xs.AbstractDateTimeDV;
+import org.mmtk.utility.deque.AddressDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.Word;
@@ -129,11 +130,7 @@ public class ZPage {
         return size;
     }
 
-    public static void forEach(Consumer<Address> f) {
-        for (Address zPage = head; !zPage.isZero(); zPage = next(zPage))
-            f.accept(zPage);
+    public static Address head() {
+        return head;
     }
-
-
-
 }

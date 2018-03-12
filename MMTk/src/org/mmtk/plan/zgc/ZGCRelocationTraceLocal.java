@@ -19,6 +19,7 @@ import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -50,11 +51,11 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
-    ZPage.forEach(zPage -> {
+    for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
       if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2)) {
         ZPage.setRelocationState(zPage, true);
       }
-    });
+    };
   }
 
   @Override

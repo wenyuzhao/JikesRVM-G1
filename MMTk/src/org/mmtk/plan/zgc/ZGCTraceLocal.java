@@ -19,6 +19,7 @@ import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -50,7 +51,9 @@ public class ZGCTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
-    ZPage.forEach(zPage -> ZPage.setUsedSize(zPage, 0));
+    for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
+      ZPage.setUsedSize(zPage, 0);
+    };
   }
 
   @Override
