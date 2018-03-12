@@ -96,7 +96,6 @@ public class ZAllocator extends Allocator {
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
-    ZPage.setCurser(ZPage.of(cursor), cursor);
     return start;
   }
 
