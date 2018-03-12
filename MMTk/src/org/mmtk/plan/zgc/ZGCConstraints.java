@@ -36,6 +36,6 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int numSpecializedScans() {
-    return 1;
+    return 2;
   }
 }
