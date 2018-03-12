@@ -16,8 +16,8 @@ import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CopyLocal;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZMutatorLocal;
 import org.mmtk.utility.alloc.Allocator;
+import org.mmtk.utility.alloc.ZAllocator;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -44,7 +44,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final ZMutatorLocal zgc;
+  protected final ZAllocator zgc;
 
   /****************************************************************************
    *
@@ -55,7 +55,7 @@ public class ZGCMutator extends StopTheWorldMutator {
    * Constructor
    */
   public ZGCMutator() {
-    zgc = new ZMutatorLocal(ZGC.zSpace);
+    zgc = new ZAllocator(ZGC.zSpace, false);
   }
 
   /****************************************************************************
@@ -102,12 +102,12 @@ public class ZGCMutator extends StopTheWorldMutator {
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == ZGC.PREPARE) {
       super.collectionPhase(phaseId, primary);
-      zgc.prepare();
+      zgc.reset();
       return;
     }
 
     if (phaseId == ZGC.RELEASE) {
-      zgc.release();
+      zgc.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }

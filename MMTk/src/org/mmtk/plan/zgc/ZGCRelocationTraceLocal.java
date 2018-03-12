@@ -16,7 +16,7 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZPage;
-import org.mmtk.vm.VM;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -26,10 +26,10 @@ import org.vmmagic.unboxed.ObjectReference;
  * closure over the heap graph.
  */
 @Uninterruptible
-public class ZGCTraceLocal extends TraceLocal {
+public class ZGCRelocationTraceLocal extends TraceLocal {
 
-  public ZGCTraceLocal(Trace trace) {
-    super(ZGC.SCAN_MARK, trace);
+  public ZGCRelocationTraceLocal(Trace trace) {
+    super(ZGC.SCAN_RELOCATE, trace);
   }
 
   /****************************************************************************
@@ -50,7 +50,11 @@ public class ZGCTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
-    ZPage.forEach(zPage -> ZPage.setUsedSize(zPage, 0));
+    ZPage.forEach(zPage -> {
+      if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2)) {
+        ZPage.setRelocationState(zPage, true);
+      }
+    });
   }
 
   @Override
@@ -58,7 +62,7 @@ public class ZGCTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     if (Space.isInSpace(ZGC.Z, object))
-      return ZGC.zSpace.traceObject(this, object, ZGC.ALLOC_Z);
+      return ZGC.zSpace.traceObjectWithCopy(this, object, ZGC.ALLOC_Z);
     return super.traceObject(object);
   }
 

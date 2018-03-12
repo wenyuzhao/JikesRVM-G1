@@ -263,14 +263,23 @@ public final class ZSpace extends Space {
     @Inline
     public ObjectReference traceObject(TransitiveClosure trace, ObjectReference object, int allocator) {
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
-
         ObjectReference rtn = object;
-        traceObjectWithOpportunisticCopy(trace, object, allocator, false);
+        byte markValue = ZObjectHeader.markState;
+        byte oldMarkState = ZObjectHeader.testAndMark(object, markValue);
+        if (oldMarkState != markValue) {
+            trace.processNode(object);
+        }
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+        if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
 
         if (VM.VERIFY_ASSERTIONS) {
             VM.assertions._assert(!rtn.isNull());
             //VM.assertions._assert(defrag.spaceExhausted() || !isDefragSource(rtn) || (ObjectHeader.isPinnedObject(rtn)));
         }
+        // Inc zpage used size
+        Address zPage = ZPage.of(rtn.toAddress());
+        ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getCurrentSize(rtn));
+
         return rtn;
     }
 
@@ -297,21 +306,17 @@ public final class ZSpace extends Space {
      * @param trace The trace performing the transitive closure
      * @param object The object to be traced.
      * @param allocator The allocator to which any copying should be directed
-     * @param nurseryCollection whether the current collection is a nursery collection
      * @return Either the object or a forwarded object, if it was forwarded.
      */
     @Inline
-    private ObjectReference traceObjectWithOpportunisticCopy(TransitiveClosure trace, ObjectReference object, int allocator, boolean nurseryCollection) {
+    public ObjectReference traceObjectWithCopy(TransitiveClosure trace, ObjectReference object, int allocator) {
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
-
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
             /* We lost the race; the object is either forwarded or being forwarded by another thread. */
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-            //if (VM.VERIFY_ASSERTIONS && rtn == object) VM.assertions._assert((nurseryCollection && ObjectHeader.testMarkState(object, markState)) || defrag.spaceExhausted() || ObjectHeader.isPinnedObject(object));
-            //if (VM.VERIFY_ASSERTIONS && rtn != object) VM.assertions._assert(nurseryCollection || !isDefragSource(rtn));
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
         } else {
@@ -326,39 +331,30 @@ public final class ZSpace extends Space {
                 return object;
             } else {
                 /* we are the first to reach the object; either mark in place or forward it */
-                ObjectReference newObject;
-                /* forward */
-                newObject = ForwardingWord.forwardObject(object, allocator);
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+                ObjectReference rtn = object;
+                if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
+                    /* forward */
+                    ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                        VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
-                if (VM.VERIFY_ASSERTIONS && Options.verbose.getValue() >= 9) {
-                    Log.write("C[", object);
-                    Log.write("/");
-                    Log.write(getName());
-                    Log.write("] -> ", newObject);
-                    Log.write("/");
-                    Log.write(Space.getSpaceForObject(newObject).getName());
-                    Log.writeln("]");
+                    if (VM.VERIFY_ASSERTIONS && Options.verbose.getValue() >= 9) {
+                        Log.write("C[", object);
+                        Log.write("/");
+                        Log.write(getName());
+                        Log.write("] -> ", newObject);
+                        Log.write("/");
+                        Log.write(Space.getSpaceForObject(newObject).getName());
+                        Log.writeln("]");
+                    }
+                    rtn = newObject;
                 }
-
-                trace.processNode(newObject);
-                if (VM.VERIFY_ASSERTIONS) {
-                    //if (!((getSpaceForObject(newObject) != this) || (newObject == object))) {
-                        Log.writeln("   object: ", object);
-                        Log.writeln("newObject: ", newObject);
-                        Log.write("    space: ");
-                        Log.writeln(getName());
-                        //Log.writeln(" nursery?: ", nurseryCollection);
-                        //Log.writeln("  mature?: ", ZObjectHeader.isMatureObject(object));
-                        //Log.writeln("  wnmngc?: ", willNotMoveThisNurseryGC(newObject));
-                        //Log.writeln("  pinned?: ", ZObjectHeader.isPinnedObject(object));
-                        Space otherSpace = getSpaceForObject(newObject);
-                        Log.write(" space(o): ");
-                        Log.writeln(otherSpace == null ? "<NULL>" : otherSpace.getName());
-                        //VM.assertions._assert(false);
-                    //}
+                byte markValue = ZObjectHeader.markState;
+                byte oldMarkState = ZObjectHeader.testAndMark(rtn, markValue);
+                if (oldMarkState != markValue) {
+                    trace.processNode(rtn);
                 }
-                return newObject;
+                return rtn;
             }
         }
     }

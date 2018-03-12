@@ -96,7 +96,7 @@ public class ZAllocator extends Allocator {
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
-
+    ZPage.setCurser(ZPage.of(cursor), cursor);
     return start;
   }
 
@@ -125,7 +125,7 @@ public class ZAllocator extends Allocator {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(ptr));
     //lineUseCount = LINES_IN_BLOCK;
     cursor = ptr;
-    limit = ptr.plus(ZPage.BYTES);
+    limit = ptr.plus(ZPage.USEABLE_BYTES);
 
     return alloc(bytes, align, offset);
   }

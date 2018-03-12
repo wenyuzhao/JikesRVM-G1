@@ -70,7 +70,8 @@ public class ZGC extends StopTheWorld {
    *
    */
   public static final int ALLOC_Z = Plan.ALLOC_DEFAULT;
-  public static final int SCAN_Z = 0;
+  public static final int SCAN_MARK = 0;
+  public static final int SCAN_RELOCATE = 1;
 
   /**
    * Constructor
@@ -159,7 +160,8 @@ public class ZGC extends StopTheWorld {
   @Override
   @Interruptible
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_Z, ZGCTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, ZGCTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, ZGCRelocationTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }
