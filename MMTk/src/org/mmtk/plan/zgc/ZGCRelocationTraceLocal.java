@@ -16,6 +16,7 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZPage;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -51,10 +52,14 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
+    int i = 0;
     for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
+      Log.write("#ZPage " + (i++) + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
       if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2)) {
+        Log.write(" relocate");
         ZPage.setRelocationState(zPage, true);
       }
+      Log.writeln();
     };
   }
 
