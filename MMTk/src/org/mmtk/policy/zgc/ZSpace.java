@@ -141,7 +141,7 @@ public final class ZSpace extends Space {
      */
     public void prepare() {
         ZObjectHeader.deltaMarkState(true);
-        ZPage.reset();
+        // ZPage.reset();
         inCollection = true;
     }
 
@@ -149,7 +149,7 @@ public final class ZSpace extends Space {
      * A new collection increment has completed.  Release global resources.
      */
     public void release() {
-        ZPage.reset();
+        // ZPage.reset();
         inCollection = false;
     }
 
