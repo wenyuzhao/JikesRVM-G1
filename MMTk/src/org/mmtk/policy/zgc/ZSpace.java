@@ -297,7 +297,7 @@ public final class ZSpace extends Space {
         if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
             Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
         }
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+        // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         // if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
 
         if (VM.VERIFY_ASSERTIONS) {
