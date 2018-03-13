@@ -133,12 +133,6 @@ public class ZAllocator extends Allocator {
     return alloc(bytes, align, offset);
   }
 
-  /*private void zeroBlock(Address block) {
-    // FIXME: efficiency check here!
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(block.toWord().and(Word.fromIntSignExtend(ZBlock.BYTES - 1)).isZero());
-    VM.memory.zero(false, block, Extent.fromIntZeroExtend(ZPage.BYTES));
-  }*/
-
   /** @return the space associated with this squish allocator */
   @Override
   public final Space getSpace() {

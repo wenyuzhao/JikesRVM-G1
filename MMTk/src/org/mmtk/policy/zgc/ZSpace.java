@@ -208,6 +208,10 @@ public final class ZSpace extends Space {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
 
         if (!zPage.isZero()) {
+
+            // FIXME: efficiency check here!
+            VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(ZPage.BYTES));
+
             ZPage.push(zPage);
             if (copy) {
                 ZPage.currentCopyPage = zPage;
