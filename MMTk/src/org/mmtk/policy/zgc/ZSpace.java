@@ -400,7 +400,7 @@ public final class ZSpace extends Space {
 
                     Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
 
-                    ZObjectHeader.testAndMark(newObject, ZObjectHeader.markState);
+                    //ZObjectHeader.testAndMark(newObject, ZObjectHeader.markState);
 
                     rtn = newObject;
                 } else {
