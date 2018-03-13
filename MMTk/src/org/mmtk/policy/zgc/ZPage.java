@@ -13,6 +13,7 @@ import static org.mmtk.utility.Constants.*;
 
 public class ZPage {
     public static final int BYTES = BYTES_IN_PAGE;
+    public static final int PAGES = 1;
     public static final int USEABLE_BYTES = BYTES - 13; // exclude metadata
 
     public static final int NEXT_PAGE_POINTER_OFFSET = BYTES - 4;

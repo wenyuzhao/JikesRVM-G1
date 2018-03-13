@@ -182,6 +182,7 @@ public final class ZSpace extends Space {
      * Allocation
      */
 
+    Address copyPage = acquire(ZPage.PAGES);
     /**
      * Return a pointer to a set of new usable blocks, or null if none are available.
      * Use different block selection heuristics depending on whether the allocation
@@ -192,17 +193,26 @@ public final class ZSpace extends Space {
      *  if no usable blocks are available
      */
     public Address getSpace(boolean copy) {
-        Address zPage = acquire(1);
+        Address zPage;
+        if (copy) {
+            zPage = copyPage;
+            copyPage = acquire(ZPage.PAGES);
+        } else {
+            zPage = acquire(ZPage.PAGES);
+        }
+
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
+
         if (!zPage.isZero()) {
             ZPage.push(zPage);
             if (copy) {
                 ZPage.currentCopyPage = zPage;
             } else {
-                ZPage.currentCopyPage = zPage;
+                ZPage.currentAllocPage = zPage;
             }
             Log.writeln("#ZPage alloc " + zPage);
         }
+
         return zPage;
     }
 
