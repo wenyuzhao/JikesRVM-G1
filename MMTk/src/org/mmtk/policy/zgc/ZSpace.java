@@ -266,10 +266,6 @@ public final class ZSpace extends Space {
     public void postCopy(ObjectReference object, int bytes) {
         ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
         ForwardingWord.clearForwardingBits(object);
-        //if (!MARK_LINE_AT_SCAN_TIME && majorGC) markLines(object);
-        if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
-            Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
-        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -303,7 +299,7 @@ public final class ZSpace extends Space {
         if (ForwardingWord.isForwarded(object)) {
             Word statusWord = ForwardingWord.attemptToForward(object);
             ObjectReference newObject = ForwardingWord.extractForwardingPointer(statusWord);
-            Log.writeln("# -> ", newObject);
+            // Log.writeln("# -> ", newObject);
             rtn = newObject;
         }
 
@@ -397,12 +393,12 @@ public final class ZSpace extends Space {
                 ObjectReference rtn = object;
                 if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
                     /* forward */
-                    Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
+                    //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
                     ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                         VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
-                    Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
+                    //Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
 
                     rtn = newObject;
                 } else {
