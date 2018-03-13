@@ -277,7 +277,7 @@ public final class ZSpace extends Space {
      */
 
     @Inline
-    public static ObjectReference getForwardingPointer(ObjectReference object) {
+    public static ObjectReference getForwardedObject(ObjectReference object) {
         return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
     }
 
@@ -296,13 +296,14 @@ public final class ZSpace extends Space {
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
 
         ObjectReference rtn = object;
-        if (!getForwardingPointer(object).isNull()) {
-            //Log.writeln("# -> ", getForwardingPointer(object));
-            rtn = getForwardingPointer(object);
+
+        if (ForwardingWord.isForwarded(object)) {
+            Log.writeln("# -> ", getForwardedObject(object));
+            rtn = getForwardedObject(object);
         }
 
-        if (ZObjectHeader.testAndMark(object, ZObjectHeader.markState) != ZObjectHeader.markState) {
-            trace.processNode(object);
+        if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
+            trace.processNode(rtn);
         }
 
         Address zPage = ZPage.of(rtn.toAddress());
