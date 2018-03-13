@@ -103,7 +103,9 @@ public class ZGC extends StopTheWorld {
   /**
    * Constructor
    */
-  public ZGC() {}
+  public ZGC() {
+    collection = zCollection;
+  }
 
   /****************************************************************************
    *
