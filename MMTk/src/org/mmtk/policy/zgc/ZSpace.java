@@ -197,7 +197,7 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         if (!copy && ZGC.availableMemory().toInt() / ZGC.totalMemory().toInt() > 0.5) {
-            ((ZGCCollector) VM.activePlan.collector()).collect();
+            VM.collection.blockForGC();
         }
         if (copyPage == null) {
             copyPage = acquire(ZPage.PAGES);
