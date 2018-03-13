@@ -295,13 +295,20 @@ public final class ZSpace extends Space {
         //Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
 
+        ObjectReference rtn = object;
+        if (!getForwardingPointer(object).isNull()) {
+            //Log.writeln("# -> ", getForwardingPointer(object));
+            rtn = getForwardingPointer(object);
+        }
+
         if (ZObjectHeader.testAndMark(object, ZObjectHeader.markState) != ZObjectHeader.markState) {
             trace.processNode(object);
-        } else if (!getForwardingPointer(object).isNull()) {
-            //Log.writeln("# -> ", getForwardingPointer(object));
-            return getForwardingPointer(object);
         }
-        return object;
+
+        Address zPage = ZPage.of(rtn.toAddress());
+        ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
+
+        return rtn;
 
         /*
         ObjectReference rtn = object;
