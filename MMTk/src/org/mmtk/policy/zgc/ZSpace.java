@@ -124,6 +124,7 @@ public final class ZSpace extends Space {
         else
             pr = new FreeListPageResource(this, start, extent, 0);
         // defrag = new Defrag((FreeListPageResource) pr);
+        copyPage = acquire(ZPage.PAGES);
     }
 
     /*@Interruptible
@@ -182,7 +183,7 @@ public final class ZSpace extends Space {
      * Allocation
      */
 
-    Address copyPage = acquire(ZPage.PAGES);
+    Address copyPage;
     /**
      * Return a pointer to a set of new usable blocks, or null if none are available.
      * Use different block selection heuristics depending on whether the allocation
