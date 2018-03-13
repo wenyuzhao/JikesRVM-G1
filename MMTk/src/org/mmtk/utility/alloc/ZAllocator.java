@@ -91,9 +91,9 @@ public class ZAllocator extends Allocator {
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
-    Log.writeln("Alloc " + bytes + ", aligned to " + end.diff(start).toInt() + ", available " + limit.diff(cursor).toInt() + ", cursor " + cursor + " limit " + limit + " USABLE_BYTES " + ZPage.USEABLE_BYTES);
-    Log.flush();
-    VM.assertions._assert(end.diff(start).toInt() <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
+    //Log.writeln("Alloc " + bytes + ", aligned to " + end.diff(start).toInt() + ", available " + limit.diff(cursor).toInt() + ", cursor " + cursor + " limit " + limit + " USABLE_BYTES " + ZPage.USEABLE_BYTES);
+    //Log.flush();
+    //VM.assertions._assert(end.diff(start).toInt() <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
         return allocSlowInline(bytes, align, offset);

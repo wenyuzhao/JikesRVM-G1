@@ -394,13 +394,12 @@ public final class ZSpace extends Space {
                 ObjectReference rtn = object;
                 if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
                     /* forward */
+                    Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
                     ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                         VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
                     Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
-
-                    //ZObjectHeader.testAndMark(newObject, ZObjectHeader.markState);
 
                     rtn = newObject;
                 } else {
