@@ -263,6 +263,9 @@ public final class ZSpace extends Space {
     public void postCopy(ObjectReference object, int bytes, boolean majorGC) {
         ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
         //if (!MARK_LINE_AT_SCAN_TIME && majorGC) markLines(object);
+        if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+            Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
+        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -361,15 +364,8 @@ public final class ZSpace extends Space {
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                         VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
-                    if (VM.VERIFY_ASSERTIONS && Options.verbose.getValue() >= 9) {
-                        Log.write("C[", object);
-                        Log.write("/");
-                        Log.write(getName());
-                        Log.write("] -> ", newObject);
-                        Log.write("/");
-                        Log.write(Space.getSpaceForObject(newObject).getName());
-                        Log.writeln("]");
-                    }
+                    Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
+
                     rtn = newObject;
                 } else {
                     ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
