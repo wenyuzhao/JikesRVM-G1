@@ -262,6 +262,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+        Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
         ObjectReference rtn = object;
         byte markValue = ZObjectHeader.markState;
@@ -310,6 +311,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceObjectWithCopy(TransitiveClosure trace, ObjectReference object, int allocator) {
+        Log.writeln("###traceObjectWithCopy");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
@@ -348,12 +350,10 @@ public final class ZSpace extends Space {
                         Log.writeln("]");
                     }
                     rtn = newObject;
+                } else {
+                    ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
                 }
-                byte markValue = ZObjectHeader.markState;
-                byte oldMarkState = ZObjectHeader.testAndMark(rtn, markValue);
-                if (oldMarkState != markValue) {
-                    trace.processNode(rtn);
-                }
+                trace.processNode(rtn);
                 return rtn;
             }
         }
