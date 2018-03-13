@@ -22,6 +22,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.Extent;
+import org.vmmagic.unboxed.Offset;
 import org.vmmagic.unboxed.Word;
 
 //import static org.mmtk.policy.immix.ImmixConstants.*;
@@ -85,11 +86,11 @@ public class ZAllocator extends Allocator {
    */
   @Inline
   public final Address alloc(int bytes, int align, int offset) {
-    VM.assertions._assert(bytes <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
 
+    VM.assertions._assert(end.diff(start).toInt() <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
         return allocSlowInline(bytes, align, offset);
