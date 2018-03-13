@@ -64,6 +64,19 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   }
 
   @Override
+  public void release() {
+    int i = 0;
+    for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
+      if (ZPage.relocationRequired(zPage)) {
+        Log.write("#ZPage " + i + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
+        ZGC.zSpace.release(zPage);
+      }
+      Log.writeln();
+      i += 1;
+    };
+  }
+
+  @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     Log.writeln("ZGCRelocationTraceLocal.traceObject");

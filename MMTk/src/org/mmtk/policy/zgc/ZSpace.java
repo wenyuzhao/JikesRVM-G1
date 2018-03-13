@@ -202,14 +202,14 @@ public final class ZSpace extends Space {
      * Release a block.  A block is free, so call the underlying page allocator
      * to release the associated storage.
      *
-     * @param block The address of the block to be released
+     * @param zPage The address of the Z Page to be released
      */
     @Override
     @Inline
-    public void release(Address block) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(block));
-        ZPage.remove(block);
-        ((FreeListPageResource) pr).releasePages(block);
+    public void release(Address zPage) {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
+        ZPage.remove(zPage);
+        ((FreeListPageResource) pr).releasePages(zPage);
     }
 
     /****************************************************************************
