@@ -89,11 +89,11 @@ public class ZPage {
         if (!prevPage.isZero()) prevPage.plus(NEXT_PAGE_POINTER_OFFSET).store(Address.zero());
     }
 
-    public static void reset() {
+    /*public static void reset() {
         head = Address.zero();
         tail = Address.zero();
         size = 0;
-    }
+    }*/
 
     public static Address pop() {
         if (tail.isZero()) return Address.zero();
