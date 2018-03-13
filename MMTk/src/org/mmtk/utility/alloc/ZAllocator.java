@@ -14,6 +14,7 @@
 package org.mmtk.utility.alloc;
 
 import org.mmtk.policy.Space;
+import org.mmtk.policy.zgc.ZObjectHeader;
 import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.vm.VM;
@@ -84,6 +85,7 @@ public class ZAllocator extends Allocator {
    */
   @Inline
   public final Address alloc(int bytes, int align, int offset) {
+    VM.assertions._assert(bytes <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
@@ -124,7 +126,6 @@ public class ZAllocator extends Allocator {
     //lineUseCount = LINES_IN_BLOCK;
     cursor = ptr;
     limit = ptr.plus(ZPage.USEABLE_BYTES);
-
     return alloc(bytes, align, offset);
   }
 
