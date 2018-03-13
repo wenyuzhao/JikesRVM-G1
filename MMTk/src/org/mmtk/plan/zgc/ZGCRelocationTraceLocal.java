@@ -60,7 +60,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
         ZPage.setRelocationState(zPage, true);
       } else if (zPage.EQ(ZPage.currentAllocPage)) {
         Log.write(" alloc");
-      } else if (zPage.EQ(ZPage.currentAllocPage)) {
+      } else if (zPage.EQ(ZPage.currentCopyPage)) {
         Log.write(" copy");
       }
       Log.writeln();

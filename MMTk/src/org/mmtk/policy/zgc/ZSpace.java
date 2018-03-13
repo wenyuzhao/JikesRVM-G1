@@ -304,11 +304,10 @@ public final class ZSpace extends Space {
         }
 
         if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
+            Address zPage = ZPage.of(rtn.toAddress());
+            ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
-
-        Address zPage = ZPage.of(rtn.toAddress());
-        ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
 
         return rtn;
 
