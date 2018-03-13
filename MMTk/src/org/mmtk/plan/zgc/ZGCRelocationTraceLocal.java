@@ -76,6 +76,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       Log.write("#ZPage " + currentZPage + ": " + ZPage.usedSize(currentZPage) + "/" + ZPage.USEABLE_BYTES);
       if (ZPage.relocationRequired(currentZPage)) {
         Log.write(" released");
+        Log.flush();
         ZGC.zSpace.release(currentZPage);
       }
       Log.writeln();
