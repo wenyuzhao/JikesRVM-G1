@@ -20,6 +20,7 @@ import org.mmtk.policy.CopyLocal;
 import org.mmtk.policy.LargeObjectLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.ZAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -112,6 +113,7 @@ public class ZGCCollector extends StopTheWorldCollector {
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == ZGC.PREPARE) {
+      Log.writeln("ZGC PREPARE");
       currentTrace = markTrace;
       super.collectionPhase(phaseId, primary);
       markTrace.prepare();
@@ -119,17 +121,20 @@ public class ZGCCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == ZGC.CLOSURE) {
+      Log.writeln("ZGC CLOSURE");
       markTrace.completeTrace();
       return;
     }
 
     if (phaseId == ZGC.RELEASE) {
+      Log.writeln("ZGC RELEASE");
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
     if (phaseId == ZGC.RELOCATE_PREPARE) {
+      Log.writeln("ZGC RELOCATE_PREPARE");
       currentTrace = relocateTrace;
       super.collectionPhase(ZGC.PREPARE, primary);
       relocateTrace.prepare();
@@ -137,11 +142,13 @@ public class ZGCCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == ZGC.RELOCATE_CLOSURE) {
+      Log.writeln("ZGC RELOCATE_CLOSURE");
       relocateTrace.completeTrace();
       return;
     }
 
     if (phaseId == ZGC.RELOCATE_RELEASE) {
+      Log.writeln("ZGC RELOCATE_RELEASE");
       relocateTrace.release();
       super.collectionPhase(ZGC.RELEASE, primary);
       return;
