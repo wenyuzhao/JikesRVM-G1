@@ -298,8 +298,10 @@ public final class ZSpace extends Space {
         ObjectReference rtn = object;
 
         if (ForwardingWord.isForwarded(object)) {
-            Log.writeln("# -> ", getForwardedObject(object));
-            rtn = getForwardedObject(object);
+            Word statusWord = ForwardingWord.attemptToForward(object);
+            ObjectReference newObject = ForwardingWord.extractForwardingPointer(statusWord);
+            Log.writeln("# -> ", newObject);
+            rtn = newObject;
         }
 
         if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
