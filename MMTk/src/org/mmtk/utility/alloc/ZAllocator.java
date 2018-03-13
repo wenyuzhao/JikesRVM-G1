@@ -17,6 +17,7 @@ import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZObjectHeader;
 import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.policy.zgc.ZSpace;
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -89,7 +90,8 @@ public class ZAllocator extends Allocator {
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
-
+    Log.writeln("start " + start + " end " + end + " cursor " + cursor + " limit " + limit + " USABLE_BYTES " + ZPage.USEABLE_BYTES);
+    Log.flush();
     VM.assertions._assert(end.diff(start).toInt() <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
