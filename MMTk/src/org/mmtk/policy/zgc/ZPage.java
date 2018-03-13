@@ -52,7 +52,13 @@ public class ZPage {
         return zPage.plus(RELOCATION_MARK_OFFSET).loadByte() > 0;
     }
 
-
+    public static void clear(Address zPage) {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && isAligned(zPage));
+        setUsedSize(zPage, 0);
+        setRelocationState(zPage, false);
+        zPage.plus(PREV_PAGE_POINTER_OFFSET).store(Address.zero());
+        zPage.plus(NEXT_PAGE_POINTER_OFFSET).store(Address.zero());
+    }
 
     public static void setUsedSize(Address zPage, int bytes) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && isAligned(zPage));

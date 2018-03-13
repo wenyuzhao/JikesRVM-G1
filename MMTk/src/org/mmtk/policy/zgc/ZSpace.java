@@ -216,7 +216,7 @@ public final class ZSpace extends Space {
             }
             Log.writeln("#ZPage alloc " + zPage);
         }
-
+        ZPage.clear(zPage);
         return zPage;
     }
 
