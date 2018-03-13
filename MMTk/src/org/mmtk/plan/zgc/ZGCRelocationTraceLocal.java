@@ -66,11 +66,15 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
 
   @Override
   public void release() {
-    for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
-      Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
-      if (ZPage.relocationRequired(zPage)) {
+    Address zPage = ZPage.head();
+    while (!zPage.isZero()) {
+      Address currentZPage = zPage;
+      zPage = ZPage.next(zPage);
+
+      Log.write("#ZPage " + currentZPage + ": " + ZPage.usedSize(currentZPage) + "/" + ZPage.USEABLE_BYTES);
+      if (ZPage.relocationRequired(currentZPage)) {
         Log.write(" released");
-        ZGC.zSpace.release(zPage);
+        ZGC.zSpace.release(currentZPage);
       }
       Log.writeln();
     };
