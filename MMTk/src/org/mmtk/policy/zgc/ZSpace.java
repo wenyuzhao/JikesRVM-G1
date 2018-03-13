@@ -358,7 +358,7 @@ public final class ZSpace extends Space {
      * @return Either the object or a forwarded object, if it was forwarded.
      */
     @Inline
-    public ObjectReference traceObjectWithCopy(TransitiveClosure trace, ObjectReference object, int allocator) {
+    public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
         //Log.writeln("###traceObjectWithCopy");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
         /* Race to be the (potential) forwarder */

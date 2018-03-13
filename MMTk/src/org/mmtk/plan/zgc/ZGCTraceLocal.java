@@ -65,7 +65,7 @@ public class ZGCTraceLocal extends TraceLocal {
     //Log.writeln("ZGCTraceLocal.traceObject");
     if (object.isNull()) return object;
     if (Space.isInSpace(ZGC.Z, object))
-      return ZGC.zSpace.traceObject(this, object, ZGC.ALLOC_Z);
+      return ZGC.zSpace.traceMarkObject(this, object, ZGC.ALLOC_Z);
     return super.traceObject(object);
   }
 
