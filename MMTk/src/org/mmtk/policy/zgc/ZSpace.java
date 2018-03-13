@@ -55,6 +55,7 @@ public final class ZSpace extends Space {
     public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
     private static final int META_DATA_PAGES_PER_REGION = CARD_META_PAGES_PER_REGION;
+    private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
 
     /**
      *
@@ -275,6 +276,11 @@ public final class ZSpace extends Space {
      * Object tracing
      */
 
+    @Inline
+    public static ObjectReference getForwardingPointer(ObjectReference object) {
+        return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
+    }
+
     /**
      * Trace a reference to an object.  If the object header is not already
      * marked, mark the object and enqueue it for subsequent processing.
@@ -285,9 +291,19 @@ public final class ZSpace extends Space {
      * @return The object, which may have been moved.
      */
     @Inline
-    public ObjectReference traceObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+    public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
         //Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
+
+        if (ZObjectHeader.testAndMark(object, ZObjectHeader.markState) != ZObjectHeader.markState) {
+            trace.processNode(object);
+        } else if (!getForwardingPointer(object).isNull()) {
+            //Log.writeln("# -> ", getForwardingPointer(object));
+            return getForwardingPointer(object);
+        }
+        return object;
+
+        /*
         ObjectReference rtn = object;
         byte markValue = ZObjectHeader.markState;
         byte oldMarkState = ZObjectHeader.testAndMark(object, markValue);
@@ -313,6 +329,7 @@ public final class ZSpace extends Space {
         ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
 
         return rtn;
+        */
     }
 
     /**
