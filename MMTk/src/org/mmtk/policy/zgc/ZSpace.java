@@ -341,54 +341,41 @@ public final class ZSpace extends Space {
         //Log.writeln("###traceObjectWithCopy");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
         /* Race to be the (potential) forwarder */
-        Word forwardingWord = ForwardingWord.attemptToForward(object);
-        if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
+        Word priorStatusWord = ForwardingWord.attemptToForward(object);
+        if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
             /* We lost the race; the object is either forwarded or being forwarded by another thread. */
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
+            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
         } else {
-            /* we are the first to reach the object; either mark in place or forward it */
-            if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
-                ObjectReference newObject = VM.objectModel.copy(object, allocator);
-                ForwardingWord.setForwardingPointer(object, newObject);
-                trace.processNode(newObject); // Scan it later
-                return newObject;
-            } else {
-                ZObjectHeader.testAndMark(object, ZObjectHeader.markState);
-                trace.processNode(object);
-                return object;
-            }
-
-
-            //byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
+            byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            //if (ZObjectHeader.testMarkState(priorState, ZObjectHeader.markState)) {
+            if (ZObjectHeader.testMarkState(priorState, ZObjectHeader.markState)) {
                 /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
                 /* Note that in a sticky mark bits collector, the mark state does not change at each GC, so correct mark state does not imply another thread got there first */
                 //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(nurseryCollection || defrag.spaceExhausted() || ObjectHeader.isPinnedObject(object));
-            //    ZObjectHeader.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
-            //    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
-            //    return object;
-            //} else {
+                ZObjectHeader.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
+                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
+                return object;
+            } else {
                 /* we are the first to reach the object; either mark in place or forward it */
-            //    ObjectReference rtn = object;
-            //    if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
+                ObjectReference rtn = object;
+                if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
                     /* forward */
-            //        ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
-            //        if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-            //            VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+                    ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                        VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
-            //        Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
+                    Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
 
-            //        rtn = newObject;
-            //    } else {
-            //        ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
-            //    }
-            //    trace.processNode(rtn);
-            //   return rtn;
-            //}
+                    rtn = newObject;
+                } else {
+                    ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
+                }
+                trace.processNode(rtn);
+                return rtn;
+            }
         }
     }
 
