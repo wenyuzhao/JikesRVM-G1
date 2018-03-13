@@ -91,6 +91,9 @@ public class ZGC extends StopTheWorld {
       Phase.scheduleGlobal   (RELOCATE_PREPARE),
       Phase.scheduleCollector(RELOCATE_PREPARE),
       Phase.scheduleMutator  (PREPARE),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
 
       Phase.scheduleComplex  (forwardPhase),
 
@@ -99,7 +102,8 @@ public class ZGC extends StopTheWorld {
       Phase.scheduleCollector(RELOCATE_RELEASE),
       Phase.scheduleGlobal   (RELOCATE_RELEASE),
 
-      Phase.scheduleComplex  (finishPhase));
+      Phase.scheduleComplex  (finishPhase)
+  );
   /**
    * Constructor
    */
