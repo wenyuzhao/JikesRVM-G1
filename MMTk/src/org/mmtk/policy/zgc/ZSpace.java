@@ -262,7 +262,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        Log.writeln("###traceObject");
+        //Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
         ObjectReference rtn = object;
         byte markValue = ZObjectHeader.markState;
@@ -311,7 +311,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceObjectWithCopy(TransitiveClosure trace, ObjectReference object, int allocator) {
-        Log.writeln("###traceObjectWithCopy");
+        //Log.writeln("###traceObjectWithCopy");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);

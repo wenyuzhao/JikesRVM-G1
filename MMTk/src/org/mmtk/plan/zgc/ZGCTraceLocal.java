@@ -16,6 +16,7 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZPage;
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -59,6 +60,7 @@ public class ZGCTraceLocal extends TraceLocal {
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
+    Log.writeln("ZGCTraceLocal.traceObject");
     if (object.isNull()) return object;
     if (Space.isInSpace(ZGC.Z, object))
       return ZGC.zSpace.traceObject(this, object, ZGC.ALLOC_Z);
