@@ -58,8 +58,10 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2) && zPage.NE(ZPage.currentAllocPage) && zPage.NE(ZPage.currentCopyPage)) {
         Log.write(" relocate");
         ZPage.setRelocationState(zPage, true);
-      } else {
-        ZPage.setRelocationState(zPage, false);
+      } else if (zPage.EQ(ZPage.currentAllocPage)) {
+        Log.write(" alloc");
+      } else if (zPage.EQ(ZPage.currentAllocPage)) {
+        Log.write(" copy");
       }
       Log.writeln();
     };
