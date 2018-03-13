@@ -95,7 +95,7 @@ public class ZPage {
         size = 0;
     }*/
 
-    public static Address pop() {
+    /*public static Address pop() {
         if (tail.isZero()) return Address.zero();
         Address rtn = tail;
         tail = prev(tail);
@@ -103,16 +103,22 @@ public class ZPage {
         if (tail.isZero()) head = Address.zero();
         size -= rtn.isZero() ? 0 : 1;
         return rtn;
-    }
+    }*/
 
     public static void push(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && isAligned(zPage));
-        if (tail.isZero()) {
+        if (head.isZero()) {
             head = tail = zPage;
             return;
+        } else if (tail.isZero()) {
+            tail = zPage;
+            link(head, tail);
+            return;
+        } else {
+            link(tail, zPage);
+            tail = zPage;
         }
         size += 1;
-        link(tail, zPage);
     }
 
     public static void remove(Address zPage) {
@@ -121,8 +127,8 @@ public class ZPage {
         unlink(prevPage, zPage);
         unlink(zPage, nextPage);
         link(prevPage, nextPage);
-        if (prevPage.isZero()) head = Address.zero();
-        if (nextPage.isZero()) tail = Address.zero();
+        if (prevPage.isZero()) head = nextPage;
+        if (nextPage.isZero()) tail = prevPage;
         size -= 1;
     }
 
