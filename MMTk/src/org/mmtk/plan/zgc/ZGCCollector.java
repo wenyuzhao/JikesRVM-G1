@@ -94,7 +94,8 @@ public class ZGCCollector extends StopTheWorldCollector {
   public void postCopy(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == ZGC.ALLOC_DEFAULT);
-    ZGC.zSpace.postCopy(object, bytes, true);
+
+    ZGC.zSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));

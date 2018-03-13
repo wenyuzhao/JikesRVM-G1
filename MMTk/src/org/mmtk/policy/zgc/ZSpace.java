@@ -257,11 +257,11 @@ public final class ZSpace extends Space {
      *
      * @param object the object ref to the storage to be initialized
      * @param bytes size of the copied object in bytes
-     * @param majorGC Is this copy happening during a major gc?
      */
     @Inline
-    public void postCopy(ObjectReference object, int bytes, boolean majorGC) {
+    public void postCopy(ObjectReference object, int bytes) {
         ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
+        ForwardingWord.clearForwardingBits(object);
         //if (!MARK_LINE_AT_SCAN_TIME && majorGC) markLines(object);
         if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
             Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
@@ -294,8 +294,11 @@ public final class ZSpace extends Space {
         if (oldMarkState != markValue) {
             trace.processNode(object);
         }
+        if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+            Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
+        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-        if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
+        // if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
 
         if (VM.VERIFY_ASSERTIONS) {
             VM.assertions._assert(!rtn.isNull());
