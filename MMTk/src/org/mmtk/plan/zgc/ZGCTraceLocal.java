@@ -76,6 +76,10 @@ public class ZGCTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ZGC.zSpace.inImmixDefragCollection());
-    return !Space.isInSpace(ZGC.Z, object);
+    if (Space.isInSpace(ZGC.Z, object)) {
+      return true;
+    } else {
+      return super.willNotMoveInCurrentCollection(object);
+    }
   }
 }
