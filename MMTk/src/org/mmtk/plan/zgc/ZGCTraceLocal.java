@@ -54,6 +54,7 @@ public class ZGCTraceLocal extends TraceLocal {
   public void prepare() {
     for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
       ZPage.setUsedSize(zPage, 0);
+      ZPage.setRelocationState(zPage, false);
     };
   }
 
