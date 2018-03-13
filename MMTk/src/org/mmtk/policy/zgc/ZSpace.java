@@ -17,6 +17,8 @@ import static org.mmtk.utility.Constants.LOG_BYTES_IN_PAGE;
 
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.zgc.ZGC;
+import org.mmtk.plan.zgc.ZGCCollector;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.options.LineReuseRatio;
@@ -194,6 +196,9 @@ public final class ZSpace extends Space {
      *  if no usable blocks are available
      */
     public Address getSpace(boolean copy) {
+        if (!copy && ZGC.availableMemory().toInt() / ZGC.totalMemory().toInt() > 0.5) {
+            ((ZGCCollector) VM.activePlan.collector()).collect();
+        }
         if (copyPage == null) {
             copyPage = acquire(ZPage.PAGES);
         }
