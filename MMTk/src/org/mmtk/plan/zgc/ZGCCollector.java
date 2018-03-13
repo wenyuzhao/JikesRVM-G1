@@ -54,9 +54,9 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    *
    */
+  protected final ZAllocator copy = new ZAllocator(ZGC.zSpace, true);
   protected final ZGCTraceLocal markTrace = new ZGCTraceLocal(global().markTrace);
   protected final ZGCRelocationTraceLocal relocateTrace = new ZGCRelocationTraceLocal(global().relocateTrace);
-  protected final ZAllocator copy = new ZAllocator(ZGC.zSpace, true);
   protected TraceLocal currentTrace;
 
   /****************************************************************************

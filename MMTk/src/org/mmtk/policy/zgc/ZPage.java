@@ -26,6 +26,8 @@ public class ZPage {
     private static Address head = Address.zero();
     private static Address tail = Address.zero();
     private static int size = 0;
+    public static Address currentCopyPage = Address.zero();
+    public static Address currentAllocPage = Address.zero();
 
     public static Address of(final Address ptr) {
         return align(ptr);

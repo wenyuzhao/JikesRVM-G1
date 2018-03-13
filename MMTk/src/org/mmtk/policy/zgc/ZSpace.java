@@ -196,6 +196,11 @@ public final class ZSpace extends Space {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
         if (!zPage.isZero()) {
             ZPage.push(zPage);
+            if (copy) {
+                ZPage.currentCopyPage = zPage;
+            } else {
+                ZPage.currentCopyPage = zPage;
+            }
             Log.writeln("#ZPage alloc " + zPage);
         }
         return zPage;

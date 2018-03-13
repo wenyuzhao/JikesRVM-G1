@@ -119,7 +119,6 @@ public class ZAllocator extends Allocator {
     if (ptr.isZero()) {
       return ptr; // failed allocation --- we will need to GC
     }
-
     /* we have been given a clean block */
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(ptr));
     //lineUseCount = LINES_IN_BLOCK;

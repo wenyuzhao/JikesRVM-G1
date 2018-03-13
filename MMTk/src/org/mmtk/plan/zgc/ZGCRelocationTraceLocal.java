@@ -54,7 +54,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   public void prepare() {
     for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
       Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
-      if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2)) {
+      if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2) && zPage.NE(ZPage.currentAllocPage) && zPage.NE(ZPage.currentCopyPage)) {
         Log.write(" relocate");
         ZPage.setRelocationState(zPage, true);
       } else {
