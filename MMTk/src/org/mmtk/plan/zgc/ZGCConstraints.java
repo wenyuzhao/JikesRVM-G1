@@ -15,6 +15,7 @@ package org.mmtk.plan.zgc;
 import org.mmtk.plan.StopTheWorldConstraints;
 import org.mmtk.policy.CopySpace;
 import org.mmtk.policy.zgc.ZObjectHeader;
+import org.mmtk.policy.zgc.ZPage;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -24,6 +25,10 @@ import org.vmmagic.pragma.Uninterruptible;
 public class ZGCConstraints extends StopTheWorldConstraints {
   @Override
   public boolean movesObjects() {
+    return true;
+  }
+  @Override
+  public boolean needsForwardAfterLiveness() {
     return true;
   }
   @Override
@@ -37,5 +42,9 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   @Override
   public int numSpecializedScans() {
     return 2;
+  }
+  @Override
+  public int maxNonLOSDefaultAllocBytes() {
+    return ZPage.USEABLE_BYTES;
   }
 }

@@ -53,8 +53,10 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected final ZGCTraceLocal trace;
-  protected final ZAllocator copy;
+  protected final ZGCTraceLocal markTrace = new ZGCTraceLocal(global().markTrace);
+  protected final ZGCRelocationTraceLocal relocateTrace = new ZGCRelocationTraceLocal(global().relocateTrace);
+  protected final ZAllocator copy = new ZAllocator(ZGC.zSpace, true);
+  protected TraceLocal currentTrace = markTrace;
 
   /****************************************************************************
    *
@@ -64,18 +66,7 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    * Constructor
    */
-  public ZGCCollector() {
-    this(new ZGCTraceLocal(global().zTrace));
-  }
-
-  /**
-   * Constructor
-   * @param tr The trace to use
-   */
-  protected ZGCCollector(ZGCTraceLocal tr) {
-    trace = tr;
-    copy = new ZAllocator(ZGC.zSpace, true);
-  }
+  public ZGCCollector() {}
 
   /****************************************************************************
    *
@@ -121,6 +112,43 @@ public class ZGCCollector extends StopTheWorldCollector {
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == ZGC.PREPARE) {
+      currentTrace = markTrace;
+      super.collectionPhase(phaseId, primary);
+      markTrace.prepare();
+      return;
+    }
+
+    if (phaseId == ZGC.CLOSURE) {
+      markTrace.completeTrace();
+      return;
+    }
+
+    if (phaseId == ZGC.RELEASE) {
+      markTrace.release();
+      super.collectionPhase(phaseId, primary);
+      return;
+    }
+
+    if (phaseId == ZGC.RELOCATE_PREPARE) {
+      currentTrace = relocateTrace;
+      super.collectionPhase(ZGC.PREPARE, primary);
+      relocateTrace.prepare();
+      return;
+    }
+
+    if (phaseId == ZGC.RELOCATE_CLOSURE) {
+      relocateTrace.completeTrace();
+      return;
+    }
+
+    if (phaseId == ZGC.RELOCATE_RELEASE) {
+      relocateTrace.release();
+      super.collectionPhase(ZGC.RELEASE, primary);
+      return;
+    }
+
+    super.collectionPhase(phaseId, primary);
+    /*if (phaseId == ZGC.PREPARE) {
       copy.reset();
       trace.prepare();
       super.collectionPhase(phaseId, primary);
@@ -139,7 +167,7 @@ public class ZGCCollector extends StopTheWorldCollector {
       return;
     }
 
-    super.collectionPhase(phaseId, primary);
+    super.collectionPhase(phaseId, primary);*/
   }
 
 
@@ -173,6 +201,6 @@ public class ZGCCollector extends StopTheWorldCollector {
 
   @Override
   public TraceLocal getCurrentTrace() {
-    return trace;
+    return currentTrace;
   }
 }

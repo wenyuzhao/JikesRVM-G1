@@ -12,10 +12,7 @@
  */
 package org.mmtk.plan.zgc;
 
-import org.mmtk.plan.Plan;
-import org.mmtk.plan.StopTheWorld;
-import org.mmtk.plan.Trace;
-import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.*;
 import org.mmtk.policy.CopySpace;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZSpace;
@@ -56,7 +53,8 @@ public class ZGC extends StopTheWorld {
   public static final ZSpace zSpace = new ZSpace("z", false, VMRequest.discontiguous());
   public static final int Z = zSpace.getDescriptor();
 
-  public final Trace zTrace = new Trace(metaDataSpace);
+  public final Trace markTrace = new Trace(metaDataSpace);
+  public final Trace relocateTrace = new Trace(metaDataSpace);
 
   /****************************************************************************
    *
@@ -74,6 +72,34 @@ public class ZGC extends StopTheWorld {
   public static final int SCAN_MARK = 0;
   public static final int SCAN_RELOCATE = 1;
 
+  /* Phases */
+  public static final short RELOCATE_PREPARE     = Phase.createSimple("relocate-prepare");
+  public static final short RELOCATE_CLOSURE     = Phase.createSimple("relocate-closure");
+  public static final short RELOCATE_RELEASE     = Phase.createSimple("relocate-release");
+
+  /**
+   * This is the phase that is executed to perform a mark-compact collection.
+   *
+   * FIXME: Far too much duplication and inside knowledge of StopTheWorld
+   */
+  public short zCollection = Phase.createComplex("collection", null,
+      Phase.scheduleComplex  (initPhase),
+      Phase.scheduleComplex  (rootClosurePhase),
+      Phase.scheduleComplex  (refTypeClosurePhase),
+      Phase.scheduleComplex  (completeClosurePhase),
+
+      Phase.scheduleGlobal   (RELOCATE_PREPARE),
+      Phase.scheduleCollector(RELOCATE_PREPARE),
+      Phase.scheduleMutator  (PREPARE),
+
+      Phase.scheduleComplex  (forwardPhase),
+
+      Phase.scheduleCollector(RELOCATE_CLOSURE),
+      Phase.scheduleMutator  (RELEASE),
+      Phase.scheduleCollector(RELOCATE_RELEASE),
+      Phase.scheduleGlobal   (RELOCATE_RELEASE),
+
+      Phase.scheduleComplex  (finishPhase));
   /**
    * Constructor
    */
@@ -90,7 +116,39 @@ public class ZGC extends StopTheWorld {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
-    if (phaseId == SET_COLLECTION_KIND) {
+    if (phaseId == PREPARE) {
+      super.collectionPhase(phaseId);
+      markTrace.prepare();
+      zSpace.prepare();
+      return;
+    }
+    if (phaseId == CLOSURE) {
+      markTrace.prepare();
+      return;
+    }
+    if (phaseId == RELEASE) {
+      markTrace.release();
+      zSpace.release();
+      super.collectionPhase(phaseId);
+      return;
+    }
+
+    if (phaseId == RELOCATE_PREPARE) {
+      super.collectionPhase(PREPARE);
+      relocateTrace.prepare();
+      zSpace.prepare();
+      return;
+    }
+    if (phaseId == RELOCATE_RELEASE) {
+      relocateTrace.release();
+      zSpace.release();
+      super.collectionPhase(RELEASE);
+      return;
+    }
+
+    super.collectionPhase(phaseId);
+
+    /*if (phaseId == SET_COLLECTION_KIND) {
       super.collectionPhase(phaseId);
       return;
     }
@@ -118,6 +176,7 @@ public class ZGC extends StopTheWorld {
     }
 
     super.collectionPhase(phaseId);
+    */
   }
 
   /****************************************************************************
