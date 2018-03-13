@@ -52,9 +52,8 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
-    int i = 0;
     for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
-      Log.write("#ZPage " + (i++) + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
+      Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
       if (ZPage.usedSize(zPage) <= (ZPage.USEABLE_BYTES >> 2)) {
         Log.write(" relocate");
         ZPage.setRelocationState(zPage, true);
@@ -65,21 +64,19 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
 
   @Override
   public void release() {
-    int i = 0;
     for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
       if (ZPage.relocationRequired(zPage)) {
-        Log.write("#ZPage " + i + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
+        Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
         ZGC.zSpace.release(zPage);
       }
       Log.writeln();
-      i += 1;
     };
   }
 
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
-    Log.writeln("ZGCRelocationTraceLocal.traceObject");
+    //Log.writeln("ZGCRelocationTraceLocal.traceObject");
     if (object.isNull()) return object;
     if (Space.isInSpace(ZGC.Z, object))
       return ZGC.zSpace.traceObjectWithCopy(this, object, ZGC.ALLOC_Z);

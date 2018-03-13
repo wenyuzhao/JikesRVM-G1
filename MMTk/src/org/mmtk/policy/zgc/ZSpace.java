@@ -194,7 +194,10 @@ public final class ZSpace extends Space {
     public Address getSpace(boolean copy) {
         Address zPage = acquire(1);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
-        if (!zPage.isZero()) ZPage.push(zPage);
+        if (!zPage.isZero()) {
+            ZPage.push(zPage);
+            Log.writeln("#ZPage alloc " + zPage);
+        }
         return zPage;
     }
 
@@ -277,9 +280,9 @@ public final class ZSpace extends Space {
             VM.assertions._assert(!rtn.isNull());
             //VM.assertions._assert(defrag.spaceExhausted() || !isDefragSource(rtn) || (ObjectHeader.isPinnedObject(rtn)));
         }
-        // Inc zpage used size
+        // Inc zPage used size
         Address zPage = ZPage.of(rtn.toAddress());
-        ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getCurrentSize(rtn));
+        ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
 
         return rtn;
     }
