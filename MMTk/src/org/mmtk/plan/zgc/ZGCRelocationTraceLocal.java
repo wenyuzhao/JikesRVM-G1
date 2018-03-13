@@ -66,6 +66,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
+    Log.writeln("ZGCRelocationTraceLocal.traceObject");
     if (object.isNull()) return object;
     if (Space.isInSpace(ZGC.Z, object))
       return ZGC.zSpace.traceObjectWithCopy(this, object, ZGC.ALLOC_Z);
