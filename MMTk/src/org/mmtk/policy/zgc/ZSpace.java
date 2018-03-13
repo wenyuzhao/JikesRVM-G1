@@ -208,6 +208,7 @@ public final class ZSpace extends Space {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
 
         if (!zPage.isZero()) {
+            ZPage.clear(zPage);
             ZPage.push(zPage);
             if (copy) {
                 ZPage.currentCopyPage = zPage;
@@ -216,7 +217,6 @@ public final class ZSpace extends Space {
             }
             Log.writeln("#ZPage alloc " + zPage);
         }
-        ZPage.clear(zPage);
         return zPage;
     }
 
