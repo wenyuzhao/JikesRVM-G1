@@ -297,7 +297,7 @@ public final class ZSpace extends Space {
         if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
             Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
         }
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         // if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
 
         if (VM.VERIFY_ASSERTIONS) {
@@ -351,12 +351,13 @@ public final class ZSpace extends Space {
         } else {
             /* we are the first to reach the object; either mark in place or forward it */
             if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
-                ObjectReference newObject = VM.objectModel.copy(object, allocator);
-                ForwardingWord.setForwardingPointer(object, newObject);
+                ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+                Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
                 trace.processNode(newObject); // Scan it later
                 return newObject;
             } else {
-                ZObjectHeader.testAndMark(object, ZObjectHeader.markState);
+                byte priorState = (byte) (forwardingWord.toInt() & 0xFF);
+                ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
                 trace.processNode(object);
                 return object;
             }
