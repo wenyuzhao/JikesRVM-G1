@@ -19,6 +19,7 @@ import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.CopySpace;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZSpace;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -91,11 +92,11 @@ public class ZGC extends StopTheWorld {
   public void collectionPhase(short phaseId) {
     if (phaseId == SET_COLLECTION_KIND) {
       super.collectionPhase(phaseId);
-      // immixSpace.decideWhetherToDefrag(emergencyCollection, collectWholeHeap, collectionAttempt, userTriggeredCollection);
       return;
     }
 
     if (phaseId == ZGC.PREPARE) {
+      Log.writeln("ZGC Prepare");
       super.collectionPhase(phaseId);
       zSpace.prepare();
       zTrace.prepare();
@@ -103,11 +104,13 @@ public class ZGC extends StopTheWorld {
     }
 
     if (phaseId == CLOSURE) {
+      Log.writeln("ZGC Closure");
       zTrace.prepare();
       return;
     }
 
     if (phaseId == ZGC.RELEASE) {
+      Log.writeln("ZGC Release");
       zTrace.release();
       zSpace.release();
       super.collectionPhase(phaseId);
