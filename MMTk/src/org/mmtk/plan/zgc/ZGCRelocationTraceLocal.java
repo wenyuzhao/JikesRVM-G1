@@ -12,6 +12,7 @@
  */
 package org.mmtk.plan.zgc;
 
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
@@ -20,6 +21,7 @@ import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -57,11 +59,12 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
     super.prepare();
     Log.writeln("ZPAGE SIZE " + ZPage.fromPages.size());
     int aliveSizeInRelocationSet = 0;
+    int useableBytesForCopying = VM.activePlan.global().getPagesAvail() * Constants.BYTES_IN_PAGE;
     for (Address zPage : ZPage.fromPages) {
       Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
       int usedSize = ZPage.usedSize(zPage);
       if (usedSize <= (ZPage.USEABLE_BYTES >> 1)) {
-        if (aliveSizeInRelocationSet + usedSize <= ZGC.zSpace.getCollectionReserve() * Constants.BYTES_IN_PAGE) {
+        if (aliveSizeInRelocationSet + usedSize <= useableBytesForCopying) {
           Log.write(" relocate");
           ZPage.setRelocationState(zPage, true);
         }
