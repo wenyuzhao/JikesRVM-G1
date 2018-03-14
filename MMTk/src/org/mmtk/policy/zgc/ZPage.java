@@ -2,6 +2,7 @@ package org.mmtk.policy.zgc;
 
 import com.sun.org.apache.xerces.internal.impl.dv.xs.AbstractDateTimeDV;
 import org.mmtk.utility.deque.AddressDeque;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.Word;
@@ -24,7 +25,6 @@ public class ZPage {
 
     public static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES - 1);
 
-    public static int pagesReservedForCopying = -1;
     public static ZFreeList fromPages = new ZFreeList();
 
     public static Address of(final Address ptr) {
@@ -48,10 +48,12 @@ public class ZPage {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && isAligned(zPage));
         return zPage.plus(RELOCATION_MARK_OFFSET).loadByte() > 0;
     }
-
+    static Lock lock = VM.newLock("ZPageUsedSizeGlobal");
     public static void setUsedSize(Address zPage, int bytes) {
+        lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && isAligned(zPage));
         zPage.plus(ALIVE_BYTES_OFFSET).store(bytes);
+        lock.release();
     }
 
     public static int usedSize(Address zPage) {
