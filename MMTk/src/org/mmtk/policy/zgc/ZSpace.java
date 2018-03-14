@@ -123,7 +123,9 @@ public final class ZSpace extends Space {
             pr = new FreeListPageResource(this, 0);
         else
             pr = new FreeListPageResource(this, start, extent, 0);
-        collectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
+        collectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.01f);
+        pr.reservePages(collectionReserve);
+        Log.writeln("Try to reserve " + collectionReserve + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
         // defrag = new Defrag((FreeListPageResource) pr);
     }
 
@@ -145,7 +147,7 @@ public final class ZSpace extends Space {
      */
     public void release() {
         inCollection = false;
-        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
+        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.01f);
         if (collectionReserve < targetCollectionReserve) {
             Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
             collectionReserve += pr.reservePages(targetCollectionReserve - collectionReserve);

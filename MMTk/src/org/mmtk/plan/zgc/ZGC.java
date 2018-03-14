@@ -134,7 +134,7 @@ public class ZGC extends StopTheWorld {
     }
     if (phaseId == RELEASE) {
       markTrace.release();
-      zSpace.release();
+      //zSpace.release();
       super.collectionPhase(phaseId);
       return;
     }
