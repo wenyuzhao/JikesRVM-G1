@@ -75,17 +75,17 @@ public class ZFreeList implements Iterable<Address> {
     public Iterator<Address> iterator() {
         final ZFreeList list = this;
         return new Iterator<Address>() {
-            Address curser = list.head;
+            Address next = list.head;
 
             @Override
             public boolean hasNext() {
-                return !ZFreeList.next(curser).isZero();
+                return !next.isZero();
             }
 
             @Override
             public Address next() {
-                Address rtn = curser;
-                curser = ZFreeList.next(curser);
+                Address rtn = next;
+                next = ZFreeList.next(next);
                 return rtn;
             }
         };
