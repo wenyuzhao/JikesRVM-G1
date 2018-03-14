@@ -202,11 +202,6 @@ public final class ZSpace extends Space {
             VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(ZPage.BYTES));
 
             ZPage.fromPages.push(zPage);
-            if (copy) {
-                ZPage.currentCopyPage = zPage;
-            } else {
-                ZPage.currentAllocPage = zPage;
-            }
             Log.writeln("#ZPage alloc " + zPage);
         }
         return zPage;
