@@ -48,12 +48,11 @@ public class ZFreeList implements Iterable<Address> {
     public void push(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && ZPage.isAligned(zPage));
         if (head.isZero()) {
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(tail.isZero());
             head = tail = zPage;
-            return;
         } else if (tail.isZero()) {
             tail = zPage;
             link(head, tail);
-            return;
         } else {
             link(tail, zPage);
             tail = zPage;
