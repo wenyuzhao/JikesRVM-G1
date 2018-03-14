@@ -74,18 +74,21 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       Log.writeln();
     };
   }
-  Lock lock = VM.newLock("RelocationGlobal");
+  static Lock lock = VM.newLock("RelocationGlobal");
   @Override
   public void release() {
     super.release();
+    lock.acquire();
     for (Address zPage : ZPage.fromPages) {
       if (ZPage.relocationRequired(zPage)) {
         Log.writeln("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
+        ZPage.setRelocationState(zPage, false);
         ZGC.zSpace.release(zPage);
       } else {
         Log.writeln("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
       }
     }
+    lock.release();
     /*
     lock.acquire();
     Address zPage = ZPage.fromPages.head();
