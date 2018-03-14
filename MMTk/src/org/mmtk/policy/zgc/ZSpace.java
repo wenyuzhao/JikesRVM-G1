@@ -177,7 +177,7 @@ public final class ZSpace extends Space {
      * @return The number of pages allocated since the last collection
      */
     public int getPagesAllocated() {
-        return ZPage.allocatedZPages();
+        return ZPage.fromPages.size();
     }
 
     /****************************************************************************
@@ -214,7 +214,7 @@ public final class ZSpace extends Space {
             // FIXME: efficiency check here!
             VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(ZPage.BYTES));
 
-            ZPage.push(zPage);
+            ZPage.fromPages.push(zPage);
             if (copy) {
                 ZPage.currentCopyPage = zPage;
             } else {
@@ -235,7 +235,7 @@ public final class ZSpace extends Space {
     @Inline
     public void release(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
-        ZPage.remove(zPage);
+        ZPage.fromPages.remove(zPage);
         ((FreeListPageResource) pr).releasePages(zPage);
     }
 

@@ -15,6 +15,7 @@ package org.mmtk.plan.zgc;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.policy.zgc.ZFreeList;
 import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
@@ -54,15 +55,12 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   public void prepare() {
     super.prepare();
     //int usedSizeInRelocationSet = 0;
-    for (Address zPage = ZPage.head(); !zPage.isZero(); zPage = ZPage.next(zPage)) {
+    for (Address zPage : ZPage.fromPages) {
       Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
       int usedSize = ZPage.usedSize(zPage);
       if (usedSize <= (ZPage.USEABLE_BYTES >> 1) && zPage.NE(ZPage.currentAllocPage) && zPage.NE(ZPage.currentCopyPage)) {
-        //if (usedSizeInRelocationSet + usedSize <= ZPage.USEABLE_BYTES) {
           Log.write(" relocate");
           ZPage.setRelocationState(zPage, true);
-          //usedSizeInRelocationSet += usedSize;
-        //}
       } else if (zPage.EQ(ZPage.currentAllocPage)) {
         Log.write(" alloc");
       } else if (zPage.EQ(ZPage.currentCopyPage)) {
@@ -75,6 +73,13 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   @Override
   public void release() {
     super.release();
+    for (Address zPage : ZPage.fromPages) {
+      if (ZPage.relocationRequired(zPage)) {
+        ZGC.zSpace.release(zPage);
+        Log.writeln("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
+      }
+    }
+    /*
     Address zPage = ZPage.head();
     while (!zPage.isZero()) {
       Address currentZPage = zPage;
@@ -88,6 +93,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       }
       Log.writeln();
     };
+    */
   }
 
   @Override
