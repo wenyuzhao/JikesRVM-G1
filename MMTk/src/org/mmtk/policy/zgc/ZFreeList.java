@@ -21,12 +21,12 @@ public class ZFreeList implements Iterable<Address> {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && ZPage.isAligned(zPage));
         return zPage.plus(NEXT_PAGE_POINTER_OFFSET).loadAddress();
     }
-    public static Address prev(Address zPage) {
+    private static Address prev(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && ZPage.isAligned(zPage));
         return zPage.plus(PREV_PAGE_POINTER_OFFSET).loadAddress();
     }
 
-    public static void link(Address prevPage, Address nextPage) {
+    private static void link(Address prevPage, Address nextPage) {
         if (!prevPage.isZero()) {
             prevPage.plus(NEXT_PAGE_POINTER_OFFSET).store(nextPage);
         }
@@ -35,7 +35,7 @@ public class ZFreeList implements Iterable<Address> {
         }
     }
 
-    public static void unlink(Address prevPage, Address nextPage) {
+    private static void unlink(Address prevPage, Address nextPage) {
         if (VM.VERIFY_ASSERTIONS) {
             VM.assertions._assert(ZPage.isAligned(prevPage) && ZPage.isAligned(nextPage));
             VM.assertions._assert(prevPage.isZero() || next(prevPage).EQ(nextPage));
@@ -89,5 +89,9 @@ public class ZFreeList implements Iterable<Address> {
                 return rtn;
             }
         };
+    }
+
+    public Address head() {
+        return head;
     }
 }
