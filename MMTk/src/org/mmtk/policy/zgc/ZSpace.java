@@ -185,7 +185,7 @@ public final class ZSpace extends Space {
         // If its the first time to allocate, reserve 5% pages for copying
         int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
         if (collectionReserve < targetCollectionReserve) {
-            Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages");
+            Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
             collectionReserve = pr.reservePages(targetCollectionReserve - collectionReserve);
         }
         // Allocate
