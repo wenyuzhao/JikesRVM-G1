@@ -21,6 +21,7 @@ import org.mmtk.policy.zgc.ZPage;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -67,12 +68,13 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
         if (aliveSizeInRelocationSet + usedSize <= useableBytesForCopying) {
           Log.write(" relocate");
           ZPage.setRelocationState(zPage, true);
+          aliveSizeInRelocationSet += usedSize;
         }
       }
       Log.writeln();
     };
   }
-
+  Lock lock = VM.newLock("RelocationGlobal");
   @Override
   public void release() {
     super.release();
@@ -82,7 +84,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
         Log.writeln("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
       }
     }*/
-
+    lock.acquire();
     Address zPage = ZPage.fromPages.head();
     while (!zPage.isZero()) {
       Address currentZPage = zPage;
@@ -96,6 +98,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       }
       Log.writeln();
     };
+    lock.release();
 
   }
 
