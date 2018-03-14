@@ -73,7 +73,7 @@ public class ZFreeList implements Iterable<Address> {
     }
 
     public Iterator<Address> iterator() {
-        ZFreeList list = this;
+        final ZFreeList list = this;
         return new Iterator<Address>() {
             Address curser = list.head;
 
