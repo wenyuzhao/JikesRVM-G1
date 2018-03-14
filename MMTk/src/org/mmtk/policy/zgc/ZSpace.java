@@ -145,6 +145,11 @@ public final class ZSpace extends Space {
      */
     public void release() {
         inCollection = false;
+        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
+        if (collectionReserve < targetCollectionReserve) {
+            Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
+            collectionReserve += pr.reservePages(targetCollectionReserve - collectionReserve);
+        }
     }
 
     /**
@@ -180,12 +185,6 @@ public final class ZSpace extends Space {
      *  if no usable blocks are available
      */
     public Address getSpace(boolean copy) {
-        // If its the first time to allocate, reserve 5% pages for copying
-        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
-        if (collectionReserve < targetCollectionReserve) {
-            Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
-            collectionReserve += pr.reservePages(targetCollectionReserve - collectionReserve);
-        }
         // Allocate
         Address zPage;
         if (copy) {
