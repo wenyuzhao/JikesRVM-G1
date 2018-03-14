@@ -78,12 +78,15 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   @Override
   public void release() {
     super.release();
-    /*for (Address zPage : ZPage.fromPages) {
+    for (Address zPage : ZPage.fromPages) {
       if (ZPage.relocationRequired(zPage)) {
         ZGC.zSpace.release(zPage);
         Log.writeln("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES + " released");
+      } else {
+        Log.writeln("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);
       }
-    }*/
+    }
+    /*
     lock.acquire();
     Address zPage = ZPage.fromPages.head();
     while (!zPage.isZero()) {
@@ -99,7 +102,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       Log.writeln();
     };
     lock.release();
-
+*/
   }
 
   @Override
