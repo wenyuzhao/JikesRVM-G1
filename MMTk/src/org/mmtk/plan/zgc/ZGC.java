@@ -50,7 +50,7 @@ public class ZGC extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final ZSpace zSpace = new ZSpace("z", false, VMRequest.discontiguous());
+  public static final ZSpace zSpace = new ZSpace("z", VMRequest.discontiguous());
   public static final int Z = zSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
@@ -197,7 +197,7 @@ public class ZGC extends StopTheWorld {
   public final int getCollectionReserve() {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
-    return (zSpace.reservedPages() > 0 ? 1 : 0) + super.getCollectionReserve(); // TODO: Fix this
+    return zSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
   }
 
   /**
@@ -207,7 +207,7 @@ public class ZGC extends StopTheWorld {
    */
   @Override
   public int getPagesUsed() {
-    return super.getPagesUsed() + (zSpace.reservedPages() > 0 ? zSpace.reservedPages() - 1 : 0);
+    return super.getPagesUsed() + zSpace.reservedPages();
   }
 
   /**

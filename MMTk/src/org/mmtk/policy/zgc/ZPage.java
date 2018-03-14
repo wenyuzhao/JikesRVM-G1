@@ -24,10 +24,8 @@ public class ZPage {
 
     public static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES - 1);
 
+    public static int pagesReservedForCopying = -1;
     public static ZFreeList fromPages = new ZFreeList();
-    public static ZFreeList toPages = new ZFreeList();
-    public static Address currentCopyPage = Address.zero();
-    public static Address currentAllocPage = Address.zero();
 
     public static Address of(final Address ptr) {
         return align(ptr);

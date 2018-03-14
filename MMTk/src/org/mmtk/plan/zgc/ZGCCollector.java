@@ -101,8 +101,6 @@ public class ZGCCollector extends StopTheWorldCollector {
       VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
         Log.writeln("#ZPage " + ZPage.of(object.toAddress()) + " is marked for relocate");
-        Log.writeln("#CopyZPage " + ZPage.currentCopyPage);
-        Log.writeln("#AllocZPage " + ZPage.currentAllocPage);
       }
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
     }
@@ -145,6 +143,7 @@ public class ZGCCollector extends StopTheWorldCollector {
       currentTrace = relocateTrace;
       super.collectionPhase(ZGC.PREPARE, primary);
       relocateTrace.prepare();
+      copy.reset();
       return;
     }
 
@@ -157,6 +156,7 @@ public class ZGCCollector extends StopTheWorldCollector {
     if (phaseId == ZGC.RELOCATE_RELEASE) {
       Log.writeln("ZGC RELOCATE_RELEASE");
       relocateTrace.release();
+      copy.reset();
       super.collectionPhase(ZGC.RELEASE, primary);
       return;
     }

@@ -129,11 +129,6 @@ public final class ZSpace extends Space {
         // defrag = new Defrag((FreeListPageResource) pr);
     }
 
-    /*@Interruptible
-    public void initializeDefrag() {
-        defrag.prepareHistograms();
-    }*/
-
     /****************************************************************************
      *
      * Global prepare and release
@@ -144,7 +139,6 @@ public final class ZSpace extends Space {
      */
     public void prepare() {
         ZObjectHeader.deltaMarkState(true);
-        // ZPage.reset();
         inCollection = true;
     }
 
@@ -152,32 +146,23 @@ public final class ZSpace extends Space {
      * A new collection increment has completed.  Release global resources.
      */
     public void release() {
-        // ZPage.reset();
         inCollection = false;
     }
 
-    /****************************************************************************
-     *
-     * Collection state access methods
-     */
-
     /**
-     * Return {@code true} if this space is currently being collected.
-     *
-     * @return {@code true} if this space is currently being collected.
+     * Return the number of pages reserved for copying.
      */
-    @Inline
-    public boolean inZCollection() {
-        return inCollection;
+    public int getCollectionReserve() {
+        return collectionReserve < 0 ? 0 : collectionReserve;
     }
 
     /**
-     * Return the number of pages allocated since the last collection
-     *
-     * @return The number of pages allocated since the last collection
+     * Return the number of pages reserved for use given the pending
+     * allocation.  This is <i>exclusive of</i> space reserved for
+     * copying.
      */
-    public int getPagesAllocated() {
-        return ZPage.fromPages.size();
+    public int getPagesUsed() {
+        return pr.reservedPages() - getCollectionReserve();
     }
 
     /****************************************************************************
@@ -186,6 +171,7 @@ public final class ZSpace extends Space {
      */
 
     Address copyPage = null;
+    int collectionReserve = 0;
     /**
      * Return a pointer to a set of new usable blocks, or null if none are available.
      * Use different block selection heuristics depending on whether the allocation
@@ -196,13 +182,16 @@ public final class ZSpace extends Space {
      *  if no usable blocks are available
      */
     public Address getSpace(boolean copy) {
-        if (copyPage == null) {
-            copyPage = acquire(ZPage.PAGES);
+        // If its the first time to allocate, reserve 5% pages for copying
+        int targetCollectionReserve = ZPage.PAGES * Math.round(pr.getAvailablePhysicalPages() * 0.05f);
+        if (collectionReserve < targetCollectionReserve) {
+            collectionReserve = pr.reservePages(targetCollectionReserve - collectionReserve);
         }
+        // Allocate
         Address zPage;
         if (copy) {
-            zPage = copyPage;
-            copyPage = acquire(ZPage.PAGES);
+            zPage = pr.getNewPages(ZPage.PAGES, ZPage.PAGES, true);
+            if (!zPage.isZero()) collectionReserve -= ZPage.PAGES;
         } else {
             zPage = acquire(ZPage.PAGES);
         }
@@ -210,8 +199,6 @@ public final class ZSpace extends Space {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
 
         if (!zPage.isZero()) {
-
-            // FIXME: efficiency check here!
             VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(ZPage.BYTES));
 
             ZPage.fromPages.push(zPage);
