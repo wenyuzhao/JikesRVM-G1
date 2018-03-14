@@ -55,6 +55,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   @Override
   public void prepare() {
     super.prepare();
+    Log.writeln("ZPAGE SIZE " + ZPage.fromPages.size());
     int aliveSizeInRelocationSet = 0;
     for (Address zPage : ZPage.fromPages) {
       Log.write("#ZPage " + zPage + ": " + ZPage.usedSize(zPage) + "/" + ZPage.USEABLE_BYTES);

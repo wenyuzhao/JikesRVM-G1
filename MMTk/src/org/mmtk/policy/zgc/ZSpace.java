@@ -183,8 +183,9 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         // If its the first time to allocate, reserve 5% pages for copying
-        int targetCollectionReserve = ZPage.PAGES * Math.round(pr.getAvailablePhysicalPages() * 0.05f);
+        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
         if (collectionReserve < targetCollectionReserve) {
+            Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages");
             collectionReserve = pr.reservePages(targetCollectionReserve - collectionReserve);
         }
         // Allocate
