@@ -20,13 +20,10 @@ import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.zgc.ZGC;
 import org.mmtk.plan.zgc.ZGCCollector;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.*;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.options.LineReuseRatio;
 import org.mmtk.utility.options.Options;
-import org.mmtk.utility.Conversions;
-import org.mmtk.utility.ForwardingWord;
-import org.mmtk.utility.HeaderByte;
-import org.mmtk.utility.Log;
 
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
@@ -126,6 +123,7 @@ public final class ZSpace extends Space {
             pr = new FreeListPageResource(this, 0);
         else
             pr = new FreeListPageResource(this, start, extent, 0);
+        collectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
         // defrag = new Defrag((FreeListPageResource) pr);
     }
 
@@ -153,7 +151,7 @@ public final class ZSpace extends Space {
      * Return the number of pages reserved for copying.
      */
     public int getCollectionReserve() {
-        return collectionReserve < 0 ? 0 : collectionReserve;
+        return collectionReserve;
     }
 
     /**
@@ -183,11 +181,12 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         // If its the first time to allocate, reserve 5% pages for copying
-        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
+        /*int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.05f);
         if (collectionReserve < targetCollectionReserve) {
             Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
             collectionReserve = pr.reservePages(targetCollectionReserve - collectionReserve);
         }
+        reser*/
         // Allocate
         Address zPage;
         if (copy) {
