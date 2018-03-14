@@ -1,5 +1,6 @@
 package org.mmtk.policy.zgc;
 
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.unboxed.Address;
 
@@ -15,7 +16,7 @@ public class ZFreeList implements Iterable<Address> {
     public int size() {
         return size;
     }
-
+    protected final Lock lock = VM.newLock("ZFreeList");
 
     public static Address next(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && ZPage.isAligned(zPage));
@@ -46,6 +47,7 @@ public class ZFreeList implements Iterable<Address> {
     }
 
     public void push(Address zPage) {
+        lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && ZPage.isAligned(zPage));
         if (head.isZero()) {
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(tail.isZero());
@@ -58,9 +60,11 @@ public class ZFreeList implements Iterable<Address> {
             tail = zPage;
         }
         size += 1;
+        lock.release();
     }
 
     public void remove(Address zPage) {
+        lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!zPage.isZero() && ZPage.isAligned(zPage));
         Address prevPage = prev(zPage), nextPage = next(zPage);
         unlink(prevPage, zPage);
@@ -69,6 +73,7 @@ public class ZFreeList implements Iterable<Address> {
         if (prevPage.isZero()) head = nextPage;
         if (nextPage.isZero()) tail = prevPage;
         size -= 1;
+        lock.release();
     }
 
     public Iterator<Address> iterator() {
