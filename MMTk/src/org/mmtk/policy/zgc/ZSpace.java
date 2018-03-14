@@ -123,10 +123,6 @@ public final class ZSpace extends Space {
             pr = new FreeListPageResource(this, 0);
         else
             pr = new FreeListPageResource(this, start, extent, 0);
-        collectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.01f);
-        pr.reservePages(collectionReserve);
-        Log.writeln("Try to reserve " + collectionReserve + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
-        // defrag = new Defrag((FreeListPageResource) pr);
     }
 
     /****************************************************************************
@@ -147,11 +143,6 @@ public final class ZSpace extends Space {
      */
     public void release() {
         inCollection = false;
-        int targetCollectionReserve = Math.round(pr.getAvailablePhysicalPages() * 0.01f);
-        if (collectionReserve < targetCollectionReserve) {
-            Log.writeln("Try to reserve " + (targetCollectionReserve - collectionReserve) + " pages from total " + pr.getAvailablePhysicalPages() + " pages");
-            collectionReserve += pr.reservePages(targetCollectionReserve - collectionReserve);
-        }
     }
 
     /**
@@ -188,13 +179,7 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         // Allocate
-        Address zPage;
-        if (copy) {
-            zPage = pr.getNewPages(ZPage.PAGES, ZPage.PAGES, true);
-            if (!zPage.isZero()) collectionReserve -= ZPage.PAGES;
-        } else {
-            zPage = acquire(ZPage.PAGES);
-        }
+        Address zPage = acquire(ZPage.PAGES);
 
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
 

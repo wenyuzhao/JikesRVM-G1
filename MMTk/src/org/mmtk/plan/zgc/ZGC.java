@@ -190,6 +190,11 @@ public class ZGC extends StopTheWorld {
    * Accounting
    */
 
+  @Override
+  protected boolean collectionRequired(boolean spaceFull, Space space) {
+    return super.collectionRequired(spaceFull, space) || (getPagesUsed() >= Math.round(getTotalPages() * 0.95));
+  }
+
   /**
    * Return the number of pages reserved for copying.
    */
