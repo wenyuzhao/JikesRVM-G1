@@ -102,7 +102,7 @@ public class Block {
 
     static Address firstRegion = null;
     public static Iterable<Address> iterate() {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(firstRegion != null);
+        // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(firstRegion != null);
 
         class BlocksIterator implements Iterator<Address> {
             Address currentRegion = null;
