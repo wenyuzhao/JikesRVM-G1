@@ -295,19 +295,39 @@ public final class ZSpace extends Space {
         Word forwardingWord = ForwardingWord.attemptToForward(object);
 
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
-            /* Somebody else got to it first. */
-            /* We must wait (spin) if the object is not yet fully forwarded */
-            while (ForwardingWord.stateIsBeingForwarded(forwardingWord))
-                forwardingWord = VM.objectModel.readAvailableBitsWord(object);
-            /* Now extract the object reference from the forwarding word and return it */
-            return ForwardingWord.extractForwardingPointer(forwardingWord);
+            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
+            if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+            return rtn;
         } else {
-            /* We are the designated copier, so forward it and enqueue it */
-            ObjectReference newObject = VM.objectModel.copy(object, allocator);
-            ForwardingWord.setForwardingPointer(object, newObject);
-            trace.processNode(newObject); // Scan it later
-            return newObject;
+            /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
+            if (testAndClearMark(object)) {
+                trace.processNode(object);
+                return forwardObjectIfRequired(object, allocator);
+                /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
+                //if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
+                //return object;
+            } else {
+                return object;
+            }
         }
+    }
+
+    @Inline
+    public ObjectReference forwardObjectIfRequired(ObjectReference object, int allocator) {
+        if (Block.relocationRequired(Block.of(object.toAddress()))) {
+            /* forward */
+            //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
+            ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+            if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+
+            //Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
+
+            return newObject;
+        } else {
+            return object;//ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
+        }
+        //trace.processNode(rtn);
     }
 
     /****************************************************************************
