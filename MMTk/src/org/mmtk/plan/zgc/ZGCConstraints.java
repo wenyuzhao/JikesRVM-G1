@@ -15,6 +15,7 @@ package org.mmtk.plan.zgc;
 import org.mmtk.plan.StopTheWorldConstraints;
 import org.mmtk.policy.zgc.ZObjectHeader;
 import org.mmtk.policy.zgc.Block;
+import org.mmtk.policy.zgc.ZSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -32,11 +33,11 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int gcHeaderBits() {
-    return ZObjectHeader.LOCAL_GC_BITS_REQUIRED;
+    return ZSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return ZObjectHeader.GC_HEADER_WORDS_REQUIRED;
+    return ZSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {

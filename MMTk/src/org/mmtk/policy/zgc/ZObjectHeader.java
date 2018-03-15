@@ -22,31 +22,31 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class ZObjectHeader {
   /** number of header bits we may use */
-  static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
+  //static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
 
   /* header requirements */
 
   /**
    *
    */
-  public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
-  public static final int GLOBAL_GC_BITS_REQUIRED = 0;
-  public static final int GC_HEADER_WORDS_REQUIRED = 0;
+  //public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
+  //public static final int GLOBAL_GC_BITS_REQUIRED = 0;
+  //public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
   /* local status bits */
-  static final byte NEW_OBJECT_MARK = 0; // using zero means no need for explicit initialization on allocation
+  //static final byte NEW_OBJECT_MARK = 0; // using zero means no need for explicit initialization on allocation
 
   /* mark bits */
 
   /**
    *
    */
-  private static final int MARK_BASE = ForwardingWord.FORWARDING_BITS;
+  /*private static final int MARK_BASE = ForwardingWord.FORWARDING_BITS;
   static final int  MAX_MARKCOUNT_BITS = AVAILABLE_LOCAL_BITS - MARK_BASE;
   private static final byte MARK_INCREMENT = 1 << MARK_BASE;
   public static final byte MARK_MASK = (byte) (((1 << MAX_MARKCOUNT_BITS) - 1) << MARK_BASE);
   private static final byte MARK_AND_FORWARDING_MASK = (byte) (MARK_MASK | ForwardingWord.FORWARDING_MASK);
-  public static final byte MARK_BASE_VALUE = MARK_INCREMENT;
+  public static final byte MARK_BASE_VALUE = MARK_INCREMENT;*/
 
 
   /****************************************************************************
@@ -61,7 +61,7 @@ public class ZObjectHeader {
    * @param markState The value to which the mark bits will be set
    * @return the old mark state
    */
-  static byte testAndMark(ObjectReference object, byte markState) {
+  /*static byte testAndMark(ObjectReference object, byte markState) {
     byte oldValue, newValue, oldMarkState;
 
     oldValue = VM.objectModel.readAvailableByte(object);
@@ -84,7 +84,7 @@ public class ZObjectHeader {
     if (VM.VERIFY_ASSERTIONS)
       VM.assertions._assert((oldGCByte & MARK_MASK) != markState);
   }
-
+*/
   /**
    * Return {@code true} if the mark count for an object has the given value.
    *
@@ -92,7 +92,7 @@ public class ZObjectHeader {
    * @param value The value against which the mark bit will be tested
    * @return {@code true} if the mark bit for the object has the given value.
    */
-  static boolean testMarkState(ObjectReference object, byte value) {
+  /*static boolean testMarkState(ObjectReference object, byte value) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((value & MARK_MASK) == value);
     return (VM.objectModel.readAvailableByte(object) & MARK_MASK) == value;
    }
@@ -112,7 +112,7 @@ public class ZObjectHeader {
     boolean newObj = (status == NEW_OBJECT_MARK);
     return unforwarded && !newObj;
   }
-
+*/
   /**
    * Write the allocState into the mark state fields of an object non-atomically.
    * This is appropriate for collection time initialization.
@@ -120,7 +120,7 @@ public class ZObjectHeader {
    * @param object The object whose mark state is to be written
    * @param markState TODO: what am I?
    */
-  static void writeMarkState(ObjectReference object, byte markState) {
+  /*static void writeMarkState(ObjectReference object, byte markState) {
     byte oldValue = VM.objectModel.readAvailableByte(object);
     byte markValue = markState;
     byte newValue = (byte) (oldValue & ~MARK_AND_FORWARDING_MASK);
@@ -136,14 +136,14 @@ public class ZObjectHeader {
   }
 
   static byte markState = MARK_BASE_VALUE;
-
+*/
   /**
    * Return the mark state incremented or decremented by one.
    *
    * @param increment If {@code true}, then return the incremented value else return the decremented value
    * @return the mark state incremented or decremented by one.
    */
-  static void deltaMarkState(boolean increment) {
+  /*static void deltaMarkState(boolean increment) {
     byte rtn = markState;
     do {
       rtn = (byte) (increment ? rtn + MARK_INCREMENT : rtn - MARK_INCREMENT);
@@ -151,5 +151,5 @@ public class ZObjectHeader {
       } while (rtn < MARK_BASE_VALUE);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
     markState = rtn;
-  }
+  }*/
 }

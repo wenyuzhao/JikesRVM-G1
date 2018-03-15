@@ -19,6 +19,7 @@ import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 
+import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 
@@ -43,9 +44,10 @@ public final class ZSpace extends Space {
      * Class variables
      */
 
-    public static final int LOCAL_GC_BITS_REQUIRED = 2;
+    public static final int LOCAL_GC_BITS_REQUIRED = 1;
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
-    public static final int GC_HEADER_WORDS_REQUIRED = 0;
+    public static final int GC_HEADER_WORDS_REQUIRED = 1;
+    private static final Word GC_MARK_BIT_MASK = Word.one();
 
     private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
 
@@ -87,7 +89,7 @@ public final class ZSpace extends Space {
      * Prepare for a new collection increment.
      */
     public void prepare() {
-        ZObjectHeader.deltaMarkState(true);
+        //ZObjectHeader.deltaMarkState(true);
     }
 
     /**
@@ -168,7 +170,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postAlloc(ObjectReference object, int bytes) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZObjectHeader.isNewObject(object));
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZObjectHeader.isNewObject(object));
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     }
 
@@ -182,8 +184,8 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
-        ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
-        ForwardingWord.clearForwardingBits(object);
+        // ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
+        // ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -197,7 +199,29 @@ public final class ZSpace extends Space {
     public static ObjectReference getForwardedObject(ObjectReference object) {
         return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
     }
-    static Lock lock = VM.newLock("xxxxxxxxx");
+
+    @Inline
+    public static boolean testAndMark(ObjectReference object) {
+        Word oldValue;
+        do {
+            oldValue = VM.objectModel.prepareAvailableBits(object);
+            Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+            if (!markBit.isZero()) return false;
+        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.or(GC_MARK_BIT_MASK)));
+        return true;
+    }
+
+    @Inline
+    private static boolean testAndClearMark(ObjectReference object) {
+        Word oldValue;
+        do {
+            oldValue = VM.objectModel.prepareAvailableBits(object);
+            Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+            if (markBit.isZero()) return false;
+        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.and(GC_MARK_BIT_MASK.not())));
+        return true;
+    }
+
     /**
      * Trace a reference to an object.  If the object header is not already
      * marked, mark the object and enqueue it for subsequent processing.
@@ -208,10 +232,20 @@ public final class ZSpace extends Space {
      * @return The object, which may have been moved.
      */
     @Inline
-    public synchronized ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+    public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
         //Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
+        if (testAndMark(object)) {
+            Address zPage = Block.of(object.toAddress());
+            Block.setUsedSize(zPage, Block.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(object));
+            trace.processNode(object);
+        } else if (!getForwardedObject(object).isNull()) {
+            return getForwardedObject(object);
+        }
+        return object;
 
+
+        /*
         ObjectReference rtn = object;
 
         if (ForwardingWord.isForwarded(object)) {
@@ -227,7 +261,7 @@ public final class ZSpace extends Space {
             trace.processNode(rtn);
         }
         //lock.release();
-        return rtn;
+        return rtn;*/
     }
 
     /**
@@ -257,45 +291,22 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        //Log.writeln("###traceObjectWithCopy");
-        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
-        /* Race to be the (potential) forwarder */
-        Word priorStatusWord = ForwardingWord.attemptToForward(object);
-        if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
-            /* We lost the race; the object is either forwarded or being forwarded by another thread. */
-            /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-            if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-            return rtn;
+        /* Try to forward the object */
+        Word forwardingWord = ForwardingWord.attemptToForward(object);
+
+        if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
+            /* Somebody else got to it first. */
+            /* We must wait (spin) if the object is not yet fully forwarded */
+            while (ForwardingWord.stateIsBeingForwarded(forwardingWord))
+                forwardingWord = VM.objectModel.readAvailableBitsWord(object);
+            /* Now extract the object reference from the forwarding word and return it */
+            return ForwardingWord.extractForwardingPointer(forwardingWord);
         } else {
-            byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
-            /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (ZObjectHeader.testMarkState(priorState, ZObjectHeader.markState)) {
-                /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
-                /* Note that in a sticky mark bits collector, the mark state does not change at each GC, so correct mark state does not imply another thread got there first */
-                //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(nurseryCollection || defrag.spaceExhausted() || ObjectHeader.isPinnedObject(object));
-                ZObjectHeader.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
-                return object;
-            } else {
-                /* we are the first to reach the object; either mark in place or forward it */
-                ObjectReference rtn = object;
-                if (Block.relocationRequired(Block.of(object.toAddress()))) {
-                    /* forward */
-                    //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
-                    ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
-                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                        VM.assertions._assert(HeaderByte.isUnlogged(newObject));
-
-                    //Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
-
-                    rtn = newObject;
-                } else {
-                    ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
-                }
-                trace.processNode(rtn);
-                return rtn;
-            }
+            /* We are the designated copier, so forward it and enqueue it */
+            ObjectReference newObject = VM.objectModel.copy(object, allocator);
+            ForwardingWord.setForwardingPointer(object, newObject);
+            trace.processNode(newObject); // Scan it later
+            return newObject;
         }
     }
 
@@ -304,7 +315,13 @@ public final class ZSpace extends Space {
      * Object state
      */
 
-    /**
+    @Inline
+    public static boolean isMarked(ObjectReference object) {
+        Word oldValue = VM.objectModel.readAvailableBitsWord(object);
+        Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+        return (!markBit.isZero());
+    }
+    /*
      * Generic test of the liveness of an object
      *
      * @param object The object in question
@@ -313,7 +330,7 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public boolean isLive(ObjectReference object) {
-        return ZObjectHeader.testMarkState(object, ZObjectHeader.markState);
+        return isMarked(object);
     }
 
 }
