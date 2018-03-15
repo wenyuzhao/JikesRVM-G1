@@ -19,6 +19,7 @@ import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 
+import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
@@ -185,7 +186,7 @@ public final class ZSpace extends Space {
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
         // ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
-        ForwardingWord.clearForwardingBits(object);
+        // ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -291,25 +292,36 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+        if (testAndClearMark(object)) {
+            trace.processNode(object);
+
+            Word forwardingWord = ForwardingWord.attemptToForward(object);
+
+            if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
+                ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
+                if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+                return rtn;
+            } else {
+                return forwardObjectIfRequired(object, allocator);
+            }
+        } else {
+            return object;
+        }
         /* Try to forward the object */
-        Word forwardingWord = ForwardingWord.attemptToForward(object);
+        /*Word forwardingWord = ForwardingWord.attemptToForward(object);
 
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
         } else {
-            /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
             if (testAndClearMark(object)) {
                 trace.processNode(object);
                 return forwardObjectIfRequired(object, allocator);
-                /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
-                //if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
-                //return object;
             } else {
                 return object;
             }
-        }
+        }*/
     }
 
     @Inline
