@@ -91,14 +91,14 @@ public class ZGCCollector extends StopTheWorldCollector {
       int bytes, int allocator) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == ZGC.ALLOC_DEFAULT);
 
-    ZGC.zSpace.postCopy(object, bytes);
+    //ZGC.zSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(getCurrentTrace().isLive(object));
+      /*VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
         Log.writeln("#Block " + Block.of(object.toAddress()) + " is marked for relocate");
       }
-      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
+      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));*/
     }
   }
 
