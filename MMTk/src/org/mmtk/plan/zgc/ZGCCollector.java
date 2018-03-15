@@ -16,11 +16,7 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.CopyLocal;
-import org.mmtk.policy.LargeObjectLocal;
-import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZPage;
-import org.mmtk.utility.ForwardingWord;
+import org.mmtk.policy.zgc.Block;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.ZAllocator;
 import org.mmtk.vm.VM;
@@ -100,7 +96,7 @@ public class ZGCCollector extends StopTheWorldCollector {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.writeln("#ZPage " + ZPage.of(object.toAddress()) + " is marked for relocate");
+        Log.writeln("#Block " + Block.of(object.toAddress()) + " is marked for relocate");
       }
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
     }

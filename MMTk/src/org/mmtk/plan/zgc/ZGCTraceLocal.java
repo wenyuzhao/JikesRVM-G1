@@ -15,9 +15,7 @@ package org.mmtk.plan.zgc;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZPage;
-import org.mmtk.utility.Log;
-import org.mmtk.vm.VM;
+import org.mmtk.policy.zgc.Block;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -53,9 +51,9 @@ public class ZGCTraceLocal extends TraceLocal {
   @Override
   public void prepare() {
     super.prepare();
-    for (Address zPage : ZPage.fromPages) {
-      ZPage.setUsedSize(zPage, 0);
-      ZPage.setRelocationState(zPage, false);
+    for (Address zPage : Block.iterate()) {
+      Block.setUsedSize(zPage, 0);
+      Block.setRelocationState(zPage, false);
     };
   }
 

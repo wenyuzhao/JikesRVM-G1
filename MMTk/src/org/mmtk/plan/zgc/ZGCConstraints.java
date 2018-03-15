@@ -13,9 +13,8 @@
 package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.CopySpace;
 import org.mmtk.policy.zgc.ZObjectHeader;
-import org.mmtk.policy.zgc.ZPage;
+import org.mmtk.policy.zgc.Block;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -45,6 +44,6 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return ZPage.USEABLE_BYTES;
+    return Block.BYTES_IN_BLOCK;
   }
 }

@@ -12,20 +12,13 @@
  */
 package org.mmtk.policy.zgc;
 
-import static org.mmtk.utility.Constants.CARD_META_PAGES_PER_REGION;
-import static org.mmtk.utility.Constants.LOG_BYTES_IN_PAGE;
-
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.plan.zgc.ZGC;
-import org.mmtk.plan.zgc.ZGCCollector;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
-import org.mmtk.utility.options.LineReuseRatio;
-import org.mmtk.utility.options.Options;
 
-import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
@@ -53,48 +46,7 @@ public final class ZSpace extends Space {
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
     public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
-    private static final int META_DATA_PAGES_PER_REGION = CARD_META_PAGES_PER_REGION;
     private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
-
-    /**
-     *
-     */
-    //private static short reusableMarkStateThreshold = 0;
-
-    /****************************************************************************
-     *
-     * Instance variables
-     */
-
-    /**
-     *
-     */
-    //private byte markState = ZObjectHeader.MARK_BASE_VALUE;
-    //byte lineMarkState = RESET_LINE_MARK_STATE;
-    //private byte lineUnavailState = RESET_LINE_MARK_STATE;
-    private boolean inCollection;
-    //private int linesConsumed = 0;
-
-    //private final Lock mutatorLock = VM.newLock(getName() + "mutator");
-    //private final Lock gcLock = VM.newLock(getName() + "gc");
-
-    //private Address allocBlockCursor = Address.zero();
-    //private Address allocBlockSentinel = Address.zero();
-    //private boolean exhaustedReusableSpace = true;
-
-    //private final ChunkList chunkMap = new ChunkList();
-    //private final AddressArray blocks = AddressArray.create(1 << 4);
-    //private final Defrag defrag;
-
-    /****************************************************************************
-     *
-     * Initialization
-     */
-
-    static {
-        //Options.lineReuseRatio = new LineReuseRatio();
-        //reusableMarkStateThreshold = (short) (Options.lineReuseRatio.getValue() * MAX_BLOCK_MARK_STATE);
-    }
 
     /**
      * The caller specifies the region of virtual memory to be used for
@@ -120,9 +72,9 @@ public final class ZSpace extends Space {
     public ZSpace(String name, boolean zeroed, VMRequest vmRequest) {
         super(name, false, false, zeroed, vmRequest);
         if (vmRequest.isDiscontiguous())
-            pr = new FreeListPageResource(this, 0);
+            pr = new FreeListPageResource(this, Block.METADATA_PAGES_PER_REGION);
         else
-            pr = new FreeListPageResource(this, start, extent, 0);
+            pr = new FreeListPageResource(this, start, extent, Block.METADATA_PAGES_PER_REGION);
     }
 
     /****************************************************************************
@@ -135,21 +87,19 @@ public final class ZSpace extends Space {
      */
     public void prepare() {
         ZObjectHeader.deltaMarkState(true);
-        inCollection = true;
     }
 
     /**
      * A new collection increment has completed.  Release global resources.
      */
     public void release() {
-        inCollection = false;
     }
 
     /**
      * Return the number of pages reserved for copying.
      */
     public int getCollectionReserve() {
-        return collectionReserve;
+        return 0;
     }
 
     /**
@@ -166,8 +116,6 @@ public final class ZSpace extends Space {
      * Allocation
      */
 
-    Address copyPage = null;
-    int collectionReserve = 0;
     /**
      * Return a pointer to a set of new usable blocks, or null if none are available.
      * Use different block selection heuristics depending on whether the allocation
@@ -179,15 +127,16 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         // Allocate
-        Address zPage = acquire(ZPage.PAGES);
+        Address zPage = acquire(Block.PAGES_IN_BLOCK);
 
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Block.isAligned(zPage));
 
         if (!zPage.isZero()) {
-            VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(ZPage.BYTES));
+            VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(Block.BYTES_IN_BLOCK));
 
-            ZPage.fromPages.push(zPage);
-            Log.writeln("#ZPage alloc " + zPage);
+            Block.setAllocated(zPage, true);
+            if (Block.firstRegion == null) Block.firstRegion = EmbeddedMetaData.getMetaDataBase(zPage);
+            Log.writeln("#Block alloc " + zPage);
         }
         return zPage;
     }
@@ -201,8 +150,8 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public void release(Address zPage) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(zPage));
-        ZPage.fromPages.remove(zPage);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Block.isAligned(zPage));
+        Block.setAllocated(zPage, false);
         ((FreeListPageResource) pr).releasePages(zPage);
     }
 
@@ -273,40 +222,12 @@ public final class ZSpace extends Space {
         }
 
         if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
-            Address zPage = ZPage.of(rtn.toAddress());
-            ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
+            Address zPage = Block.of(rtn.toAddress());
+            Block.setUsedSize(zPage, Block.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
 
         return rtn;
-
-        /*
-        ObjectReference rtn = object;
-        byte markValue = ZObjectHeader.markState;
-        byte oldMarkState = ZObjectHeader.testAndMark(object, markValue);
-        if (oldMarkState != markValue) {
-            trace.processNode(object);
-        }
-        //Word priorStatusWord = ForwardingWord.attemptToForward(object);
-        //if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
-        if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
-            Log.writeln("#isForwardedOrBeingForwarded " + object.toAddress());
-        //    rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-        }
-
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-        // if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
-
-        if (VM.VERIFY_ASSERTIONS) {
-            VM.assertions._assert(!rtn.isNull());
-            //VM.assertions._assert(defrag.spaceExhausted() || !isDefragSource(rtn) || (ObjectHeader.isPinnedObject(rtn)));
-        }
-        // Inc zPage used size
-        Address zPage = ZPage.of(rtn.toAddress());
-        ZPage.setUsedSize(zPage, ZPage.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
-
-        return rtn;
-        */
     }
 
     /**
@@ -359,7 +280,7 @@ public final class ZSpace extends Space {
             } else {
                 /* we are the first to reach the object; either mark in place or forward it */
                 ObjectReference rtn = object;
-                if (ZPage.relocationRequired(ZPage.of(object.toAddress()))) {
+                if (Block.relocationRequired(Block.of(object.toAddress()))) {
                     /* forward */
                     //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
                     ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);

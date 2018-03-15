@@ -14,17 +14,12 @@
 package org.mmtk.utility.alloc;
 
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZObjectHeader;
-import org.mmtk.policy.zgc.ZPage;
+import org.mmtk.policy.zgc.Block;
 import org.mmtk.policy.zgc.ZSpace;
-import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.Extent;
-import org.vmmagic.unboxed.Offset;
-import org.vmmagic.unboxed.Word;
 
 //import static org.mmtk.policy.immix.ImmixConstants.*;
 
@@ -91,9 +86,9 @@ public class ZAllocator extends Allocator {
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
-    //Log.writeln("Alloc " + bytes + ", aligned to " + end.diff(start).toInt() + ", available " + limit.diff(cursor).toInt() + ", cursor " + cursor + " limit " + limit + " USABLE_BYTES " + ZPage.USEABLE_BYTES);
+    //Log.writeln("Alloc " + bytes + ", aligned to " + end.diff(start).toInt() + ", available " + limit.diff(cursor).toInt() + ", cursor " + cursor + " limit " + limit + " USABLE_BYTES " + Block.USEABLE_BYTES);
     //Log.flush();
-    //VM.assertions._assert(end.diff(start).toInt() <= ZPage.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
+    //VM.assertions._assert(end.diff(start).toInt() <= Block.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
         return allocSlowInline(bytes, align, offset);
@@ -126,10 +121,10 @@ public class ZAllocator extends Allocator {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZPage.isAligned(ptr));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Block.isAligned(ptr));
     //lineUseCount = LINES_IN_BLOCK;
     cursor = ptr;
-    limit = ptr.plus(ZPage.USEABLE_BYTES);
+    limit = ptr.plus(Block.BYTES_IN_BLOCK);
     return alloc(bytes, align, offset);
   }
 
