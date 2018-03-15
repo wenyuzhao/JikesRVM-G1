@@ -300,9 +300,11 @@ public final class ZSpace extends Space {
             return rtn;
         } else {
             if (testAndClearMark(object)) {
-                trace.processNode(object);
-                return forwardObjectIfRequired(object, allocator);
+                ObjectReference newObject = forwardObjectIfRequired(object, allocator);
+                trace.processNode(newObject);
+                return newObject;
             } else {
+                HeaderByte.markAsUnlogged(object);
                 return object;
             }
         }
