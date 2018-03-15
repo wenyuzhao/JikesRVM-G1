@@ -292,23 +292,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        if (testAndClearMark(object)) {
-            trace.processNode(object);
-
-            Word forwardingWord = ForwardingWord.attemptToForward(object);
-
-            if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
-                ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
-                if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-                return rtn;
-            } else {
-                return forwardObjectIfRequired(object, allocator);
-            }
-        } else {
-            return object;
-        }
-        /* Try to forward the object */
-        /*Word forwardingWord = ForwardingWord.attemptToForward(object);
+        Word forwardingWord = ForwardingWord.attemptToForward(object);
 
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
@@ -321,7 +305,7 @@ public final class ZSpace extends Space {
             } else {
                 return object;
             }
-        }*/
+        }
     }
 
     @Inline
