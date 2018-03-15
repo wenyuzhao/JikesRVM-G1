@@ -18,6 +18,7 @@ import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.Block;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -55,9 +56,10 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   @Override
   public void prepare() {
     super.prepare();
+    Log.writeln("Memory: " + VM.activePlan.global().getPagesUsed() + " / " + VM.activePlan.global().getTotalPages());
     Log.writeln("ZPAGE SIZE " + Block.count());
     int aliveSizeInRelocationSet = 0;
-    int useableBytesForCopying = VM.activePlan.global().getPagesAvail() * Constants.BYTES_IN_PAGE;
+    int useableBytesForCopying = (int) (VM.activePlan.global().getPagesAvail() * (1.0 - Block.METADATA_PAGES_PER_REGION / EmbeddedMetaData.PAGES_IN_REGION) * Constants.BYTES_IN_PAGE);
 
     for (Address zPage : Block.iterate()) {
       Log.write("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK);
@@ -87,6 +89,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       }
     }
     lock.release();
+    Log.writeln("Memory: " + VM.activePlan.global().getPagesUsed() + " / " + VM.activePlan.global().getTotalPages());
     /*
     lock.acquire();
     Address zPage = Block.fromPages.head();
