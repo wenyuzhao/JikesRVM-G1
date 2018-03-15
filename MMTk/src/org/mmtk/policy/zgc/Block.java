@@ -30,7 +30,12 @@ public class Block {
     static {
 
         if (VM.VERIFY_ASSERTIONS) {
-            Log.writeln("BLOCKS IN REGION " + BLOCKS_IN_REGION);
+            Log.writeln("PAGES_IN_REGION " + EmbeddedMetaData.PAGES_IN_REGION);
+            Log.writeln("BYTES_IN_PAGE " + Constants.BYTES_IN_PAGE);
+            Log.writeln("METADATA_BYTES " + METADATA_BYTES);
+            Log.writeln("BYTES_IN_BLOCK " + BYTES_IN_BLOCK);
+            Log.writeln("BYTES_IN_PAGE " + Constants.BYTES_IN_PAGE);
+            Log.writeln("BLOCKS_IN_REGION " + BLOCKS_IN_REGION);
         }
     }
 
