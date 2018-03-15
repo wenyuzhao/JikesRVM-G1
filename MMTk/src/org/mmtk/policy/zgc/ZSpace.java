@@ -186,7 +186,7 @@ public final class ZSpace extends Space {
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
         // ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
-        // ForwardingWord.clearForwardingBits(object);
+        ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -330,8 +330,7 @@ public final class ZSpace extends Space {
             /* forward */
             //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
             ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
-            if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
             //Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
 
