@@ -133,7 +133,7 @@ public final class ZSpace extends Space {
 
         if (!zPage.isZero()) {
             VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(Block.BYTES_IN_BLOCK));;
-            Log.writeln("#Block alloc " + zPage);
+            Log.writeln("#Block alloc " + zPage + ", in region " + EmbeddedMetaData.getMetaDataBase(zPage));
             Block.setAllocated(zPage, true);
             if (Block.firstRegion == null) Block.firstRegion = EmbeddedMetaData.getMetaDataBase(zPage);
         }
