@@ -18,6 +18,7 @@ import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
@@ -192,7 +193,8 @@ public class ZGC extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    return super.collectionRequired(spaceFull, space) || (getPagesUsed() >= Math.round(getTotalPages() * 0.95));
+    if (getPagesUsed() >= Math.round(getTotalPages() * 0.95)) VM.collection.blockForGC();
+    return super.collectionRequired(spaceFull, space);// || (getPagesUsed() >= Math.round(getTotalPages() * 0.95))*/;
   }
 
   /**
