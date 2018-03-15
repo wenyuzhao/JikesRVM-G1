@@ -21,7 +21,7 @@ public class Block {
     public static final int METADATA_ALLOCATED_OFFSET = 0;
     public static final int METADATA_RELOCATE_OFFSET = 1;
     public static final int METADATA_ALIVE_SIZE_OFFSET = 2;
-    public static final int BLOCKS_IN_REGION = Math.floorDiv(EmbeddedMetaData.PAGES_IN_REGION * Constants.BYTES_IN_PAGE, METADATA_BYTES + BYTES_IN_BLOCK * Constants.BYTES_IN_PAGE);
+    public static final int BLOCKS_IN_REGION = Math.floorDiv(EmbeddedMetaData.PAGES_IN_REGION * Constants.BYTES_IN_PAGE, METADATA_BYTES + PAGES_IN_BLOCK * Constants.BYTES_IN_PAGE);
     public static final int METADATA_PAGES_PER_REGION = EmbeddedMetaData.PAGES_IN_REGION - PAGES_IN_BLOCK * BLOCKS_IN_REGION;
     public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
 
