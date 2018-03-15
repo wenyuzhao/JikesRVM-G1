@@ -19,6 +19,7 @@ import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
@@ -196,7 +197,7 @@ public final class ZSpace extends Space {
     public static ObjectReference getForwardedObject(ObjectReference object) {
         return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
     }
-
+    static Lock lock = VM.newLock("xxxxxxxxx");
     /**
      * Trace a reference to an object.  If the object header is not already
      * marked, mark the object and enqueue it for subsequent processing.
@@ -207,7 +208,7 @@ public final class ZSpace extends Space {
      * @return The object, which may have been moved.
      */
     @Inline
-    public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+    public synchronized ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
         //Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
 
@@ -219,13 +220,13 @@ public final class ZSpace extends Space {
             // Log.writeln("# -> ", newObject);
             rtn = newObject;
         }
-
+        //lock.acquire();
         if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
             Address zPage = Block.of(rtn.toAddress());
             Block.setUsedSize(zPage, Block.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
-
+        //lock.release();
         return rtn;
     }
 
