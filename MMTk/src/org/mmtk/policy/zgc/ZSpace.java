@@ -150,7 +150,7 @@ public final class ZSpace extends Space {
     @Inline
     public void release(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Block.isAligned(zPage));
-        Block.setAllocated(zPage, false);
+        Block.clearState(zPage);
         ((FreeListPageResource) pr).releasePages(zPage);
     }
 

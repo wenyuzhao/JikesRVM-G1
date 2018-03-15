@@ -92,6 +92,12 @@ public class Block {
         count += allocated ? 1 : -1;
     }
 
+    public static synchronized void clearState(Address block) {
+        setAllocated(block, false);
+        setRelocationState(block, false);
+        setUsedSize(block, 0);
+    }
+
     public static int count() {
         return count;
     }
