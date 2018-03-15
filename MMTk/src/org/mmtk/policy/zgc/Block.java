@@ -1,6 +1,7 @@
 package org.mmtk.policy.zgc;
 
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.vm.Lock;
@@ -25,6 +26,13 @@ public class Block {
     public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
 
     public static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);
+
+    static {
+
+        if (VM.VERIFY_ASSERTIONS) {
+            Log.writeln("BLOCKS IN REGION " + BLOCKS_IN_REGION);
+        }
+    }
 
     public static Address of(final Address ptr) {
         return align(ptr);
