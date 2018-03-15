@@ -332,6 +332,7 @@ public final class ZSpace extends Space {
             ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
 
+            ForwardingWord.clearForwardingBits(newObject);
             //Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
 
             return newObject;
