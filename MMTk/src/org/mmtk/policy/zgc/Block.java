@@ -18,9 +18,9 @@ public class Block {
     public static final int PAGES_IN_BLOCK = 1;
 
     public static final int METADATA_BYTES = 6;
-    public static final int METADATA_ALLOCATED_OFFSET = 0;
-    public static final int METADATA_RELOCATE_OFFSET = 1;
-    public static final int METADATA_ALIVE_SIZE_OFFSET = 2;
+    public static final int METADATA_ALLOCATED_OFFSET = 5;
+    public static final int METADATA_RELOCATE_OFFSET = 4;
+    public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
     public static final int BLOCKS_IN_REGION = Math.floorDiv(EmbeddedMetaData.PAGES_IN_REGION * Constants.BYTES_IN_PAGE, METADATA_BYTES + PAGES_IN_BLOCK * Constants.BYTES_IN_PAGE);
     public static final int METADATA_PAGES_PER_REGION = EmbeddedMetaData.PAGES_IN_REGION - PAGES_IN_BLOCK * BLOCKS_IN_REGION;
     public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
@@ -65,7 +65,7 @@ public class Block {
 
     private static Address metaDataOf(Address block, int medaDataoffset) {
         Address metaData = EmbeddedMetaData.getMetaDataBase(block);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(medaDataoffset >= 0 && medaDataoffset <= 2);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(medaDataoffset >= 0 && medaDataoffset <= METADATA_BYTES);
         return metaData.plus(METADATA_BYTES * indexOf(block)).plus(medaDataoffset);
     }
 
