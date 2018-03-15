@@ -193,8 +193,7 @@ public class ZGC extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    if (getPagesUsed() >= Math.round(getTotalPages() * 0.95)) VM.collection.blockForGC();
-    return super.collectionRequired(spaceFull, space);// || (getPagesUsed() >= Math.round(getTotalPages() * 0.95))*/;
+    return super.collectionRequired(spaceFull, space) || (getPagesUsed() >= Math.round(getTotalPages() * 0.97));
   }
 
   /**
