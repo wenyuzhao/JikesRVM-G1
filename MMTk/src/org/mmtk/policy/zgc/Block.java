@@ -58,15 +58,15 @@ public class Block {
     private static int indexOf(Address block) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block));
         Address region = EmbeddedMetaData.getMetaDataBase(block);
-        double index = region.diff(block).minus(METADATA_PAGES_PER_REGION * Constants.BYTES_IN_PAGE).toInt() / BYTES_IN_BLOCK;
+        double index = block.diff(region.plus(BLOCKS_START_OFFSET)).toInt() / BYTES_IN_BLOCK;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index == (int) index);
         return (int) index;
     }
 
-    private static Address metaDataOf(Address block, int offset) {
+    private static Address metaDataOf(Address block, int medaDataoffset) {
         Address metaData = EmbeddedMetaData.getMetaDataBase(block);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(offset >= 0 && offset <= 2);
-        return metaData.plus(METADATA_BYTES * indexOf(block)).plus(offset);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(medaDataoffset >= 0 && medaDataoffset <= 2);
+        return metaData.plus(METADATA_BYTES * indexOf(block)).plus(medaDataoffset);
     }
 
     public static void setRelocationState(Address block, boolean relocation) {
