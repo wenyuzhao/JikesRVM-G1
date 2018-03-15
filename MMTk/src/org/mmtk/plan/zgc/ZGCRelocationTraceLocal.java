@@ -58,16 +58,17 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
     Log.writeln("ZPAGE SIZE " + Block.count());
     int aliveSizeInRelocationSet = 0;
     int useableBytesForCopying = VM.activePlan.global().getPagesAvail() * Constants.BYTES_IN_PAGE;
+
     for (Address zPage : Block.iterate()) {
       Log.write("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK);
       int usedSize = Block.usedSize(zPage);
-      if (usedSize <= (Block.BYTES_IN_BLOCK >> 1)) {
+      //if (usedSize <= (Block.BYTES_IN_BLOCK >> 1)) {
         if (aliveSizeInRelocationSet + usedSize <= useableBytesForCopying) {
           Log.write(" relocate");
           Block.setRelocationState(zPage, true);
           aliveSizeInRelocationSet += usedSize;
         }
-      }
+      //}
       Log.writeln();
     };
   }
