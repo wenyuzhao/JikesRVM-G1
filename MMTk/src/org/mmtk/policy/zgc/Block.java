@@ -17,7 +17,7 @@ public class Block {
     public static final int BYTES_IN_BLOCK = BYTES_IN_PAGE;
     public static final int PAGES_IN_BLOCK = 1;
 
-    public static final int METADATA_BYTES = 6;
+    public static final int METADATA_BYTES = 8;
     public static final int METADATA_ALLOCATED_OFFSET = 5;
     public static final int METADATA_RELOCATE_OFFSET = 4;
     public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
@@ -34,7 +34,7 @@ public class Block {
             Log.writeln("BYTES_IN_PAGE " + Constants.BYTES_IN_PAGE);
             Log.writeln("METADATA_BYTES " + METADATA_BYTES);
             Log.writeln("BYTES_IN_BLOCK " + BYTES_IN_BLOCK);
-            Log.writeln("BYTES_IN_PAGE " + Constants.BYTES_IN_PAGE);
+            Log.writeln("METADATA_PAGES_PER_REGION " + METADATA_PAGES_PER_REGION);
             Log.writeln("BLOCKS_IN_REGION " + BLOCKS_IN_REGION);
         }
     }
