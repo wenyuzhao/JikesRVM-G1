@@ -185,7 +185,7 @@ public final class ZSpace extends Space {
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
         // ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
-        // ForwardingWord.clearForwardingBits(object);
+        ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
