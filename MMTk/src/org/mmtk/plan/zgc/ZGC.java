@@ -159,7 +159,7 @@ public class ZGC extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    return super.collectionRequired(spaceFull, space) || (getPagesAvail() >= Math.round(getTotalPages() * Options.defragHeadroomFraction.getValue()));
+    return super.collectionRequired(spaceFull, space) || (getPagesAvail() <= Math.round(getTotalPages() * Options.defragHeadroomFraction.getValue()));
   }
 
   /**
