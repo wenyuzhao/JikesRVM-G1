@@ -295,6 +295,7 @@ public final class ZSpace extends Space {
         Word forwardingWord = ForwardingWord.attemptToForward(object);
 
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
+            Log.writeln("FORWARD " + forwardingWord);
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
             return rtn;
         } else {
