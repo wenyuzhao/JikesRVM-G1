@@ -135,7 +135,7 @@ public final class ZSpace extends Space {
         if (!zPage.isZero()) {
             VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(Block.BYTES_IN_BLOCK));;
             Log.writeln("#Block alloc " + zPage + ", in region " + EmbeddedMetaData.getMetaDataBase(zPage));
-            Block.setAllocated(zPage, true);
+            Block.register(zPage);
         }
         return zPage;
     }
@@ -150,7 +150,7 @@ public final class ZSpace extends Space {
     @Inline
     public void release(Address zPage) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Block.isAligned(zPage));
-        Block.clearState(zPage);
+        Block.unregister(zPage);
         ((FreeListPageResource) pr).releasePages(zPage);
     }
 
