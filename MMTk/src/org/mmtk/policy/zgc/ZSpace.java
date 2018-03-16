@@ -292,11 +292,34 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        Word forwardingWord = ForwardingWord.attemptToForward(object);
+        if (isMarked(object)) {
+            ObjectReference newObject;
+            if (Block.relocationRequired(Block.of(object.toAddress()))) {
+                /* forward */
+                //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
+                Word forwardingWord = ForwardingWord.attemptToForward(object);
+                if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
+                    return ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
+                }
+                newObject = ForwardingWord.forwardObject(object, allocator);
+                if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+                ForwardingWord.clearForwardingBits(newObject);
+                Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
+            } else {
+                clearMark(object);
+                newObject = object;//ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
+            }
+            trace.processNode(newObject);
+            return newObject;
+        } else {
+            return object;
+        }
+        /*Word forwardingWord = ForwardingWord.attemptToForward(object);
 
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
             Log.writeln("FORWARD " + forwardingWord);
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
+
             return rtn;
         } else {
             if (testAndClearMark(object)) {
@@ -306,7 +329,7 @@ public final class ZSpace extends Space {
             } else {
                 return object;
             }
-        }
+        }*/
     }
 
     @Inline
