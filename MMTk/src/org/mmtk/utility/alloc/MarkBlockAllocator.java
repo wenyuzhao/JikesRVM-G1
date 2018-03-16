@@ -13,21 +13,19 @@
 
 package org.mmtk.utility.alloc;
 
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.Block;
 import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 
-//import static org.mmtk.policy.immix.ImmixConstants.*;
-
 /**
  *
  */
 @Uninterruptible
-public class ZAllocator extends Allocator {
+public class MarkBlockAllocator extends Allocator {
 
   /****************************************************************************
    *
@@ -50,9 +48,8 @@ public class ZAllocator extends Allocator {
    * @param space The space to bump point into.
    * @param copy TODO
    */
-  public ZAllocator(ZSpace space, boolean copy) {
+  public MarkBlockAllocator(ZSpace space, boolean copy) {
     this.space = space;
-    //this.hot = hot;
     this.copy = copy;
     reset();
   }
@@ -86,14 +83,10 @@ public class ZAllocator extends Allocator {
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
-    //Log.writeln("Alloc " + bytes + ", aligned to " + end.diff(start).toInt() + ", available " + limit.diff(cursor).toInt() + ", cursor " + cursor + " limit " + limit + " USABLE_BYTES " + Block.USEABLE_BYTES);
-    //Log.flush();
-    //VM.assertions._assert(end.diff(start).toInt() <= Block.USEABLE_BYTES, "Trying to allocate " + bytes + " bytes");
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
         return allocSlowInline(bytes, align, offset);
     }
-
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
@@ -121,10 +114,9 @@ public class ZAllocator extends Allocator {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Block.isAligned(ptr));
-    //lineUseCount = LINES_IN_BLOCK;
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(ptr));
     cursor = ptr;
-    limit = ptr.plus(Block.BYTES_IN_BLOCK);
+    limit = ptr.plus(MarkBlock.BYTES_IN_BLOCK);
     return alloc(bytes, align, offset);
   }
 
