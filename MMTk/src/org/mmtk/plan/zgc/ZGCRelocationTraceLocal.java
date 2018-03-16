@@ -81,12 +81,12 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
     lock.acquire();
     int visitedPages = 0;
     for (Address zPage : Block.iterate()) {
-      visitedPages++;
       if (Block.relocationRequired(zPage)) {
         Log.writeln("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK + " released");
         Block.setRelocationState(zPage, false);
         ZGC.zSpace.release(zPage);
       } else {
+        visitedPages++;
         Log.writeln("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK);
       }
     }

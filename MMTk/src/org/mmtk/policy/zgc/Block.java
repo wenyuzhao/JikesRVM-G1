@@ -93,7 +93,7 @@ public class Block {
     private static int count = 0;
 
     public static synchronized void setAllocated(Address block, boolean allocated) {
-        if ((metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() > 0) == allocated) return;
+        if (allocated(block) == allocated) return;
         metaDataOf(block, METADATA_ALLOCATED_OFFSET).store((byte) (allocated ? 1 : 0));
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         Address blockCount = region.plus(BLOCK_COUNT_OFFSET_IN_REGION);
@@ -118,7 +118,7 @@ public class Block {
         }
     }
 
-    public static boolean allocated(Address block, boolean allocated) {
+    public static boolean allocated(Address block) {
         return metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() > 0;
     }
 
