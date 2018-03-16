@@ -103,9 +103,12 @@ public class Block {
             if (oldBlocks <= 0) {
                 if (firstRegion == null) {
                     firstRegion = region;
+                    Log.writeln("Add First Region " + region);
                 } else {
                     region.plus(NEXT_POINTER_OFFSET_IN_REGION).store(firstRegion);
                     firstRegion.plus(PREV_POINTER_OFFSET_IN_REGION).store(region);
+
+                    Log.writeln("Add Region " + region);
                 }
             }
             blockCount.store(oldBlocks + 1);
@@ -115,7 +118,11 @@ public class Block {
             if (blocks <= 0) {
                 if (region.EQ(firstRegion)) {
                     firstRegion = null;
+
+                    Log.writeln("Remove Last Region " + region);
                 } else {
+
+                    Log.writeln("Remove Region " + region);
                     Address prev = region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress();
                     Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
                     prev.plus(NEXT_POINTER_OFFSET_IN_REGION).store(next);
