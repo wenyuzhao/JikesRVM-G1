@@ -83,7 +83,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       if (Block.relocationRequired(zPage)) {
         Log.writeln("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK + " released");
         Block.setRelocationState(zPage, false);
-        ZGC.zSpace.release(zPage);
+        //ZGC.zSpace.release(zPage);
       } else {
         Log.writeln("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK);
       }

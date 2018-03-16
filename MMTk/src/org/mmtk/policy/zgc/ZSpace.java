@@ -186,7 +186,7 @@ public final class ZSpace extends Space {
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
         // ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
-        ForwardingWord.clearForwardingBits(object);
+        //ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -292,21 +292,21 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        Word forwardingWord = ForwardingWord.attemptToForward(object);
+        /*Word forwardingWord = ForwardingWord.attemptToForward(object);
 
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
-        } else {
-            if (isMarked(object)) {
-                ObjectReference newObject = forwardObjectIfRequired(object, allocator);
+        } else {*/
+            if (testAndClearMark(object)) {
+                ObjectReference newObject = object;//forwardObjectIfRequired(object, allocator);
                 trace.processNode(newObject);
                 return newObject;
             } else {
                 return object;
             }
-        }
+        //}
     }
 
     @Inline

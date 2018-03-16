@@ -16,6 +16,7 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.Block;
+import org.mmtk.utility.Log;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
