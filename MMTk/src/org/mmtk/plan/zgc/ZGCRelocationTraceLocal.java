@@ -89,7 +89,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
       }
     }
     lock.release();
-    Log.writeln("Memory: " + VM.activePlan.global().getPagesUsed() + " / " + VM.activePlan.global().getTotalPages());
+    Log.writeln("Memory: " + VM.activePlan.global().getPagesReserved() + " / " + VM.activePlan.global().getTotalPages() + ", " + ZGC.zSpace.availablePhysicalPages());
     /*
     lock.acquire();
     Address zPage = Block.fromPages.head();

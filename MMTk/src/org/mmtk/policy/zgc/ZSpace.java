@@ -221,7 +221,7 @@ public final class ZSpace extends Space {
             rtn = newObject;
         }
         //lock.acquire();
-        else if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
+        if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
             Address zPage = Block.of(rtn.toAddress());
             Block.setUsedSize(zPage, Block.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
