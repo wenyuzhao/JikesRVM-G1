@@ -58,8 +58,9 @@ public class MarkBlock {
     public static boolean isValidBlock(final Address block) {
         return block != null && !block.isZero() && isAligned(block);
     }
-
+    private static Lock lock = VM.newLock("mark-block-register");
     public static void register(Address block) {
+        lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
         count += 1;
         clearState(block);
@@ -82,9 +83,11 @@ public class MarkBlock {
             }
         }
         blockCount.store(blocks);
+        lock.release();
     }
 
     public static void unregister(Address block) {
+        lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
         count -= 1;
         clearState(block);
@@ -115,6 +118,7 @@ public class MarkBlock {
         } else {
             blockCount.store(blocks);
         }
+        lock.release();
     }
 
     public static void setRelocationState(Address block, boolean relocation) {
