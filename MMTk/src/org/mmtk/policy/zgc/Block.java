@@ -99,7 +99,16 @@ public class Block {
         Address blockCount = region.plus(BLOCK_COUNT_OFFSET_IN_REGION);
         if (allocated) {
             count += 1;
-            blockCount.store(blockCount.loadInt() + 1);
+            int oldBlocks = blockCount.loadInt();
+            if (oldBlocks <= 0) {
+                if (firstRegion == null) {
+                    firstRegion = region;
+                } else {
+                    region.plus(NEXT_POINTER_OFFSET_IN_REGION).store(firstRegion);
+                    firstRegion.plus(PREV_POINTER_OFFSET_IN_REGION).store(region);
+                }
+            }
+            blockCount.store(oldBlocks + 1);
         } else {
             count -= 1;
             int blocks = blockCount.loadInt() - 1;
