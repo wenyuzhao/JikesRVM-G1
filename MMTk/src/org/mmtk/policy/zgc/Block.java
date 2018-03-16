@@ -17,13 +17,18 @@ public class Block {
     public static final int BYTES_IN_BLOCK = BYTES_IN_PAGE;
     public static final int PAGES_IN_BLOCK = 1;
 
+    public static final int PREV_POINTER_OFFSET_IN_REGION = 0;
+    public static final int NEXT_POINTER_OFFSET_IN_REGION = 4;
+    public static final int BLOCK_COUNT_OFFSET_IN_REGION = 8;
+    public static final int METADATA_OFFSET_IN_REGION = 16;
+
     public static final int METADATA_BYTES = 8;
     public static final int METADATA_ALLOCATED_OFFSET = 5;
     public static final int METADATA_RELOCATE_OFFSET = 4;
     public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
-    public static final int BLOCKS_IN_REGION = Math.floorDiv(EmbeddedMetaData.PAGES_IN_REGION * Constants.BYTES_IN_PAGE, METADATA_BYTES + PAGES_IN_BLOCK * Constants.BYTES_IN_PAGE);
-    public static final int METADATA_PAGES_PER_REGION = EmbeddedMetaData.PAGES_IN_REGION - PAGES_IN_BLOCK * BLOCKS_IN_REGION;
-    public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
+    public static final int METADATA_PAGES_PER_REGION = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK * METADATA_BYTES / Constants.BYTES_IN_PAGE;
+    public static final int BLOCKS_IN_REGION = (EmbeddedMetaData.PAGES_IN_REGION - METADATA_PAGES_PER_REGION) / PAGES_IN_BLOCK;
+    public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION + METADATA_PAGES_PER_REGION;
 
     public static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);
 
@@ -63,10 +68,10 @@ public class Block {
         return (int) index;
     }
 
-    private static Address metaDataOf(Address block, int medaDataoffset) {
+    private static Address metaDataOf(Address block, int medaDataOffset) {
         Address metaData = EmbeddedMetaData.getMetaDataBase(block);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(medaDataoffset >= 0 && medaDataoffset <= METADATA_BYTES);
-        return metaData.plus(METADATA_BYTES * indexOf(block)).plus(medaDataoffset);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(medaDataOffset >= 0 && medaDataOffset <= METADATA_BYTES);
+        return metaData.plus(METADATA_OFFSET_IN_REGION + METADATA_BYTES * indexOf(block)).plus(medaDataOffset);
     }
 
     public static void setRelocationState(Address block, boolean relocation) {
@@ -88,8 +93,33 @@ public class Block {
     private static int count = 0;
 
     public static synchronized void setAllocated(Address block, boolean allocated) {
+        if ((metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() > 0) == allocated) return;
         metaDataOf(block, METADATA_ALLOCATED_OFFSET).store((byte) (allocated ? 1 : 0));
-        count += allocated ? 1 : -1;
+        Address region = EmbeddedMetaData.getMetaDataBase(block);
+        Address blockCount = region.plus(BLOCK_COUNT_OFFSET_IN_REGION);
+        if (allocated) {
+            count += 1;
+            blockCount.store(blockCount.loadInt() + 1);
+        } else {
+            count -= 1;
+            int blocks = blockCount.loadInt() - 1;
+            if (blocks <= 0) {
+                if (region.EQ(firstRegion)) {
+                    firstRegion = null;
+                } else {
+                    Address prev = region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress();
+                    Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
+                    prev.plus(NEXT_POINTER_OFFSET_IN_REGION).store(next);
+                    if (!next.isZero()) next.plus(PREV_POINTER_OFFSET_IN_REGION).store(next);
+                }
+            } else {
+                blockCount.store(blocks);
+            }
+        }
+    }
+
+    public static boolean allocated(Address block, boolean allocated) {
+        return metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() > 0;
     }
 
     public static synchronized void clearState(Address block) {
@@ -102,11 +132,10 @@ public class Block {
         return count;
     }
 
-    public static boolean allocated(Address block, boolean allocated) {
-        return metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() > 0;
-    }
-
     static Address firstRegion = null;
+
+
+
     public static Iterable<Address> iterate() {
         // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(firstRegion != null);
 
@@ -134,7 +163,7 @@ public class Block {
                         return;
                     }
                 }
-                currentRegion = HeapLayout.vmMap.getNextContiguousRegion(currentRegion);
+                currentRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
                 curser = -1;
                 moveToNextAllocatedBlock();
             }
