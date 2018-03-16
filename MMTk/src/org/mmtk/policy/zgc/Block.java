@@ -110,7 +110,7 @@ public class Block {
                     Address prev = region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress();
                     Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
                     prev.plus(NEXT_POINTER_OFFSET_IN_REGION).store(next);
-                    if (!next.isZero()) next.plus(PREV_POINTER_OFFSET_IN_REGION).store(next);
+                    if (!next.isZero()) next.plus(PREV_POINTER_OFFSET_IN_REGION).store(prev);
                 }
             } else {
                 blockCount.store(blocks);
