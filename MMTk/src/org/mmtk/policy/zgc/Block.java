@@ -107,6 +107,7 @@ public class Block {
                 } else {
                     region.plus(NEXT_POINTER_OFFSET_IN_REGION).store(firstRegion);
                     firstRegion.plus(PREV_POINTER_OFFSET_IN_REGION).store(region);
+                    firstRegion = region;
 
                     Log.writeln("Add Region " + region);
                 }
