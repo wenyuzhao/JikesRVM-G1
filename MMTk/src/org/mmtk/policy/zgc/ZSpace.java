@@ -236,12 +236,17 @@ public final class ZSpace extends Space {
     public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
         //Log.writeln("###traceObject");
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
+        ObjectReference rtn = object;
+        if (ForwardingWord.isForwarded(object)) {
+            Word statusWord = ForwardingWord.attemptToForward(object);
+            ObjectReference newObject = ForwardingWord.extractForwardingPointer(statusWord);
+            Log.writeln("# -> ", newObject);
+            rtn = newObject;
+        }
         if (testAndMark(object)) {
             Address zPage = Block.of(object.toAddress());
             Block.setUsedSize(zPage, Block.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(object));
             trace.processNode(object);
-        } else if (!getForwardedObject(object).isNull()) {
-            return getForwardedObject(object);
         }
         return object;
 
