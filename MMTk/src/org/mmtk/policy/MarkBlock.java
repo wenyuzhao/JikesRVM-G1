@@ -95,9 +95,15 @@ public class MarkBlock {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocks >= 0);
         if (blocks == 0) {
             // This region shuold be removed
+            if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Region " + region);
             if (region.EQ(firstRegion)) {
-                firstRegion = null;
-                if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Last Region " + region);
+                Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
+                if (next.isZero()) {
+                    firstRegion = null;
+                } else {
+                    firstRegion = next;
+                    next.plus(PREV_POINTER_OFFSET_IN_REGION).store(0);
+                }
             } else {
                 if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Region " + region);
                 Address prev = region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress();
