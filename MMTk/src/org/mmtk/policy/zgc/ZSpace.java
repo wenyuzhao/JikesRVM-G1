@@ -299,12 +299,11 @@ public final class ZSpace extends Space {
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
         } else {
-            if (testAndClearMark(object)) {
+            if (isMarked(object)) {
                 ObjectReference newObject = forwardObjectIfRequired(object, allocator);
                 trace.processNode(newObject);
                 return newObject;
             } else {
-                HeaderByte.markAsUnlogged(object);
                 return object;
             }
         }
@@ -323,6 +322,7 @@ public final class ZSpace extends Space {
 
             return newObject;
         } else {
+            clearMark(object);
             return object;//ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
         }
         //trace.processNode(rtn);
@@ -339,6 +339,13 @@ public final class ZSpace extends Space {
         Word markBit = oldValue.and(GC_MARK_BIT_MASK);
         return (!markBit.isZero());
     }
+
+    @Inline
+    public static void clearMark(ObjectReference object) {
+        Word oldValue = VM.objectModel.readAvailableBitsWord(object);
+        VM.objectModel.writeAvailableBitsWord(object, oldValue.and(GC_MARK_BIT_MASK.not()));
+    }
+
     /*
      * Generic test of the liveness of an object
      *
