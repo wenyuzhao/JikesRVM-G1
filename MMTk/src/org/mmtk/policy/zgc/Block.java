@@ -108,7 +108,6 @@ public class Block {
                     region.plus(NEXT_POINTER_OFFSET_IN_REGION).store(firstRegion);
                     firstRegion.plus(PREV_POINTER_OFFSET_IN_REGION).store(region);
                     firstRegion = region;
-
                     Log.writeln("Add Region " + region);
                 }
             }
@@ -119,19 +118,16 @@ public class Block {
             if (blocks <= 0) {
                 if (region.EQ(firstRegion)) {
                     firstRegion = null;
-
                     Log.writeln("Remove Last Region " + region);
                 } else {
-
                     Log.writeln("Remove Region " + region);
                     Address prev = region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress();
                     Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
                     prev.plus(NEXT_POINTER_OFFSET_IN_REGION).store(next);
                     if (!next.isZero()) next.plus(PREV_POINTER_OFFSET_IN_REGION).store(prev);
                 }
-            } else {
-                blockCount.store(blocks);
             }
+            blockCount.store(blocks);
         }
     }
 
@@ -152,52 +148,49 @@ public class Block {
     static Address firstRegion = null;
 
 
+    static class BlocksIterator implements Iterator<Address> {
+        Address currentRegion = null;
+        Address nextBlock = null;
+        int curser = -1; // index of nextBlock in currentRegion
 
-    public static Iterable<Address> iterate() {
-        // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(firstRegion != null);
-
-        class BlocksIterator implements Iterator<Address> {
-            Address currentRegion = null;
-            Address nextBlock = null;
-            int curser = -1; // index of nextBlock in currentRegion
-
-            BlocksIterator(Address firstRegion) {
-                currentRegion = firstRegion;
-                moveToNextAllocatedBlock();
-            }
-
-            void moveToNextAllocatedBlock() {
-                if (currentRegion == null || currentRegion.isZero()) {
-                    currentRegion = null;
-                    nextBlock = null;
-                    curser = -1;
-                    return;
-                }
-                for (int index = curser + 1; index < BLOCKS_IN_REGION; index++) {
-                    if (currentRegion.plus(METADATA_OFFSET_IN_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET).loadByte() > 0) {
-                        curser = index;
-                        nextBlock = currentRegion.plus(BLOCKS_START_OFFSET + BYTES_IN_BLOCK * index);
-                        return;
-                    }
-                }
-                currentRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
-                curser = -1;
-                moveToNextAllocatedBlock();
-            }
-
-            @Override
-            public boolean hasNext() {
-                return nextBlock != null;
-            }
-
-            @Override
-            public Address next() {
-                Address rtn = nextBlock;
-                moveToNextAllocatedBlock();
-                return rtn;
-            }
+        BlocksIterator(Address firstRegion) {
+            currentRegion = firstRegion;
+            moveToNextAllocatedBlock();
         }
 
+        void moveToNextAllocatedBlock() {
+            if (currentRegion == null || currentRegion.isZero()) {
+                currentRegion = null;
+                nextBlock = null;
+                curser = -1;
+                return;
+            }
+            for (int index = curser + 1; index < BLOCKS_IN_REGION; index++) {
+                if (currentRegion.plus(METADATA_OFFSET_IN_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET).loadByte() > 0) {
+                    curser = index;
+                    nextBlock = currentRegion.plus(BLOCKS_START_OFFSET + BYTES_IN_BLOCK * index);
+                    return;
+                }
+            }
+            currentRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
+            curser = -1;
+            moveToNextAllocatedBlock();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return nextBlock != null;
+        }
+
+        @Override
+        public Address next() {
+            Address rtn = nextBlock;
+            moveToNextAllocatedBlock();
+            return rtn;
+        }
+    }
+
+    public static Iterable<Address> iterate() {
         return new Iterable<Address>() {
             @Override
             public Iterator<Address> iterator() {
