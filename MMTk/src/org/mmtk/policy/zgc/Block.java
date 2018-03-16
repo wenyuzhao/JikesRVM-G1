@@ -28,7 +28,7 @@ public class Block {
     public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
     public static final int METADATA_PAGES_PER_REGION = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK * METADATA_BYTES / Constants.BYTES_IN_PAGE;
     public static final int BLOCKS_IN_REGION = (EmbeddedMetaData.PAGES_IN_REGION - METADATA_PAGES_PER_REGION) / PAGES_IN_BLOCK;
-    public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION + METADATA_PAGES_PER_REGION;
+    public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
 
     public static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);
 
@@ -61,7 +61,7 @@ public class Block {
     }
 
     private static int indexOf(Address block) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block), "Invalid block " + block);
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         double index = block.diff(region.plus(BLOCKS_START_OFFSET)).toInt() / BYTES_IN_BLOCK;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index == (int) index);
@@ -157,7 +157,7 @@ public class Block {
                     return;
                 }
                 for (int index = curser + 1; index < BLOCKS_IN_REGION; index++) {
-                    if (currentRegion.plus(index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET).loadByte() > 0) {
+                    if (currentRegion.plus(METADATA_OFFSET_IN_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET).loadByte() > 0) {
                         curser = index;
                         nextBlock = currentRegion.plus(BLOCKS_START_OFFSET + BYTES_IN_BLOCK * index);
                         return;
