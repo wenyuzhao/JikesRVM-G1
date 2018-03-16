@@ -193,11 +193,6 @@ public final class ZSpace extends Space {
      * Object tracing
      */
 
-    @Inline
-    public static ObjectReference getForwardedObject(ObjectReference object) {
-        return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
-    }
-    static Lock lock = VM.newLock("xxxxxxxxx");
     /**
      * Trace a reference to an object.  If the object header is not already
      * marked, mark the object and enqueue it for subsequent processing.
@@ -209,24 +204,18 @@ public final class ZSpace extends Space {
      */
     @Inline
     public synchronized ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        //Log.writeln("###traceObject");
-        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(defrag.determined(true));
-
         ObjectReference rtn = object;
 
         if (ForwardingWord.isForwarded(object)) {
             Word statusWord = ForwardingWord.attemptToForward(object);
             ObjectReference newObject = ForwardingWord.extractForwardingPointer(statusWord);
-            // Log.writeln("# -> ", newObject);
             rtn = newObject;
         }
-        //lock.acquire();
         if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
             Address zPage = MarkBlock.of(rtn.toAddress());
             MarkBlock.setUsedSize(zPage, MarkBlock.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
-        //lock.release();
         return rtn;
     }
 
@@ -257,8 +246,6 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        //Log.writeln("###traceObjectWithCopy");
-        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((nurseryCollection && !ZObjectHeader.isMatureObject(object)) || (defrag.determined(true) && isDefragSource(object)));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {

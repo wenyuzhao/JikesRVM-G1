@@ -69,7 +69,7 @@ public class MarkBlock {
         Address blockCount = region.plus(BLOCK_COUNT_OFFSET_IN_REGION);
         int blocks = blockCount.loadInt() + 1;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocks >= 1);
-        if (blocks == 0) {
+        if (blocks == 1) {
             // This is a new region
             if (firstRegion == null) {
                 firstRegion = region;
