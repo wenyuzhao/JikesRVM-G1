@@ -116,6 +116,7 @@ public class Block {
             count -= 1;
             int blocks = blockCount.loadInt() - 1;
             if (blocks <= 0) {
+                // This region shuold be removed
                 if (region.EQ(firstRegion)) {
                     firstRegion = null;
                     Log.writeln("Remove Last Region " + region);
@@ -126,9 +127,17 @@ public class Block {
                     prev.plus(NEXT_POINTER_OFFSET_IN_REGION).store(next);
                     if (!next.isZero()) next.plus(PREV_POINTER_OFFSET_IN_REGION).store(prev);
                 }
+                clearRegionState(region);
+            } else {
+                blockCount.store(blocks);
             }
-            blockCount.store(blocks);
         }
+    }
+
+    private static synchronized void clearRegionState(Address region) {
+        region.plus(PREV_POINTER_OFFSET_IN_REGION).store((int) 0);
+        region.plus(NEXT_POINTER_OFFSET_IN_REGION).store((int) 0);
+        region.plus(BLOCK_COUNT_OFFSET_IN_REGION).store((int) 0);
     }
 
     public static boolean allocated(Address block) {
