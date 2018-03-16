@@ -79,7 +79,9 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
   public void release() {
     super.release();
     lock.acquire();
+    int visitedPages = 0;
     for (Address zPage : Block.iterate()) {
+      visitedPages++;
       if (Block.relocationRequired(zPage)) {
         Log.writeln("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK + " released");
         Block.setRelocationState(zPage, false);
@@ -88,6 +90,7 @@ public class ZGCRelocationTraceLocal extends TraceLocal {
         Log.writeln("#Block " + zPage + ": " + Block.usedSize(zPage) + "/" + Block.BYTES_IN_BLOCK);
       }
     }
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(visitedPages == Block.count(), "Invalid iteration, only " + visitedPages + "/" + Block.count() + " blocks are iterated");
     lock.release();
     Log.writeln("Memory: " + VM.activePlan.global().getPagesReserved() + " / " + VM.activePlan.global().getTotalPages() + ", " + ZGC.zSpace.availablePhysicalPages());
     /*
