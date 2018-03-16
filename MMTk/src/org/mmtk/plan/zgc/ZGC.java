@@ -13,11 +13,12 @@
 package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.CopySpace;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
+import org.mmtk.utility.options.DefragHeadroomFraction;
+import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -57,14 +58,10 @@ public class ZGC extends StopTheWorld {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
 
-  /****************************************************************************
-   *
-   * Initialization
-   */
-
-  /**
-   * Class variables
-   */
+  static {
+    Options.defragHeadroomFraction = new DefragHeadroomFraction();
+    Options.defragHeadroomFraction.setDefaultValue(0.05f);
+  }
 
   /**
    *
@@ -135,7 +132,6 @@ public class ZGC extends StopTheWorld {
     }
     if (phaseId == RELEASE) {
       markTrace.release();
-      //zSpace.release();
       super.collectionPhase(phaseId);
       return;
     }
@@ -154,36 +150,6 @@ public class ZGC extends StopTheWorld {
     }
 
     super.collectionPhase(phaseId);
-
-    /*if (phaseId == SET_COLLECTION_KIND) {
-      super.collectionPhase(phaseId);
-      return;
-    }
-
-    if (phaseId == ZGC.PREPARE) {
-      Log.writeln("ZGC Prepare");
-      super.collectionPhase(phaseId);
-      zSpace.prepare();
-      zTrace.prepare();
-      return;
-    }
-
-    if (phaseId == CLOSURE) {
-      Log.writeln("ZGC Closure");
-      zTrace.prepare();
-      return;
-    }
-
-    if (phaseId == ZGC.RELEASE) {
-      Log.writeln("ZGC Release");
-      zTrace.release();
-      zSpace.release();
-      super.collectionPhase(phaseId);
-      return;
-    }
-
-    super.collectionPhase(phaseId);
-    */
   }
 
   /****************************************************************************
@@ -193,7 +159,7 @@ public class ZGC extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    return super.collectionRequired(spaceFull, space) || (getPagesReserved() >= Math.round(getTotalPages() * 0.95));
+    return super.collectionRequired(spaceFull, space) || (getPagesAvail() >= Math.round(getTotalPages() * Options.defragHeadroomFraction.getValue()));
   }
 
   /**
