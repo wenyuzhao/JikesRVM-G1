@@ -243,7 +243,7 @@ public final class ZSpace extends Space {
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-            Log.writeln("# -> " + rtn);
+            Log.writeln("# " + object + " -> " + rtn);
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
