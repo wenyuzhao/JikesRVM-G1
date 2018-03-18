@@ -262,6 +262,7 @@ public final class ZSpace extends Space {
                 } else {
                     clearMark(object);
                 }
+                clearMark(rtn);
                 trace.processNode(rtn);
                 return rtn;
             }
