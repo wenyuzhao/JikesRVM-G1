@@ -236,40 +236,19 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
-        /*if (testAndClearMark(object)) {
-            trace.processNode(object);
-        }
-        ObjectReference newObject = getForwardingPointer(object);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!newObject.isNull());
-        return getForwardingPointer(object);*/
-
-
-        /* Race to be the (potential) forwarder */
-        Word priorStatusWord = ForwardingWord.attemptToForward(object);
-        if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
-            /* We lost the race; the object is either forwarded or being forwarded by another thread. */
-            /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-            if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+        if (testAndClearMark(object)) {
+            ObjectReference rtn = object;
+            if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
+                /* forward */
+                rtn = ForwardingWord.forwardObject(object, allocator);
+                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                    VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+            }
+            trace.processNode(rtn);
             return rtn;
         } else {
-            /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (testAndClearMark(object)) {
-                /* we are the first to reach the object; either mark in place or forward it */
-                ObjectReference rtn = object;
-                if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
-                    /* forward */
-                    rtn = ForwardingWord.forwardObject(object, allocator);
-                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                        VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-                }
-                trace.processNode(rtn);
-                return rtn;
-            } else {
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                    VM.assertions._assert(HeaderByte.isUnlogged(object));
-                return object;
-            }
+            ObjectReference newObject = object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
+            return newObject.isNull() ? object : newObject;
         }
     }
 
