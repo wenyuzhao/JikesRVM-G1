@@ -247,7 +247,7 @@ public final class ZSpace extends Space {
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (isMarked(object)) {
+            if (!isMarked(object)) {
                 if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                     VM.assertions._assert(HeaderByte.isUnlogged(object));
                 return object;
