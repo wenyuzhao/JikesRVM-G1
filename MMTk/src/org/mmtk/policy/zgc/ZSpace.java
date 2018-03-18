@@ -250,6 +250,7 @@ public final class ZSpace extends Space {
             if (!isMarked(object)) {
                 if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                     VM.assertions._assert(HeaderByte.isUnlogged(object));
+                Log.writeln("# " + object + " marked");
                 return object;
             } else {
                 /* we are the first to reach the object; either mark in place or forward it */
@@ -257,9 +258,10 @@ public final class ZSpace extends Space {
                 if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
                     /* forward */
                     rtn = ForwardingWord.forwardObject(object, allocator);
-                    Log.writeln("#Forward " + object + " -> " + rtn);
+                    Log.writeln("# " + object + " => " + rtn);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 } else {
+                    Log.writeln("# " + object);
                     clearMark(object);
                 }
                 clearMark(rtn);
