@@ -236,19 +236,33 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
-        if (testAndClearMark(object)) {
-            ObjectReference rtn = object;
-            if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
-                /* forward */
-                rtn = ForwardingWord.forwardObject(object, allocator);
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                    VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-            }
-            trace.processNode(rtn);
+        /* Race to be the (potential) forwarder */
+        Word priorStatusWord = ForwardingWord.attemptToForward(object);
+        if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+            /* We lost the race; the object is either forwarded or being forwarded by another thread. */
+            /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
+            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+            if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
         } else {
-            ObjectReference newObject = object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
-            return newObject.isNull() ? object : newObject;
+            /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
+            if (isMarked(object)) {
+                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                    VM.assertions._assert(HeaderByte.isUnlogged(object));
+                return object;
+            } else {
+                /* we are the first to reach the object; either mark in place or forward it */
+                ObjectReference rtn = object;
+                if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
+                    /* forward */
+                    rtn = ForwardingWord.forwardObject(object, allocator);
+                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+                } else {
+                    clearMark(object);
+                }
+                trace.processNode(rtn);
+                return rtn;
+            }
         }
     }
 
@@ -267,6 +281,12 @@ public final class ZSpace extends Space {
     @Inline
     public static ObjectReference getForwardingPointer(ObjectReference object) {
         return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
+    }
+
+    @Inline
+    public static void clearMark(ObjectReference object) {
+        Word oldValue = VM.objectModel.readAvailableBitsWord(object);
+        VM.objectModel.writeAvailableBitsWord(object, oldValue.and(GC_MARK_BIT_MASK.not()));
     }
 
     /**
