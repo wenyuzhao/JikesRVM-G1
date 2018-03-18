@@ -94,7 +94,7 @@ public class ZGCCollector extends StopTheWorldCollector {
     ZGC.zSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(getCurrentTrace().isLive(object));
+      // VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
         Log.writeln("#Block " + MarkRegion.of(object.toAddress()) + " is marked for relocate");
       }
