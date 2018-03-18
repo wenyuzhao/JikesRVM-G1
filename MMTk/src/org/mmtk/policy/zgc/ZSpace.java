@@ -13,6 +13,7 @@
 package org.mmtk.policy.zgc;
 
 import org.mmtk.plan.Plan;
+import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.MarkRegion;
 import org.mmtk.policy.Space;
@@ -43,10 +44,11 @@ public final class ZSpace extends Space {
      * Class variables
      */
 
-    public static final int LOCAL_GC_BITS_REQUIRED = 2;
+    public static final int LOCAL_GC_BITS_REQUIRED = 1;
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
-    public static final int GC_HEADER_WORDS_REQUIRED = 0;
+    public static final int GC_HEADER_WORDS_REQUIRED = 1;
 
+    private static final Word GC_MARK_BIT_MASK = Word.one();
     private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
 
     /**
@@ -87,7 +89,7 @@ public final class ZSpace extends Space {
      * Prepare for a new collection increment.
      */
     public void prepare() {
-        ZObjectHeader.deltaMarkState(true);
+        //ZObjectHeader.deltaMarkState(true);
     }
 
     /**
@@ -167,7 +169,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postAlloc(ObjectReference object, int bytes) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZObjectHeader.isNewObject(object));
+        // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZObjectHeader.isNewObject(object));
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     }
 
@@ -181,41 +183,30 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
-        ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
+        //ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
         ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
 
-    /****************************************************************************
-     *
-     * Object tracing
-     */
-
     /**
-     * Trace a reference to an object.  If the object header is not already
-     * marked, mark the object and enqueue it for subsequent processing.
+     * Trace an object under a copying collection policy.
+     * If the object is already copied, the copy is returned.
+     * Otherwise, a copy is created and returned.
+     * In either case, the object will be marked on return.
      *
-     * @param trace The trace performing the transitive closure
-     * @param object The object to be traced.
-     * @param allocator The allocator to which any copying should be directed
-     * @return The object, which may have been moved.
+     * @param trace The trace being conducted.
+     * @param object The object to be forwarded.
+     * @return The forwarded object.
      */
     @Inline
-    public synchronized ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object, int allocator) {
-        ObjectReference rtn = object;
-
-        if (ForwardingWord.isForwarded(object)) {
-            Word statusWord = ForwardingWord.attemptToForward(object);
-            ObjectReference newObject = ForwardingWord.extractForwardingPointer(statusWord);
-            rtn = newObject;
+    public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
+        if (testAndMark(object)) {
+            trace.processNode(object);
+        } else if (!getForwardingPointer(object).isNull()) {
+            return getForwardingPointer(object);
         }
-        if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
-            Address zPage = MarkRegion.of(rtn.toAddress());
-            MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
-            trace.processNode(rtn);
-        }
-        return rtn;
+        return object;
     }
 
     /**
@@ -234,17 +225,25 @@ public final class ZSpace extends Space {
     }
 
     /**
-     * Trace a reference to an object, forwarding the object if appropriate
-     * If the object is not already marked, mark the object and enqueue it
-     * for subsequent processing.
+     * Trace an object under a copying collection policy.
+     * If the object is already copied, the copy is returned.
+     * Otherwise, a copy is created and returned.
+     * In either case, the object will be marked on return.
      *
-     * @param trace The trace performing the transitive closure
-     * @param object The object to be traced.
-     * @param allocator The allocator to which any copying should be directed
-     * @return Either the object or a forwarded object, if it was forwarded.
+     * @param trace The trace being conducted.
+     * @param object The object to be forwarded.
+     * @return The forwarded object.
      */
     @Inline
-    public ObjectReference traceRelocateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+    public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
+        /*if (testAndClearMark(object)) {
+            trace.processNode(object);
+        }
+        ObjectReference newObject = getForwardingPointer(object);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!newObject.isNull());
+        return getForwardingPointer(object);*/
+
+
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
@@ -254,33 +253,22 @@ public final class ZSpace extends Space {
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             return rtn;
         } else {
-            byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (ZObjectHeader.testMarkState(priorState, ZObjectHeader.markState)) {
-                /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
-                /* Note that in a sticky mark bits collector, the mark state does not change at each GC, so correct mark state does not imply another thread got there first */
-                //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(nurseryCollection || defrag.spaceExhausted() || ObjectHeader.isPinnedObject(object));
-                ZObjectHeader.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
-                return object;
-            } else {
+            if (testAndClearMark(object)) {
                 /* we are the first to reach the object; either mark in place or forward it */
                 ObjectReference rtn = object;
                 if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
                     /* forward */
-                    //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
-                    ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+                    rtn = ForwardingWord.forwardObject(object, allocator);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                        VM.assertions._assert(HeaderByte.isUnlogged(newObject));
-
-                    //Log.writeln("#Forward " + object.toAddress() + " -> " + newObject.toAddress());
-
-                    rtn = newObject;
-                } else {
-                    ZObjectHeader.setMarkStateUnlogAndUnlock(object, priorState, ZObjectHeader.markState);
+                        VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 }
                 trace.processNode(rtn);
                 return rtn;
+            } else {
+                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                    VM.assertions._assert(HeaderByte.isUnlogged(object));
+                return object;
             }
         }
     }
@@ -291,6 +279,65 @@ public final class ZSpace extends Space {
      */
 
     /**
+     * Non-atomic read of forwarding pointer
+     *
+     * @param object The object whose forwarding pointer is to be read
+     * @return The forwarding pointer stored in <code>object</code>'s
+     * header.
+     */
+    @Inline
+    public static ObjectReference getForwardingPointer(ObjectReference object) {
+        return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
+    }
+
+    /**
+     * Used to mark boot image objects during a parallel scan of objects
+     * during GC.
+     *
+     * @param object The object to be marked
+     * @return {@code true} if marking was done.
+     */
+    @Inline
+    public static boolean testAndMark(ObjectReference object) {
+        Word oldValue;
+        do {
+            oldValue = VM.objectModel.prepareAvailableBits(object);
+            Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+            if (!markBit.isZero()) return false;
+        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.or(GC_MARK_BIT_MASK)));
+        return true;
+    }
+
+    /**
+     * Used to mark boot image objects during a parallel scan of objects
+     * during GC Returns true if marking was done.
+     *
+     * @param object The object to be marked
+     * @return {@code true} if marking was done, {@code false} otherwise
+     */
+    @Inline
+    private static boolean testAndClearMark(ObjectReference object) {
+        Word oldValue;
+        do {
+            oldValue = VM.objectModel.prepareAvailableBits(object);
+            Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+            if (markBit.isZero()) return false;
+        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.and(GC_MARK_BIT_MASK.not())));
+        return true;
+    }
+
+    /**
+     * @param object the object in question
+     * @return {@code true} if the object is marked
+     */
+    @Inline
+    public static boolean isMarked(ObjectReference object) {
+        Word oldValue = VM.objectModel.readAvailableBitsWord(object);
+        Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+        return (!markBit.isZero());
+    }
+
+    /**
      * Generic test of the liveness of an object
      *
      * @param object The object in question
@@ -299,7 +346,7 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public boolean isLive(ObjectReference object) {
-        return ZObjectHeader.testMarkState(object, ZObjectHeader.markState);
+        return isMarked(object);
     }
 
 }
