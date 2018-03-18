@@ -201,12 +201,23 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
+        ObjectReference rtn = object;
+        if (ForwardingWord.isForwarded(object)) {
+            Word statusWord = ForwardingWord.attemptToForward(object);
+            rtn = ForwardingWord.extractForwardingPointer(statusWord);
+        }
         if (testAndMark(object)) {
+            Address zPage = MarkRegion.of(rtn.toAddress());
+            MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
+            trace.processNode(rtn);
+        }
+        return rtn;
+        /*if (testAndMark(object)) {
             trace.processNode(object);
         } else if (!getForwardingPointer(object).isNull()) {
             return getForwardingPointer(object);
         }
-        return object;
+        return object;*/
     }
 
     /**
@@ -236,6 +247,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
+        Log.writeln("TraceRelocateObject " + object);
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
