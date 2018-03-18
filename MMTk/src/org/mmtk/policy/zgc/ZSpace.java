@@ -14,13 +14,12 @@ package org.mmtk.policy.zgc;
 
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkRegion;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 
-import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
@@ -74,9 +73,9 @@ public final class ZSpace extends Space {
     public ZSpace(String name, boolean zeroed, VMRequest vmRequest) {
         super(name, false, false, zeroed, vmRequest);
         if (vmRequest.isDiscontiguous())
-            pr = new FreeListPageResource(this, MarkBlock.METADATA_PAGES_PER_REGION);
+            pr = new FreeListPageResource(this, MarkRegion.METADATA_PAGES_PER_MMTK_REGION);
         else
-            pr = new FreeListPageResource(this, start, extent, MarkBlock.METADATA_PAGES_PER_REGION);
+            pr = new FreeListPageResource(this, start, extent, MarkRegion.METADATA_PAGES_PER_MMTK_REGION);
     }
 
     /****************************************************************************
@@ -129,14 +128,14 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         // Allocate
-        Address zPage = acquire(MarkBlock.PAGES_IN_BLOCK);
+        Address zPage = acquire(MarkRegion.PAGES_IN_REGION);
 
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(zPage));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(zPage));
 
         if (!zPage.isZero()) {
-            VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(MarkBlock.BYTES_IN_BLOCK));;
+            VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(MarkRegion.BYTES_IN_REGION));;
             Log.writeln("#Block alloc " + zPage + ", in region " + EmbeddedMetaData.getMetaDataBase(zPage));
-            MarkBlock.register(zPage);
+            MarkRegion.register(zPage);
         }
         return zPage;
     }
@@ -150,8 +149,8 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public void release(Address zPage) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(zPage));
-        MarkBlock.unregister(zPage);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(zPage));
+        MarkRegion.unregister(zPage);
         ((FreeListPageResource) pr).releasePages(zPage);
     }
 
@@ -212,8 +211,8 @@ public final class ZSpace extends Space {
             rtn = newObject;
         }
         if (ZObjectHeader.testAndMark(rtn, ZObjectHeader.markState) != ZObjectHeader.markState) {
-            Address zPage = MarkBlock.of(rtn.toAddress());
-            MarkBlock.setUsedSize(zPage, MarkBlock.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
+            Address zPage = MarkRegion.of(rtn.toAddress());
+            MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
         return rtn;
@@ -267,7 +266,7 @@ public final class ZSpace extends Space {
             } else {
                 /* we are the first to reach the object; either mark in place or forward it */
                 ObjectReference rtn = object;
-                if (MarkBlock.relocationRequired(MarkBlock.of(object.toAddress()))) {
+                if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
                     /* forward */
                     //Log.writeln("#Forwarding " + object + ", curr size " + VM.objectModel.getCurrentSize(object) + " copy size " + VM.objectModel.getSizeWhenCopied(object));
                     ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);

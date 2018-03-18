@@ -13,7 +13,7 @@
 
 package org.mmtk.utility.alloc;
 
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkRegion;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.zgc.ZSpace;
 import org.mmtk.vm.VM;
@@ -25,7 +25,7 @@ import org.vmmagic.unboxed.Address;
  *
  */
 @Uninterruptible
-public class MarkBlockAllocator extends Allocator {
+public class MarkRegionAllocator extends Allocator {
 
   /****************************************************************************
    *
@@ -48,7 +48,7 @@ public class MarkBlockAllocator extends Allocator {
    * @param space The space to bump point into.
    * @param copy TODO
    */
-  public MarkBlockAllocator(ZSpace space, boolean copy) {
+  public MarkRegionAllocator(ZSpace space, boolean copy) {
     this.space = space;
     this.copy = copy;
     reset();
@@ -114,9 +114,9 @@ public class MarkBlockAllocator extends Allocator {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(ptr));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(ptr));
     cursor = ptr;
-    limit = ptr.plus(MarkBlock.BYTES_IN_BLOCK);
+    limit = ptr.plus(MarkRegion.BYTES_IN_REGION);
     return alloc(bytes, align, offset);
   }
 

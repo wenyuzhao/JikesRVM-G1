@@ -16,7 +16,7 @@ import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.MarkRegionAllocator;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -43,7 +43,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final MarkBlockAllocator zgc;
+  protected final MarkRegionAllocator zgc;
 
   /****************************************************************************
    *
@@ -54,7 +54,7 @@ public class ZGCMutator extends StopTheWorldMutator {
    * Constructor
    */
   public ZGCMutator() {
-    zgc = new MarkBlockAllocator(ZGC.zSpace, false);
+    zgc = new MarkRegionAllocator(ZGC.zSpace, false);
   }
 
   /****************************************************************************

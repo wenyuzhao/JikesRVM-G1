@@ -14,7 +14,7 @@ package org.mmtk.plan.zgc;
 
 import org.mmtk.plan.StopTheWorldConstraints;
 import org.mmtk.policy.zgc.ZObjectHeader;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkRegion;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -44,6 +44,6 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return MarkBlock.BYTES_IN_BLOCK;
+    return MarkRegion.BYTES_IN_REGION;
   }
 }

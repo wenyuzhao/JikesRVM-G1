@@ -16,9 +16,9 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkRegion;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.MarkRegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -51,7 +51,7 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected final MarkBlockAllocator copy = new MarkBlockAllocator(ZGC.zSpace, true);
+  protected final MarkRegionAllocator copy = new MarkRegionAllocator(ZGC.zSpace, true);
   protected final ZGCTraceLocal markTrace = new ZGCTraceLocal(global().markTrace);
   protected final ZGCRelocationTraceLocal relocateTrace = new ZGCRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
@@ -96,7 +96,7 @@ public class ZGCCollector extends StopTheWorldCollector {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.writeln("#Block " + MarkBlock.of(object.toAddress()) + " is marked for relocate");
+        Log.writeln("#Block " + MarkRegion.of(object.toAddress()) + " is marked for relocate");
       }
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
     }
