@@ -207,8 +207,7 @@ public final class ZSpace extends Space {
         //Log.writeln("TraceMarkObject " + object);
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
-            Word statusWord = ForwardingWord.attemptToForward(object);
-            rtn = ForwardingWord.spinAndGetForwardedObject(object, statusWord);
+            rtn = object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
             Log.writeln("# " + object + " -> " + rtn);
         }
         boolean f = ForwardingWord.isForwardedOrBeingForwarded(rtn);
