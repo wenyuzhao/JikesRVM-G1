@@ -267,16 +267,16 @@ public final class ZSpace extends Space {
                         VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 } else {
                     Log.writeln("# " + object);
-                    clearMark(object);
                     ForwardingWord.clearForwardingBits(rtn);
                 }
+                clearMark(rtn);
                 trace.processNode(rtn);
                 return rtn;
             } else {
                 if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                     VM.assertions._assert(HeaderByte.isUnlogged(object));
                 ForwardingWord.clearForwardingBits(object);
-                Log.writeln("# " + object + " marked");
+                Log.writeln("# " + object + " already visited");
                 return object;
             }
         }
