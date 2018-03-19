@@ -250,7 +250,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
-        Log.writeln("TraceRelocateObject " + object);
+        Log.writeln("TraceRelocateObject " + object + " " + ForwardingWord.isForwardedOrBeingForwarded(object));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
