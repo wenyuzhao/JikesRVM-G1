@@ -210,8 +210,9 @@ public final class ZSpace extends Space {
             rtn = getForwardingPointer(object);
             Log.writeln("# " + object + " -> " + rtn);
         }
+        boolean f = ForwardingWord.isForwardedOrBeingForwarded(rtn);
         if (testAndMark(rtn)) {
-            Log.writeln("#Marked " + rtn + " " + isMarked(rtn) + ForwardingWord.isForwardedOrBeingForwarded(rtn));
+            Log.writeln("#Marked " + rtn + " " + isMarked(rtn) + " " + f + " " + ForwardingWord.isForwardedOrBeingForwarded(rtn));
             Address zPage = MarkRegion.of(rtn.toAddress());
             MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
