@@ -184,6 +184,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
+        Log.writeln("PostCopy " + object + isMarked(object));
         //ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
         //ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
@@ -202,6 +203,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
+        Log.writeln("TraceMarkObject " + object);
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
             // Word statusWord = ForwardingWord.attemptToForward(object);
