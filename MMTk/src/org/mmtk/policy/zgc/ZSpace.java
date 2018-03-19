@@ -211,6 +211,7 @@ public final class ZSpace extends Space {
             Log.writeln("# " + object + " -> " + rtn);
         }
         if (testAndMark(rtn)) {
+            Log.writeln("#Marked " + rtn + " " + isMarked(rtn) + ForwardingWord.isForwardedOrBeingForwarded(rtn));
             Address zPage = MarkRegion.of(rtn.toAddress());
             MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
@@ -251,7 +252,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
-        Log.writeln("TraceRelocateObject " + object + " " + ForwardingWord.isForwardedOrBeingForwarded(object));
+        // Log.writeln("TraceRelocateObject " + object + " " + ForwardingWord.isForwardedOrBeingForwarded(object));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         ObjectReference rtn = object;
@@ -261,7 +262,7 @@ public final class ZSpace extends Space {
             rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             Log.writeln("# " + object + " -> " + rtn);
-            // return rtn;
+            return rtn;
         }
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
             if (!isMarked(rtn)) {
@@ -365,7 +366,7 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public boolean isLive(ObjectReference object) {
-        return true;
+        return !isMarked(object);
     }
 
 }
