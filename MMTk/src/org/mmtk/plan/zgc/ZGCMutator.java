@@ -78,8 +78,11 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator == ZGC.ALLOC_Z) return;
-    super.postAlloc(object, typeRef, bytes, allocator);
+    if (allocator == ZGC.ALLOC_Z) {
+      ZGC.zSpace.postAlloc(object, bytes);
+    } else {
+      super.postAlloc(object, typeRef, bytes, allocator);
+    }
   }
 
   @Override
