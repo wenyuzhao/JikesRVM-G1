@@ -43,9 +43,9 @@ public final class ZSpace extends Space {
      *
      * Class variables
      */
-    public static final int LOCAL_GC_BITS_REQUIRED = 1;
+    public static final int LOCAL_GC_BITS_REQUIRED = 1 + ForwardingWord.FORWARDING_BITS;
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
-    public static final int GC_HEADER_WORDS_REQUIRED = 1;
+    public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
     private static final Word GC_MARK_BIT_MASK = Word.one().lsh(2);
     private static final Word MARK_MASK = Word.fromIntZeroExtend(1 << ForwardingWord.FORWARDING_MASK);
@@ -257,36 +257,38 @@ public final class ZSpace extends Space {
         // Log.writeln("TraceRelocateObject " + object + " " + ForwardingWord.isForwardedOrBeingForwarded(object));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
-        ObjectReference rtn = object;
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
             /* We lost the race; the object is either forwarded or being forwarded by another thread. */
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-            rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             Log.writeln("# " + object + " -> " + rtn);
             return rtn;
-        }
+        } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (!isMarked(rtn)) {
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                    VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-                ForwardingWord.clearForwardingBits(rtn);
-                Log.writeln("# " + rtn + " marked");
-                return rtn;
-            } else {
+            if (testAndClearMark(object)) {
                 /* we are the first to reach the object; either mark in place or forward it */
+                ObjectReference rtn = object;
                 if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
                     /* forward */
                     rtn = ForwardingWord.forwardObject(object, allocator);
                     Log.writeln("# " + object + " => " + rtn);
-                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                        VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 } else {
                     Log.writeln("# " + object);
+                    ForwardingWord.clearForwardingBits(rtn);
                 }
-                clearMark(rtn);
                 trace.processNode(rtn);
                 return rtn;
+            } else {
+                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
+                    VM.assertions._assert(HeaderByte.isUnlogged(object));
+                ForwardingWord.clearForwardingBits(object);
+                Log.writeln("# " + object + " marked");
+                return object;
             }
+        }
     }
 
     /****************************************************************************
