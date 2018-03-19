@@ -78,7 +78,7 @@ public final class ZSpace extends Space {
                     newValue |= HeaderByte.UNLOGGED_BIT;
                 VM.objectModel.writeAvailableByte(object, newValue);
             }
-            return oldMarkState == markState;
+            return oldMarkState != markState;
         }
         static void deltaMarkState(boolean increment) {
             byte rtn = markState;
@@ -309,9 +309,11 @@ public final class ZSpace extends Space {
                 if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
                     /* forward */
                     rtn = ForwardingWord.forwardObject(object, allocator);
+                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                     Log.writeln("# " + object + " => " + rtn);
                 } else {
                     Header.setMarkStateUnlogAndUnlock(object, priorState);
+                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 }
                 trace.processNode(rtn);
                 return rtn;
