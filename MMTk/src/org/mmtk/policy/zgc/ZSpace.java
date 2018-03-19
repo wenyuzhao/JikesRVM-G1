@@ -265,6 +265,7 @@ public final class ZSpace extends Space {
             if (!isMarked(object)) {
                 if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
                     VM.assertions._assert(HeaderByte.isUnlogged(object));
+                ForwardingWord.clearForwardingBits(object);
                 Log.writeln("# " + object + " marked");
                 return object;
             } else {
@@ -276,6 +277,7 @@ public final class ZSpace extends Space {
                     Log.writeln("# " + object + " => " + rtn);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 } else {
+                    ForwardingWord.clearForwardingBits(object);
                     Log.writeln("# " + object);
                     clearMark(object);
                 }
@@ -365,7 +367,7 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public boolean isLive(ObjectReference object) {
-        return isMarked(object);
+        return true;
     }
 
 }
