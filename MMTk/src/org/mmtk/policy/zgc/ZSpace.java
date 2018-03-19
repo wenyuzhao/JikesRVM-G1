@@ -203,8 +203,8 @@ public final class ZSpace extends Space {
     public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
-            Word statusWord = ForwardingWord.attemptToForward(object);
-            rtn = ForwardingWord.extractForwardingPointer(statusWord);
+            // Word statusWord = ForwardingWord.attemptToForward(object);
+            rtn = getForwardingPointer(object);
         }
         if (testAndMark(object)) {
             Address zPage = MarkRegion.of(rtn.toAddress());
