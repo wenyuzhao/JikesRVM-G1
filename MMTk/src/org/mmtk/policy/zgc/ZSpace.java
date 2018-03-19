@@ -169,6 +169,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postAlloc(ObjectReference object, int bytes) {
+        Log.writeln("#Alloc " + object + " " + ForwardingWord.isForwardedOrBeingForwarded(object));
         // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZObjectHeader.isNewObject(object));
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     }
@@ -184,7 +185,7 @@ public final class ZSpace extends Space {
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
         //ZObjectHeader.writeMarkState(object, ZObjectHeader.markState);
-        ForwardingWord.clearForwardingBits(object);
+        //ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -256,9 +257,6 @@ public final class ZSpace extends Space {
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             Log.writeln("# " + object + " -> " + rtn);
-
-            clearMark(rtn);
-            trace.processNode(rtn);
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
