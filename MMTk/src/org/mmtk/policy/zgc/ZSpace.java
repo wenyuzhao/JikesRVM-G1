@@ -206,7 +206,7 @@ public final class ZSpace extends Space {
             // Word statusWord = ForwardingWord.attemptToForward(object);
             rtn = getForwardingPointer(object);
         }
-        if (testAndMark(object)) {
+        if (testAndMark(rtn)) {
             Address zPage = MarkRegion.of(rtn.toAddress());
             MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
