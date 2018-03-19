@@ -369,7 +369,7 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public boolean isLive(ObjectReference object) {
-        return !isMarked(object);
+        return true;
     }
 
 }
