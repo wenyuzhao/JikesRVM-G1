@@ -38,19 +38,78 @@ import org.vmmagic.unboxed.*;
  */
 @Uninterruptible
 public final class ZSpace extends Space {
+    /** number of header bits we may use */
+    private static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
 
-    /****************************************************************************
-     *
-     * Class variables
-     */
-    public static final int LOCAL_GC_BITS_REQUIRED = 1 + ForwardingWord.FORWARDING_BITS;
+    /* local status bits */
+    private static final byte NEW_OBJECT_MARK = 0; // using zero means no need for explicit initialization on allocation
+    private static final int MARK_BASE = ForwardingWord.FORWARDING_BITS;
+    private static final int  MAX_MARKCOUNT_BITS = AVAILABLE_LOCAL_BITS - MARK_BASE;
+    private static final byte MARK_INCREMENT = 1 << MARK_BASE;
+    private static final byte MARK_MASK = (byte) (((1 << MAX_MARKCOUNT_BITS) - 1) << MARK_BASE);
+    private static final byte MARK_AND_FORWARDING_MASK = (byte) (MARK_MASK | ForwardingWord.FORWARDING_MASK);
+    private static final byte MARK_BASE_VALUE = MARK_INCREMENT;
+
+    public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
     public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
-    private static final Word GC_MARK_BIT_MASK = Word.one().lsh(2);
-    private static final Word MARK_MASK = Word.fromIntZeroExtend(1 << ForwardingWord.FORWARDING_MASK);
-    private static final Word MARK_AND_FORWARD_MASK = MARK_MASK.or(Word.fromIntZeroExtend(ForwardingWord.FORWARDING_MASK));
-    private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
+    static class Header {
+        static byte markState = MARK_BASE_VALUE;
+        static boolean isNewObject(ObjectReference object) {
+            return (VM.objectModel.readAvailableByte(object) & MARK_AND_FORWARDING_MASK) == NEW_OBJECT_MARK;
+        }
+        static boolean isMarked(ObjectReference object) {
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
+            return (VM.objectModel.readAvailableByte(object) & MARK_MASK) == markState;
+        }
+        static boolean isMarked(byte gcByte) {
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
+            return (gcByte & MARK_MASK) == markState;
+        }
+        static boolean testAndMark(ObjectReference object) {
+            byte oldValue, newValue, oldMarkState;
+
+            oldValue = VM.objectModel.readAvailableByte(object);
+            oldMarkState = (byte) (oldValue & MARK_MASK);
+            if (oldMarkState != markState) {
+                newValue = (byte) ((oldValue & ~MARK_MASK) | markState);
+                if (HeaderByte.NEEDS_UNLOGGED_BIT)
+                    newValue |= HeaderByte.UNLOGGED_BIT;
+                VM.objectModel.writeAvailableByte(object, newValue);
+            }
+            return oldMarkState == markState;
+        }
+        static void deltaMarkState(boolean increment) {
+            byte rtn = markState;
+            do {
+                rtn = (byte) (increment ? rtn + MARK_INCREMENT : rtn - MARK_INCREMENT);
+                rtn &= MARK_MASK;
+            } while (rtn < MARK_BASE_VALUE);
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
+            markState = rtn;
+        }
+        static void writeMarkState(ObjectReference object) {
+            byte oldValue = VM.objectModel.readAvailableByte(object);
+            byte markValue = markState;
+            byte newValue = (byte) (oldValue & ~MARK_AND_FORWARDING_MASK);
+            if (HeaderByte.NEEDS_UNLOGGED_BIT)
+                newValue |= HeaderByte.UNLOGGED_BIT;
+            newValue |= markValue;
+            VM.objectModel.writeAvailableByte(object, newValue);
+        }
+        static void returnToPriorStateAndEnsureUnlogged(ObjectReference object, byte status) {
+            if (HeaderByte.NEEDS_UNLOGGED_BIT) status |= HeaderByte.UNLOGGED_BIT;
+            VM.objectModel.writeAvailableByte(object, status);
+        }
+        static void setMarkStateUnlogAndUnlock(ObjectReference object, byte gcByte) {
+            byte oldGCByte = gcByte;
+            byte newGCByte = (byte) ((oldGCByte & ~MARK_AND_FORWARDING_MASK) | markState);
+            if (HeaderByte.NEEDS_UNLOGGED_BIT) newGCByte |= HeaderByte.UNLOGGED_BIT;
+            VM.objectModel.writeAvailableByte(object, newGCByte);
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((oldGCByte & MARK_MASK) != markState);
+        }
+    }
 
     /**
      * The caller specifies the region of virtual memory to be used for
@@ -81,16 +140,11 @@ public final class ZSpace extends Space {
             pr = new FreeListPageResource(this, start, extent, MarkRegion.METADATA_PAGES_PER_MMTK_REGION);
     }
 
-    /****************************************************************************
-     *
-     * Global prepare and release
-     */
-
     /**
      * Prepare for a new collection increment.
      */
     public void prepare() {
-        //ZObjectHeader.deltaMarkState(true);
+        Header.deltaMarkState(true);
     }
 
     /**
@@ -114,11 +168,6 @@ public final class ZSpace extends Space {
     public int getPagesUsed() {
         return pr.reservedPages() - getCollectionReserve();
     }
-
-    /****************************************************************************
-     *
-     * Allocation
-     */
 
     /**
      * Return a pointer to a set of new usable blocks, or null if none are available.
@@ -157,11 +206,6 @@ public final class ZSpace extends Space {
         ((FreeListPageResource) pr).releasePages(zPage);
     }
 
-    /****************************************************************************
-     *
-     * Header manipulation
-     */
-
     /**
      * Perform any required post allocation initialization
      *
@@ -170,7 +214,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postAlloc(ObjectReference object, int bytes) {
-        // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ZObjectHeader.isNewObject(object));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     }
 
@@ -184,35 +228,10 @@ public final class ZSpace extends Space {
      */
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
+        Header.writeMarkState(object);
         ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
-    }
-
-    /**
-     * Trace an object under a copying collection policy.
-     * If the object is already copied, the copy is returned.
-     * Otherwise, a copy is created and returned.
-     * In either case, the object will be marked on return.
-     *
-     * @param trace The trace being conducted.
-     * @param object The object to be forwarded.
-     * @return The forwarded object.
-     */
-    @Inline
-    public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
-        ObjectReference rtn = object;
-        if (ForwardingWord.isForwarded(object)) {
-            rtn = ForwardingWord.extractForwardingPointer(ForwardingWord.attemptToForward(object));
-            ForwardingWord.setForwardingPointer(object, rtn);
-            Log.writeln("# " + object + " -> " + rtn);
-        }
-        if (testAndMark(rtn)) {
-            Address zPage = MarkRegion.of(rtn.toAddress());
-            MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
-            trace.processNode(rtn);
-        }
-        return rtn;
     }
 
     /**
@@ -241,51 +260,64 @@ public final class ZSpace extends Space {
      * @return The forwarded object.
      */
     @Inline
+    public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
+        ObjectReference rtn = object;
+        if (ForwardingWord.isForwarded(object)) {
+            rtn = getForwardingPointer(object);
+            Log.writeln("# " + object + " -> " + rtn);
+        }
+        if (Header.testAndMark(rtn)) {
+            Address zPage = MarkRegion.of(rtn.toAddress());
+            MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
+            trace.processNode(rtn);
+        }
+        return rtn;
+    }
+
+    /**
+     * Trace an object under a copying collection policy.
+     * If the object is already copied, the copy is returned.
+     * Otherwise, a copy is created and returned.
+     * In either case, the object will be marked on return.
+     *
+     * @param trace The trace being conducted.
+     * @param object The object to be forwarded.
+     * @return The forwarded object.
+     */
+    @Inline
     public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
-        // Log.writeln("TraceRelocateObject " + object + " " + ForwardingWord.isForwardedOrBeingForwarded(object));
         /* Race to be the (potential) forwarder */
         Word priorStatusWord = ForwardingWord.attemptToForward(object);
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
             /* We lost the race; the object is either forwarded or being forwarded by another thread. */
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-            //clearMark(object);
-            //Word forwardingWord = ForwardingWord.attemptToForward(object);
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             Log.writeln("# " + object + " -> " + rtn);
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (isMarked(object)) {
+            byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
+            if (Header.isMarked(priorState)) {
+                /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
+                Header.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
+                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
+                return object;
+            } else {
                 /* we are the first to reach the object; either mark in place or forward it */
                 ObjectReference rtn = object;
                 if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
                     /* forward */
                     rtn = ForwardingWord.forwardObject(object, allocator);
                     Log.writeln("# " + object + " => " + rtn);
-                    if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                        VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 } else {
-                    Log.writeln("# " + object);
-                    ForwardingWord.clearForwardingBits(rtn);
+                    Header.setMarkStateUnlogAndUnlock(object, priorState);
                 }
-                clearMark(rtn);
                 trace.processNode(rtn);
                 return rtn;
-            } else {
-                if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER)
-                    VM.assertions._assert(HeaderByte.isUnlogged(object));
-                ForwardingWord.clearForwardingBits(object);
-                Log.writeln("# " + object + " already visited");
-                return object;
             }
         }
     }
-
-    /****************************************************************************
-     *
-     * Object state
-     */
 
     /**
      * Non-atomic read of forwarding pointer
@@ -299,59 +331,6 @@ public final class ZSpace extends Space {
         return VM.objectModel.readAvailableBitsWord(object).and(Word.fromIntZeroExtend(ForwardingWord.FORWARDING_MASK).not()).toAddress().toObjectReference();
     }
 
-    @Inline
-    public static void clearMark(ObjectReference object) {
-        Word oldValue = VM.objectModel.readAvailableBitsWord(object);
-        VM.objectModel.writeAvailableBitsWord(object, oldValue.and(MARK_MASK.not()));
-    }
-
-    /**
-     * Used to mark boot image objects during a parallel scan of objects
-     * during GC.
-     *
-     * @param object The object to be marked
-     * @return {@code true} if marking was done.
-     */
-    @Inline
-    public static boolean testAndMark(ObjectReference object) {
-        Word oldValue;
-        do {
-            oldValue = VM.objectModel.prepareAvailableBits(object);
-            Word markBit = oldValue.and(MARK_MASK);
-            if (!markBit.isZero()) return false;
-        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.or(MARK_MASK)));
-        return true;
-    }
-
-    /**
-     * Used to mark boot image objects during a parallel scan of objects
-     * during GC Returns true if marking was done.
-     *
-     * @param object The object to be marked
-     * @return {@code true} if marking was done, {@code false} otherwise
-     */
-    @Inline
-    private static boolean testAndClearMark(ObjectReference object) {
-        Word oldValue;
-        do {
-            oldValue = VM.objectModel.prepareAvailableBits(object);
-            Word markBit = oldValue.and(MARK_MASK);
-            if (markBit.isZero()) return false;
-        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.and(MARK_MASK.not())));
-        return true;
-    }
-
-    /**
-     * @param object the object in question
-     * @return {@code true} if the object is marked
-     */
-    @Inline
-    public static boolean isMarked(ObjectReference object) {
-        Word oldValue = VM.objectModel.readAvailableBitsWord(object);
-        Word markBit = oldValue.and(MARK_MASK);
-        return (!markBit.isZero());
-    }
-
     /**
      * Generic test of the liveness of an object
      *
@@ -361,7 +340,7 @@ public final class ZSpace extends Space {
     @Override
     @Inline
     public boolean isLive(ObjectReference object) {
-        return true;
+        return Header.isMarked(object);
     }
 
 }
