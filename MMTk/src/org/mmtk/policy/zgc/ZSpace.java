@@ -208,6 +208,7 @@ public final class ZSpace extends Space {
         if (ForwardingWord.isForwarded(object)) {
             // Word statusWord = ForwardingWord.attemptToForward(object);
             rtn = getForwardingPointer(object);
+            Log.writeln("# " + object + " -> " + rtn);
         }
         if (testAndMark(rtn)) {
             Address zPage = MarkRegion.of(rtn.toAddress());
@@ -259,9 +260,6 @@ public final class ZSpace extends Space {
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             Log.writeln("# " + object + " -> " + rtn);
-            if (testAndClearMark(object)) {
-                trace.processNode(rtn);
-            }
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
