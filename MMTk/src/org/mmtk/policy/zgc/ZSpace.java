@@ -43,12 +43,13 @@ public final class ZSpace extends Space {
      *
      * Class variables
      */
-
     public static final int LOCAL_GC_BITS_REQUIRED = 1;
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
     public static final int GC_HEADER_WORDS_REQUIRED = 1;
 
-    private static final Word GC_MARK_BIT_MASK = Word.one();
+    private static final Word GC_MARK_BIT_MASK = Word.one().lsh(2);
+    private static final Word MARK_MASK = Word.fromIntZeroExtend(1 << ForwardingWord.FORWARDING_MASK);
+    private static final Word MARK_AND_FORWARD_MASK = MARK_MASK.or(Word.fromIntZeroExtend(ForwardingWord.FORWARDING_MASK));
     private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
 
     /**
@@ -206,8 +207,8 @@ public final class ZSpace extends Space {
         //Log.writeln("TraceMarkObject " + object);
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
-            // Word statusWord = ForwardingWord.attemptToForward(object);
-            rtn = getForwardingPointer(object);
+            Word statusWord = ForwardingWord.attemptToForward(object);
+            rtn = ForwardingWord.spinAndGetForwardedObject(object, statusWord);
             Log.writeln("# " + object + " -> " + rtn);
         }
         boolean f = ForwardingWord.isForwardedOrBeingForwarded(rtn);
@@ -300,15 +301,15 @@ public final class ZSpace extends Space {
      * @return The forwarding pointer stored in <code>object</code>'s
      * header.
      */
-    @Inline
+    /*@Inline
     public static ObjectReference getForwardingPointer(ObjectReference object) {
         return object.toAddress().loadObjectReference(FORWARDING_POINTER_OFFSET);
-    }
+    }*/
 
     @Inline
     public static void clearMark(ObjectReference object) {
         Word oldValue = VM.objectModel.readAvailableBitsWord(object);
-        VM.objectModel.writeAvailableBitsWord(object, oldValue.and(GC_MARK_BIT_MASK.not()));
+        VM.objectModel.writeAvailableBitsWord(object, oldValue.and(MARK_MASK.not()));
     }
 
     /**
@@ -323,9 +324,9 @@ public final class ZSpace extends Space {
         Word oldValue;
         do {
             oldValue = VM.objectModel.prepareAvailableBits(object);
-            Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+            Word markBit = oldValue.and(MARK_MASK);
             if (!markBit.isZero()) return false;
-        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.or(GC_MARK_BIT_MASK)));
+        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.or(MARK_MASK)));
         return true;
     }
 
@@ -341,9 +342,9 @@ public final class ZSpace extends Space {
         Word oldValue;
         do {
             oldValue = VM.objectModel.prepareAvailableBits(object);
-            Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+            Word markBit = oldValue.and(MARK_MASK);
             if (markBit.isZero()) return false;
-        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.and(GC_MARK_BIT_MASK.not())));
+        } while (!VM.objectModel.attemptAvailableBits(object, oldValue, oldValue.and(MARK_MASK.not())));
         return true;
     }
 
@@ -354,7 +355,7 @@ public final class ZSpace extends Space {
     @Inline
     public static boolean isMarked(ObjectReference object) {
         Word oldValue = VM.objectModel.readAvailableBitsWord(object);
-        Word markBit = oldValue.and(GC_MARK_BIT_MASK);
+        Word markBit = oldValue.and(MARK_MASK);
         return (!markBit.isZero());
     }
 
