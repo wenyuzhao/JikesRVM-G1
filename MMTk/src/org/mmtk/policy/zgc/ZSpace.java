@@ -247,15 +247,15 @@ public final class ZSpace extends Space {
         if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
             /* We lost the race; the object is either forwarded or being forwarded by another thread. */
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-            clearMark(object);
-            Word forwardingWord = ForwardingWord.attemptToForward(object);
-            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, forwardingWord);
+            //clearMark(object);
+            //Word forwardingWord = ForwardingWord.attemptToForward(object);
+            ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
             Log.writeln("# " + object + " -> " + rtn);
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-            if (testAndClearMark(object)) {
+            if (isMarked(object)) {
                 /* we are the first to reach the object; either mark in place or forward it */
                 ObjectReference rtn = object;
                 if (MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()))) {
@@ -266,6 +266,7 @@ public final class ZSpace extends Space {
                         VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 } else {
                     Log.writeln("# " + object);
+                    clearMark(object);
                     ForwardingWord.clearForwardingBits(rtn);
                 }
                 trace.processNode(rtn);
