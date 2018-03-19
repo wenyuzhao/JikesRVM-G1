@@ -295,7 +295,7 @@ public final class ZSpace extends Space {
      */
     @Inline
     public static ObjectReference getForwardingPointer(ObjectReference object) {
-        return VM.objectModel.readAvailableBitsWord(object).and(MARK_AND_FORWARD_MASK.not()).toAddress().toObjectReference();
+        return VM.objectModel.readAvailableBitsWord(object).and(Word.fromIntZeroExtend(ForwardingWord.FORWARDING_MASK).not()).toAddress().toObjectReference();
     }
 
     @Inline
