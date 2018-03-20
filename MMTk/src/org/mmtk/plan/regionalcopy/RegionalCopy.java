@@ -199,7 +199,7 @@ public class RegionalCopy extends StopTheWorld {
   @Interruptible
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, RegionalCopyMarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, RegionalCopyCRelocationTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, RegionalCopyRelocationTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

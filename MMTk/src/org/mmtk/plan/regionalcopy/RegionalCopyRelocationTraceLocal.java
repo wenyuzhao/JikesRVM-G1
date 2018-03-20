@@ -31,9 +31,9 @@ import org.vmmagic.unboxed.ObjectReference;
  * closure over the heap graph.
  */
 @Uninterruptible
-public class RegionalCopyCRelocationTraceLocal extends TraceLocal {
+public class RegionalCopyRelocationTraceLocal extends TraceLocal {
 
-  public RegionalCopyCRelocationTraceLocal(Trace trace) {
+  public RegionalCopyRelocationTraceLocal(Trace trace) {
     super(RegionalCopy.SCAN_RELOCATE, trace);
   }
 

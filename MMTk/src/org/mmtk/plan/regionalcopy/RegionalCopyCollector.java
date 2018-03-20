@@ -53,7 +53,7 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
    */
   protected final MarkRegionAllocator copy = new MarkRegionAllocator(RegionalCopy.markRegionSpace, true);
   protected final RegionalCopyMarkTraceLocal markTrace = new RegionalCopyMarkTraceLocal(global().markTrace);
-  protected final RegionalCopyCRelocationTraceLocal relocateTrace = new RegionalCopyCRelocationTraceLocal(global().relocateTrace);
+  protected final RegionalCopyRelocationTraceLocal relocateTrace = new RegionalCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
 
   /****************************************************************************
