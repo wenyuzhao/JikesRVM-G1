@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.zgc;
+package org.mmtk.plan.regionalcopy;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
@@ -24,22 +24,22 @@ import org.vmmagic.unboxed.ObjectReference;
 
 /**
  * This class implements <i>per-mutator thread</i> behavior
- * and state for the <i>ZGC</i> plan, which implements a full-heap
+ * and state for the <i>RegionalCopy</i> plan, which implements a full-heap
  * semi-space collector.<p>
  *
- * Specifically, this class defines <i>ZGC</i> mutator-time allocation
+ * Specifically, this class defines <i>RegionalCopy</i> mutator-time allocation
  * and per-mutator thread collection semantics (flushing and restoring
  * per-mutator allocator state).<p>
  *
- * See {@link ZGC} for an overview of the semi-space algorithm.
+ * See {@link RegionalCopy} for an overview of the semi-space algorithm.
  *
- * @see ZGC
- * @see ZGCCollector
+ * @see RegionalCopy
+ * @see RegionalCopyCollector
  * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class ZGCMutator extends StopTheWorldMutator {
+public class RegionalCopyMutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
@@ -53,8 +53,8 @@ public class ZGCMutator extends StopTheWorldMutator {
   /**
    * Constructor
    */
-  public ZGCMutator() {
-    zgc = new MarkRegionAllocator(ZGC.zSpace, false);
+  public RegionalCopyMutator() {
+    zgc = new MarkRegionAllocator(RegionalCopy.markRegionSpace, false);
   }
 
   /****************************************************************************
@@ -68,7 +68,7 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == ZGC.ALLOC_Z)
+    if (allocator == RegionalCopy.ALLOC_Z)
       return zgc.alloc(bytes, align, offset);
     else
       return super.alloc(bytes, align, offset, allocator, site);
@@ -78,8 +78,8 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator == ZGC.ALLOC_Z) {
-      ZGC.zSpace.postAlloc(object, bytes);
+    if (allocator == RegionalCopy.ALLOC_Z) {
+      RegionalCopy.markRegionSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -87,7 +87,7 @@ public class ZGCMutator extends StopTheWorldMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == ZGC.zSpace) return zgc;
+    if (space == RegionalCopy.markRegionSpace) return zgc;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -102,13 +102,13 @@ public class ZGCMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == ZGC.PREPARE) {
+    if (phaseId == RegionalCopy.PREPARE) {
       super.collectionPhase(phaseId, primary);
       zgc.reset();
       return;
     }
 
-    if (phaseId == ZGC.RELEASE) {
+    if (phaseId == RegionalCopy.RELEASE) {
       zgc.reset();
       super.collectionPhase(phaseId, primary);
       return;

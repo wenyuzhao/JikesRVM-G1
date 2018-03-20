@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.zgc;
+package org.mmtk.plan.regionalcopy;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
@@ -26,10 +26,10 @@ import org.vmmagic.unboxed.ObjectReference;
  * closure over the heap graph.
  */
 @Uninterruptible
-public class ZGCTraceLocal extends TraceLocal {
+public class RegionalCopyMarkTraceLocal extends TraceLocal {
 
-  public ZGCTraceLocal(Trace trace) {
-    super(ZGC.SCAN_MARK, trace);
+  public RegionalCopyMarkTraceLocal(Trace trace) {
+    super(RegionalCopy.SCAN_MARK, trace);
   }
 
   /****************************************************************************
@@ -43,27 +43,26 @@ public class ZGCTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(ZGC.Z, object))
-      return ZGC.zSpace.isLive(object);
+    if (Space.isInSpace(RegionalCopy.RC, object))
+      return RegionalCopy.markRegionSpace.isLive(object);
     return super.isLive(object);
   }
 
   @Override
   public void prepare() {
     super.prepare();
-    for (Address zPage : MarkRegion.iterate()) {
-      MarkRegion.setUsedSize(zPage, 0);
-      MarkRegion.setRelocationState(zPage, false);
+    for (Address region : MarkRegion.iterate()) {
+      MarkRegion.setUsedSize(region, 0);
+      MarkRegion.setRelocationState(region, false);
     };
   }
 
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
-    //Log.writeln("ZGCTraceLocal.traceObject");
     if (object.isNull()) return object;
-    if (Space.isInSpace(ZGC.Z, object))
-      return ZGC.zSpace.traceMarkObject(this, object);
+    if (Space.isInSpace(RegionalCopy.RC, object))
+      return RegionalCopy.markRegionSpace.traceMarkObject(this, object);
     return super.traceObject(object);
   }
 
@@ -75,8 +74,7 @@ public class ZGCTraceLocal extends TraceLocal {
    */
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ZGC.zSpace.inImmixDefragCollection());
-    if (Space.isInSpace(ZGC.Z, object)) {
+    if (Space.isInSpace(RegionalCopy.RC, object)) {
       return true;
     } else {
       return super.willNotMoveInCurrentCollection(object);

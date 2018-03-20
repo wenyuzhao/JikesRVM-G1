@@ -15,7 +15,7 @@ package org.mmtk.utility.alloc;
 
 import org.mmtk.policy.MarkRegion;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZSpace;
+import org.mmtk.policy.MarkRegionSpace;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -33,7 +33,7 @@ public class MarkRegionAllocator extends Allocator {
    */
 
   /** space this allocator is associated with */
-  protected final ZSpace space;
+  protected final MarkRegionSpace space;
   //private final boolean hot;
   private final boolean copy;
 
@@ -48,7 +48,7 @@ public class MarkRegionAllocator extends Allocator {
    * @param space The space to bump point into.
    * @param copy TODO
    */
-  public MarkRegionAllocator(ZSpace space, boolean copy) {
+  public MarkRegionAllocator(MarkRegionSpace space, boolean copy) {
     this.space = space;
     this.copy = copy;
     reset();

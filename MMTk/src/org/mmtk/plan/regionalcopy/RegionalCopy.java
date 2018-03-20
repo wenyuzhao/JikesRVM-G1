@@ -10,16 +10,14 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.zgc;
+package org.mmtk.plan.regionalcopy;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.zgc.ZSpace;
-import org.mmtk.utility.Log;
+import org.mmtk.policy.MarkRegionSpace;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
@@ -44,7 +42,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * performance properties of this plan.
  */
 @Uninterruptible
-public class ZGC extends StopTheWorld {
+public class RegionalCopy extends StopTheWorld {
 
   /****************************************************************************
    *
@@ -52,8 +50,8 @@ public class ZGC extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final ZSpace zSpace = new ZSpace("z", VMRequest.discontiguous());
-  public static final int Z = zSpace.getDescriptor();
+  public static final MarkRegionSpace markRegionSpace = new MarkRegionSpace("rc", VMRequest.discontiguous());
+  public static final int RC = markRegionSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
@@ -105,7 +103,7 @@ public class ZGC extends StopTheWorld {
   /**
    * Constructor
    */
-  public ZGC() {
+  public RegionalCopy() {
     collection = zCollection;
   }
 
@@ -123,7 +121,7 @@ public class ZGC extends StopTheWorld {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepare();
-      zSpace.prepare();
+      markRegionSpace.prepare();
       return;
     }
     if (phaseId == CLOSURE) {
@@ -139,12 +137,12 @@ public class ZGC extends StopTheWorld {
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       relocateTrace.prepare();
-      zSpace.prepare();
+      markRegionSpace.prepare();
       return;
     }
     if (phaseId == RELOCATE_RELEASE) {
       relocateTrace.release();
-      zSpace.release();
+      markRegionSpace.release();
       super.collectionPhase(RELEASE);
       return;
     }
@@ -169,7 +167,7 @@ public class ZGC extends StopTheWorld {
   public final int getCollectionReserve() {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
-    return zSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
+    return markRegionSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
   }
 
   /**
@@ -179,7 +177,7 @@ public class ZGC extends StopTheWorld {
    */
   @Override
   public int getPagesUsed() {
-    return super.getPagesUsed() + zSpace.reservedPages();
+    return super.getPagesUsed() + markRegionSpace.reservedPages();
   }
 
   /**
@@ -193,15 +191,15 @@ public class ZGC extends StopTheWorld {
 
   @Override
   public boolean willNeverMove(ObjectReference object) {
-    if (Space.isInSpace(Z, object)) return true;
+    if (Space.isInSpace(RC, object)) return true;
     return super.willNeverMove(object);
   }
 
   @Override
   @Interruptible
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_MARK, ZGCTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, ZGCRelocationTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, RegionalCopyMarkTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, RegionalCopyCRelocationTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

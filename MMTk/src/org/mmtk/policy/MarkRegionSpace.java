@@ -10,13 +10,11 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.policy.zgc;
+package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.policy.MarkRegion;
-import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
@@ -37,7 +35,7 @@ import org.vmmagic.unboxed.*;
  *
  */
 @Uninterruptible
-public final class ZSpace extends Space {
+public final class MarkRegionSpace extends Space {
     /** number of header bits we may use */
     private static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
 
@@ -119,7 +117,7 @@ public final class ZSpace extends Space {
      * @param name The name of this space (used when printing error messages etc)
      * @param vmRequest The virtual memory request
      */
-    public ZSpace(String name, VMRequest vmRequest) {
+    public MarkRegionSpace(String name, VMRequest vmRequest) {
         this(name, true, vmRequest);
     }
 
@@ -132,7 +130,7 @@ public final class ZSpace extends Space {
      * @param zeroed if true, allocations return zeroed memory
      * @param vmRequest The virtual memory request
      */
-    public ZSpace(String name, boolean zeroed, VMRequest vmRequest) {
+    public MarkRegionSpace(String name, boolean zeroed, VMRequest vmRequest) {
         super(name, false, false, zeroed, vmRequest);
         if (vmRequest.isDiscontiguous())
             pr = new FreeListPageResource(this, MarkRegion.METADATA_PAGES_PER_MMTK_REGION);
@@ -180,30 +178,30 @@ public final class ZSpace extends Space {
      */
     public Address getSpace(boolean copy) {
         // Allocate
-        Address zPage = acquire(MarkRegion.PAGES_IN_REGION);
+        Address region = acquire(MarkRegion.PAGES_IN_REGION);
 
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(zPage));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(region));
 
-        if (!zPage.isZero()) {
-            VM.memory.zero(false, zPage, Extent.fromIntZeroExtend(MarkRegion.BYTES_IN_REGION));;
-            Log.writeln("#Block alloc " + zPage + ", in region " + EmbeddedMetaData.getMetaDataBase(zPage));
-            MarkRegion.register(zPage);
+        if (!region.isZero()) {
+            VM.memory.zero(false, region, Extent.fromIntZeroExtend(MarkRegion.BYTES_IN_REGION));;
+            Log.writeln("#Block alloc " + region + ", in region " + EmbeddedMetaData.getMetaDataBase(region));
+            MarkRegion.register(region);
         }
-        return zPage;
+        return region;
     }
 
     /**
      * Release a block.  A block is free, so call the underlying page allocator
      * to release the associated storage.
      *
-     * @param zPage The address of the Z Page to be released
+     * @param region The address of the Z Page to be released
      */
     @Override
     @Inline
-    public void release(Address zPage) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(zPage));
-        MarkRegion.unregister(zPage);
-        ((FreeListPageResource) pr).releasePages(zPage);
+    public void release(Address region) {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(region));
+        MarkRegion.unregister(region);
+        ((FreeListPageResource) pr).releasePages(region);
     }
 
     /**
@@ -267,8 +265,8 @@ public final class ZSpace extends Space {
             Log.writeln("# " + object + " -> " + rtn);
         }
         if (Header.testAndMark(rtn)) {
-            Address zPage = MarkRegion.of(rtn.toAddress());
-            MarkRegion.setUsedSize(zPage, MarkRegion.usedSize(zPage) + VM.objectModel.getSizeWhenCopied(rtn));
+            Address region = MarkRegion.of(rtn.toAddress());
+            MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
         return rtn;
