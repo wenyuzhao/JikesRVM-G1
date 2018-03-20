@@ -10,15 +10,15 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.zgc;
+package org.mmtk.plan.regionalcopy;
 
 import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.zgc.Block;
+import org.mmtk.policy.MarkRegion;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.ZAllocator;
+import org.mmtk.utility.alloc.MarkRegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -27,22 +27,22 @@ import org.vmmagic.unboxed.ObjectReference;
 
 /**
  * This class implements <i>per-collector thread</i> behavior
- * and state for the <i>ZGC</i> plan, which implements a full-heap
+ * and state for the <i>RegionalCopy</i> plan, which implements a full-heap
  * semi-space collector.<p>
  *
- * Specifically, this class defines <i>ZGC</i> collection behavior
+ * Specifically, this class defines <i>RegionalCopy</i> collection behavior
  * (through <code>trace</code> and the <code>collectionPhase</code>
  * method), and collection-time allocation (copying of objects).<p>
  *
- * See {@link ZGC} for an overview of the semi-space algorithm.
+ * See {@link RegionalCopy} for an overview of the semi-space algorithm.
  *
- * @see ZGC
- * @see ZGCMutator
+ * @see RegionalCopy
+ * @see RegionalCopyMutator
  * @see StopTheWorldCollector
  * @see CollectorContext
  */
 @Uninterruptible
-public class ZGCCollector extends StopTheWorldCollector {
+public class RegionalCopyCollector extends StopTheWorldCollector {
 
   /****************************************************************************
    * Instance fields
@@ -51,9 +51,9 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected final ZAllocator copy = new ZAllocator(ZGC.zSpace, true);
-  protected final ZGCTraceLocal markTrace = new ZGCTraceLocal(global().markTrace);
-  protected final ZGCRelocationTraceLocal relocateTrace = new ZGCRelocationTraceLocal(global().relocateTrace);
+  protected final MarkRegionAllocator copy = new MarkRegionAllocator(RegionalCopy.markRegionSpace, true);
+  protected final RegionalCopyMarkTraceLocal markTrace = new RegionalCopyMarkTraceLocal(global().markTrace);
+  protected final RegionalCopyRelocationTraceLocal relocateTrace = new RegionalCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -64,7 +64,7 @@ public class ZGCCollector extends StopTheWorldCollector {
   /**
    * Constructor
    */
-  public ZGCCollector() {}
+  public RegionalCopyCollector() {}
 
   /****************************************************************************
    *
@@ -80,7 +80,7 @@ public class ZGCCollector extends StopTheWorldCollector {
       int align, int offset, int allocator) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
-      VM.assertions._assert(allocator == ZGC.ALLOC_DEFAULT);
+      VM.assertions._assert(allocator == RegionalCopy.ALLOC_DEFAULT);
     }
     return copy.alloc(bytes, align, offset);
   }
@@ -89,16 +89,16 @@ public class ZGCCollector extends StopTheWorldCollector {
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == ZGC.ALLOC_DEFAULT);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == RegionalCopy.ALLOC_DEFAULT);
 
-    //ZGC.zSpace.postCopy(object, bytes);
+    RegionalCopy.markRegionSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
-      /*VM.assertions._assert(getCurrentTrace().isLive(object));
+      // VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.writeln("#Block " + Block.of(object.toAddress()) + " is marked for relocate");
+        Log.writeln("#Block " + MarkRegion.of(object.toAddress()) + " is marked for relocate");
       }
-      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));*/
+      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
     }
   }
 
@@ -113,66 +113,66 @@ public class ZGCCollector extends StopTheWorldCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == ZGC.PREPARE) {
-      Log.writeln("ZGC PREPARE");
+    if (phaseId == RegionalCopy.PREPARE) {
+      Log.writeln("RegionalCopy PREPARE");
       currentTrace = markTrace;
       super.collectionPhase(phaseId, primary);
       markTrace.prepare();
       return;
     }
 
-    if (phaseId == ZGC.CLOSURE) {
-      Log.writeln("ZGC CLOSURE");
+    if (phaseId == RegionalCopy.CLOSURE) {
+      Log.writeln("RegionalCopy CLOSURE");
       markTrace.completeTrace();
       return;
     }
 
-    if (phaseId == ZGC.RELEASE) {
-      Log.writeln("ZGC RELEASE");
+    if (phaseId == RegionalCopy.RELEASE) {
+      Log.writeln("RegionalCopy RELEASE");
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == ZGC.RELOCATE_PREPARE) {
-      Log.writeln("ZGC RELOCATE_PREPARE");
+    if (phaseId == RegionalCopy.RELOCATE_PREPARE) {
+      Log.writeln("RegionalCopy RELOCATE_PREPARE");
       currentTrace = relocateTrace;
-      super.collectionPhase(ZGC.PREPARE, primary);
+      super.collectionPhase(RegionalCopy.PREPARE, primary);
       relocateTrace.prepare();
       copy.reset();
       return;
     }
 
-    if (phaseId == ZGC.RELOCATE_CLOSURE) {
-      Log.writeln("ZGC RELOCATE_CLOSURE");
+    if (phaseId == RegionalCopy.RELOCATE_CLOSURE) {
+      Log.writeln("RegionalCopy RELOCATE_CLOSURE");
       relocateTrace.completeTrace();
       return;
     }
 
-    if (phaseId == ZGC.RELOCATE_RELEASE) {
-      Log.writeln("ZGC RELOCATE_RELEASE");
+    if (phaseId == RegionalCopy.RELOCATE_RELEASE) {
+      Log.writeln("RegionalCopy RELOCATE_RELEASE");
       relocateTrace.release();
       copy.reset();
-      super.collectionPhase(ZGC.RELEASE, primary);
+      super.collectionPhase(RegionalCopy.RELEASE, primary);
       return;
     }
 
     super.collectionPhase(phaseId, primary);
-    /*if (phaseId == ZGC.PREPARE) {
+    /*if (phaseId == RegionalCopy.PREPARE) {
       copy.reset();
       trace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == ZGC.CLOSURE) {
+    if (phaseId == RegionalCopy.CLOSURE) {
       trace.completeTrace();
       return;
     }
 
-    if (phaseId == ZGC.RELEASE) {
+    if (phaseId == RegionalCopy.RELEASE) {
       trace.release();
-      //zgc.release(true);
+      //regionalcopy.release(true);
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -195,7 +195,7 @@ public class ZGCCollector extends StopTheWorldCollector {
    * one of the semi-spaces.
    */
   /*public static boolean isSemiSpaceObject(ObjectReference object) {
-    return Space.isInSpace(ZGC.SS0, object) || Space.isInSpace(ZGC.SS1, object);
+    return Space.isInSpace(RegionalCopy.SS0, object) || Space.isInSpace(RegionalCopy.SS1, object);
   }*/
 
   /****************************************************************************
@@ -203,10 +203,10 @@ public class ZGCCollector extends StopTheWorldCollector {
    * Miscellaneous
    */
 
-  /** @return The active global plan as an <code>ZGC</code> instance. */
+  /** @return The active global plan as an <code>RegionalCopy</code> instance. */
   @Inline
-  private static ZGC global() {
-    return (ZGC) VM.activePlan.global();
+  private static RegionalCopy global() {
+    return (RegionalCopy) VM.activePlan.global();
   }
 
   @Override

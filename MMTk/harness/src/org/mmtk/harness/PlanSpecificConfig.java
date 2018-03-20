@@ -126,9 +126,9 @@ public class PlanSpecificConfig {
         .addExpectedSpaces("ms"),
         "StickyMS");
     register(
-        new PlanSpecific("org.mmtk.plan.zgc.ZGC")
-        .addExpectedSpaces("z"),
-        "ZGC");
+        new PlanSpecific("org.mmtk.plan.regionalcopy.RegionalCopy")
+        .addExpectedSpaces("rc"),
+        "RegionalCopy");
   }
 
   /**

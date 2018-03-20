@@ -10,19 +10,18 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.zgc;
+package org.mmtk.plan.regionalcopy;
 
 import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.zgc.ZObjectHeader;
-import org.mmtk.policy.zgc.Block;
-import org.mmtk.policy.zgc.ZSpace;
+import org.mmtk.policy.MarkRegion;
+import org.mmtk.policy.MarkRegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
  * SemiSpace common constants.
  */
 @Uninterruptible
-public class ZGCConstraints extends StopTheWorldConstraints {
+public class RegionalCopyConstraints extends StopTheWorldConstraints {
   @Override
   public boolean movesObjects() {
     return true;
@@ -33,11 +32,11 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int gcHeaderBits() {
-    return ZSpace.LOCAL_GC_BITS_REQUIRED;
+    return MarkRegionSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return ZSpace.GC_HEADER_WORDS_REQUIRED;
+    return MarkRegionSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {
@@ -45,6 +44,6 @@ public class ZGCConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return Block.BYTES_IN_BLOCK;
+    return MarkRegion.BYTES_IN_REGION;
   }
 }
