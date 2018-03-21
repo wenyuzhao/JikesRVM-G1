@@ -52,7 +52,7 @@ public final class MarkRegionSpace extends Space {
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
     public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
-    static class Header {
+    public static class Header {
         static byte markState = MARK_BASE_VALUE;
         static boolean isNewObject(ObjectReference object) {
             return (VM.objectModel.readAvailableByte(object) & MARK_AND_FORWARDING_MASK) == NEW_OBJECT_MARK;
@@ -106,6 +106,9 @@ public final class MarkRegionSpace extends Space {
             if (HeaderByte.NEEDS_UNLOGGED_BIT) newGCByte |= HeaderByte.UNLOGGED_BIT;
             VM.objectModel.writeAvailableByte(object, newGCByte);
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((oldGCByte & MARK_MASK) != markState);
+        }
+        public static void mark(ObjectReference object) {
+            testAndMark(object);
         }
     }
 
@@ -258,7 +261,7 @@ public final class MarkRegionSpace extends Space {
      * @return The forwarded object.
      */
     @Inline
-    public ObjectReference traceMarkObject(TraceLocal trace, ObjectReference object) {
+    public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
             rtn = getForwardingPointer(object);

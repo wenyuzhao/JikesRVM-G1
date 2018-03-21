@@ -129,6 +129,14 @@ public class PlanSpecificConfig {
         new PlanSpecific("org.mmtk.plan.regionalcopy.RegionalCopy")
         .addExpectedSpaces("rc"),
         "RegionalCopy");
+    register(
+        new PlanSpecific("org.mmtk.plan.concurrent.marksweep.CMS")
+            .addExpectedSpaces("ms"),
+        "CMS");
+    register(
+        new PlanSpecific("org.mmtk.plan.concurrent.concmark.ConcMark")
+            .addExpectedSpaces("mr"),
+        "ConcMark");
   }
 
   /**
