@@ -273,7 +273,7 @@ public final class MarkRegionSpace extends Space {
         if (Header.testAndMark(rtn)) {
             Address region = MarkRegion.of(rtn.toAddress());
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
-            MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
+            MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getCurrentSize(rtn));
             trace.processNode(rtn);
         }
         return rtn;

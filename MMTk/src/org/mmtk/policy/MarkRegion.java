@@ -126,6 +126,9 @@ public class MarkRegion {
 
     static Lock lock2 = VM.newLock("mark-region");
     public static void setRelocationState(Address block, boolean relocation) {
+        if (relocation) {
+            Log.writeln("@MarkRelocate: ", block);
+        }
         lock2.acquire();
         metaDataOf(block, METADATA_RELOCATE_OFFSET).store((byte) (relocation ? 1 : 0));
         lock2.release();
