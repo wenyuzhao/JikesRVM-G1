@@ -206,11 +206,15 @@ public class MarkRegion {
     private static int curser = -1; // index of nextBlock in currentRegion
 
     public static void resetIterator() {
+        lock3.acquire();
         currentRegion = firstRegion;
+        lock3.release();
         moveToNextAllocatedBlock();
     }
 
+    private static Lock lock3 = VM.newLock("xxxxxx");
     private static void moveToNextAllocatedBlock() {
+        lock3.acquire();
         Log.write("#MMTK REGION ", currentRegion);
         Log.writeln(currentRegion == null || currentRegion.isZero() ? " true" : " false");
         if (currentRegion == null || currentRegion.isZero()) {
@@ -236,6 +240,7 @@ public class MarkRegion {
         Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
         currentRegion = nextRegion;
         curser = -1;
+        lock3.release();
         moveToNextAllocatedBlock();
     }
 
