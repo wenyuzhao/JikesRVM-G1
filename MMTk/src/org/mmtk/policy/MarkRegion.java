@@ -211,7 +211,7 @@ public class MarkRegion {
     }
 
     private static void moveToNextAllocatedBlock() {
-        //Log.writeln("#MMTK REGION ", currentRegion);
+        Log.writeln("#MMTK REGION ", currentRegion);
         if (currentRegion == null || currentRegion.isZero()) {
             currentRegion = null;
             nextBlock = null;
@@ -221,8 +221,8 @@ public class MarkRegion {
         for (int index = curser + 1; index < REGIONS_IN_MMTK_REGION; index++) {
             int offset = METADATA_OFFSET_IN_MMTK_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET;
             Address ptr = currentRegion.plus(offset);
-            //Log.write("# curser ", index);
-            //Log.writeln(" alloc_ptr ", ptr);
+            Log.write("# curser ", index);
+            Log.writeln(" alloc_ptr ", ptr);
             if (ptr.loadByte() > 0) {
                 curser = index;
                 nextBlock = currentRegion.plus(REGIONS_START_OFFSET + BYTES_IN_REGION * index);
@@ -230,9 +230,9 @@ public class MarkRegion {
             }
         }
         Address nextRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
-        //Log.write("#REGION ", currentRegion);
-        //Log.write(" -> ", nextRegion);
-        //Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
+        Log.write("#REGION ", currentRegion);
+        Log.write(" -> ", nextRegion);
+        Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
         currentRegion = nextRegion;
         curser = -1;
         moveToNextAllocatedBlock();
