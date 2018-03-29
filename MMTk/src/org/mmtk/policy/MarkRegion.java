@@ -212,7 +212,7 @@ public class MarkRegion {
 
     private static void moveToNextAllocatedBlock() {
         Log.write("#MMTK REGION ", currentRegion);
-        Log.writeln(" ", currentRegion == null || currentRegion.isZero());
+        Log.writeln(currentRegion == null || currentRegion.isZero() ? " true" : " false");
         if (currentRegion == null || currentRegion.isZero()) {
             currentRegion = null;
             nextBlock = null;
