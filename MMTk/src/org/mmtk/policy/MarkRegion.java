@@ -5,6 +5,7 @@ import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
+import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.Word;
 
@@ -12,19 +13,21 @@ import java.util.Iterator;
 
 import static org.mmtk.utility.Constants.*;
 
+@Uninterruptible
 public class MarkRegion {
     public static final int PAGES_IN_REGION = 1;
     public static final int BYTES_IN_REGION = BYTES_IN_PAGE * PAGES_IN_REGION;
 
     private static final int PREV_POINTER_OFFSET_IN_MMTK_REGION = 0;
-    private static final int NEXT_POINTER_OFFSET_IN_MMTK_REGION = 4;
-    private static final int BLOCK_COUNT_OFFSET_IN_MMTK_REGION = 8;
-    private static final int METADATA_OFFSET_IN_MMTK_REGION = 16;
+    private static final int NEXT_POINTER_OFFSET_IN_MMTK_REGION = PREV_POINTER_OFFSET_IN_MMTK_REGION + Constants.BYTES_IN_WORD;
+    private static final int BLOCK_COUNT_OFFSET_IN_MMTK_REGION = NEXT_POINTER_OFFSET_IN_MMTK_REGION  + Constants.BYTES_IN_WORD;
+    private static final int METADATA_OFFSET_IN_MMTK_REGION = BLOCK_COUNT_OFFSET_IN_MMTK_REGION + Constants.BYTES_IN_INT;
 
-    private static final int METADATA_BYTES = 8;
-    private static final int METADATA_ALLOCATED_OFFSET = 5;
-    private static final int METADATA_RELOCATE_OFFSET = 4;
+
     private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
+    private static final int METADATA_RELOCATE_OFFSET = 4;
+    private static final int METADATA_ALLOCATED_OFFSET = 5;
+    private static final int METADATA_BYTES = 8;
     public static final int METADATA_PAGES_PER_MMTK_REGION = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_REGION * METADATA_BYTES / Constants.BYTES_IN_PAGE;
     private static final int REGIONS_IN_MMTK_REGION = (EmbeddedMetaData.PAGES_IN_REGION - METADATA_PAGES_PER_MMTK_REGION) / PAGES_IN_REGION;
     private static final int REGIONS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_MMTK_REGION;
@@ -35,12 +38,12 @@ public class MarkRegion {
 
     static {
         if (VM.VERIFY_ASSERTIONS) {
-            Log.writeln("PAGES_IN_REGION " + EmbeddedMetaData.PAGES_IN_REGION);
-            Log.writeln("BYTES_IN_PAGE " + Constants.BYTES_IN_PAGE);
-            Log.writeln("METADATA_BYTES " + METADATA_BYTES);
-            Log.writeln("BYTES_IN_REGION " + BYTES_IN_REGION);
-            Log.writeln("METADATA_PAGES_PER_REGION " + METADATA_PAGES_PER_MMTK_REGION);
-            Log.writeln("REGIONS_IN_MMTK_REGION " + REGIONS_IN_MMTK_REGION);
+            Log.writeln("PAGES_IN_REGION ", EmbeddedMetaData.PAGES_IN_REGION);
+            Log.writeln("BYTES_IN_PAGE ", Constants.BYTES_IN_PAGE);
+            Log.writeln("METADATA_BYTES ", METADATA_BYTES);
+            Log.writeln("BYTES_IN_REGION ", BYTES_IN_REGION);
+            Log.writeln("METADATA_PAGES_PER_REGION ", METADATA_PAGES_PER_MMTK_REGION);
+            Log.writeln("REGIONS_IN_MMTK_REGION ", REGIONS_IN_MMTK_REGION);
         }
     }
 
@@ -73,13 +76,14 @@ public class MarkRegion {
             // This is a new region
             if (firstRegion == null) {
                 firstRegion = region;
-                if (VM.VERIFY_ASSERTIONS) Log.writeln("Add First Region " + region);
+                if (VM.VERIFY_ASSERTIONS) Log.writeln("Add First Region ", region);
             } else {
                 region.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).store(firstRegion);
                 firstRegion.plus(PREV_POINTER_OFFSET_IN_MMTK_REGION).store(region);
                 firstRegion = region;
-                if (VM.VERIFY_ASSERTIONS) Log.writeln("Add Region " + region);
+                if (VM.VERIFY_ASSERTIONS) Log.writeln("Add Region ", region);
             }
+            // Clear
         }
         blockCount.store(blocks);
         lock.release();
@@ -97,7 +101,7 @@ public class MarkRegion {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocks >= 0);
         if (blocks == 0) {
             // This region shuold be removed
-            if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Region " + region);
+            if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Region ", region);
             if (region.EQ(firstRegion)) {
                 Address next = region.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
                 if (next.isZero()) {
@@ -107,7 +111,7 @@ public class MarkRegion {
                     next.plus(PREV_POINTER_OFFSET_IN_MMTK_REGION).store(0);
                 }
             } else {
-                if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Region " + region);
+                if (VM.VERIFY_ASSERTIONS) Log.writeln("Remove Region ", region);
                 Address prev = region.plus(PREV_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
                 Address next = region.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
                 prev.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).store(next);
@@ -120,16 +124,21 @@ public class MarkRegion {
         lock.release();
     }
 
+    static Lock lock2 = VM.newLock("mark-region");
     public static void setRelocationState(Address block, boolean relocation) {
+        lock2.acquire();
         metaDataOf(block, METADATA_RELOCATE_OFFSET).store((byte) (relocation ? 1 : 0));
+        lock2.release();
     }
 
     public static boolean relocationRequired(Address block) {
         return metaDataOf(block, METADATA_RELOCATE_OFFSET).loadByte() > 0;
     }
 
-    public static synchronized void setUsedSize(Address block, int bytes) {
+    public static void setUsedSize(Address block, int bytes) {
+        lock2.acquire();
         metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET).store(bytes);
+        lock2.release();
     }
 
     public static int usedSize(Address block) {
@@ -147,7 +156,7 @@ public class MarkRegion {
     }
 
     private static int indexOf(Address block) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block), "Invalid block " + block);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block), "Invalid block");
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         double index = block.diff(region.plus(REGIONS_START_OFFSET)).toInt() / BYTES_IN_REGION;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index == (int) index);
@@ -162,74 +171,78 @@ public class MarkRegion {
 
     private static int count = 0;
 
-    private static synchronized void setAllocated(Address block, boolean allocated) {
+
+
+    private static void setAllocated(Address block, boolean allocated) {
+        lock2.acquire();
         metaDataOf(block, METADATA_ALLOCATED_OFFSET).store((byte) (allocated ? 1 : 0));
+        lock2.release();
     }
 
-    private static synchronized void clearRegionState(Address region) {
+    private static void clearRegionState(Address region) {
+        lock2.acquire();
         region.plus(PREV_POINTER_OFFSET_IN_MMTK_REGION).store((int) 0);
         region.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).store((int) 0);
         region.plus(BLOCK_COUNT_OFFSET_IN_MMTK_REGION).store((int) 0);
+        lock2.acquire();
     }
 
     private static boolean allocated(Address block) {
         return metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() > 0;
     }
 
-    private static synchronized void clearState(Address block) {
+    private static void clearState(Address block) {
         setAllocated(block, false);
         setRelocationState(block, false);
         setUsedSize(block, 0);
     }
 
-    private static class BlocksIterator implements Iterator<Address> {
-        Address currentRegion = null;
-        Address nextBlock = null;
-        int curser = -1; // index of nextBlock in currentRegion
+    // Iterator
+    private static Address currentRegion = null;
+    private static Address nextBlock = null;
+    private static int curser = -1; // index of nextBlock in currentRegion
 
-        BlocksIterator(Address firstRegion) {
-            currentRegion = firstRegion;
-            moveToNextAllocatedBlock();
-        }
-
-        void moveToNextAllocatedBlock() {
-            if (currentRegion == null || currentRegion.isZero()) {
-                currentRegion = null;
-                nextBlock = null;
-                curser = -1;
-                return;
-            }
-            for (int index = curser + 1; index < REGIONS_IN_MMTK_REGION; index++) {
-                if (currentRegion.plus(METADATA_OFFSET_IN_MMTK_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET).loadByte() > 0) {
-                    curser = index;
-                    nextBlock = currentRegion.plus(REGIONS_START_OFFSET + BYTES_IN_REGION * index);
-                    return;
-                }
-            }
-            currentRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
-            curser = -1;
-            moveToNextAllocatedBlock();
-        }
-
-        @Override
-        public boolean hasNext() {
-            return nextBlock != null;
-        }
-
-        @Override
-        public Address next() {
-            Address rtn = nextBlock;
-            moveToNextAllocatedBlock();
-            return rtn;
-        }
+    public static void resetIterator() {
+        currentRegion = firstRegion;
+        moveToNextAllocatedBlock();
     }
 
-    public static Iterable<Address> iterate() {
-        return new Iterable<Address>() {
-            @Override
-            public Iterator<Address> iterator() {
-                return new BlocksIterator(firstRegion);
+    private static void moveToNextAllocatedBlock() {
+        //Log.writeln("#MMTK REGION ", currentRegion);
+        if (currentRegion == null || currentRegion.isZero()) {
+            currentRegion = null;
+            nextBlock = null;
+            curser = -1;
+            return;
+        }
+        for (int index = curser + 1; index < REGIONS_IN_MMTK_REGION; index++) {
+            int offset = METADATA_OFFSET_IN_MMTK_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET;
+            Address ptr = currentRegion.plus(offset);
+            //Log.write("# curser ", index);
+            //Log.writeln(" alloc_ptr ", ptr);
+            if (ptr.loadByte() > 0) {
+                curser = index;
+                nextBlock = currentRegion.plus(REGIONS_START_OFFSET + BYTES_IN_REGION * index);
+                return;
             }
-        };
+        }
+        Address nextRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
+        //Log.write("#REGION ", currentRegion);
+        //Log.write(" -> ", nextRegion);
+        //Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
+        currentRegion = nextRegion;
+        curser = -1;
+        moveToNextAllocatedBlock();
+    }
+
+    public static boolean hasNext() {
+        return nextBlock != null;
+    }
+
+    public static Address next() {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(nextBlock != null && !nextBlock.isZero());
+        Address rtn = nextBlock;
+        moveToNextAllocatedBlock();
+        return rtn;
     }
 }

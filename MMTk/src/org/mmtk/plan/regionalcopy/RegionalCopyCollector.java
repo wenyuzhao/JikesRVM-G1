@@ -96,7 +96,8 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
     if (VM.VERIFY_ASSERTIONS) {
       // VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.writeln("#Block " + MarkRegion.of(object.toAddress()) + " is marked for relocate");
+        Log.write("#Block ", MarkRegion.of(object.toAddress()));
+        Log.writeln(" is marked for relocate");
       }
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
     }

@@ -52,6 +52,7 @@ public final class MarkRegionSpace extends Space {
     public static final int GLOBAL_GC_BITS_REQUIRED = 0;
     public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
+    @Uninterruptible
     public static class Header {
         static byte markState = MARK_BASE_VALUE;
         static boolean isNewObject(ObjectReference object) {
@@ -187,7 +188,8 @@ public final class MarkRegionSpace extends Space {
 
         if (!region.isZero()) {
             VM.memory.zero(false, region, Extent.fromIntZeroExtend(MarkRegion.BYTES_IN_REGION));;
-            Log.writeln("#Block alloc " + region + ", in region " + EmbeddedMetaData.getMetaDataBase(region));
+            Log.write("#Block alloc ", region);
+            Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
             MarkRegion.register(region);
         }
         return region;
@@ -265,10 +267,12 @@ public final class MarkRegionSpace extends Space {
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
             rtn = getForwardingPointer(object);
-            Log.writeln("# " + object + " -> " + rtn);
+            Log.write("# ", object);
+            Log.writeln(" -> ", rtn);
         }
         if (Header.testAndMark(rtn)) {
             Address region = MarkRegion.of(rtn.toAddress());
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
             MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
             trace.processNode(rtn);
         }
@@ -294,7 +298,8 @@ public final class MarkRegionSpace extends Space {
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-            Log.writeln("# " + object + " -> " + rtn);
+            Log.write("# ", object);
+            Log.writeln(" -> ", rtn);
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
@@ -311,7 +316,8 @@ public final class MarkRegionSpace extends Space {
                     /* forward */
                     rtn = ForwardingWord.forwardObject(object, allocator);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-                    Log.writeln("# " + object + " => " + rtn);
+                    Log.write("# ", object);
+                    Log.writeln(" => ", rtn);
                 } else {
                     Header.setMarkStateUnlogAndUnlock(object, priorState);
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));

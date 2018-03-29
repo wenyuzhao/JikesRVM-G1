@@ -51,13 +51,18 @@ public class RegionalCopyRelocationTraceLocal extends TraceLocal {
   @Override
   public void prepare() {
     super.prepare();
-    Log.writeln("Memory: " + VM.activePlan.global().getPagesUsed() + " / " + VM.activePlan.global().getTotalPages());
-    Log.writeln("BLOCK SIZE " + MarkRegion.count());
+    Log.write("Memory: ", VM.activePlan.global().getPagesUsed());
+    Log.writeln(" / ", VM.activePlan.global().getTotalPages());
+    Log.writeln("BLOCK SIZE ", MarkRegion.count());
     int aliveSizeInRelocationSet = 0;
     int useableBytesForCopying = (int) (VM.activePlan.global().getPagesAvail() * (1.0 - MarkRegion.METADATA_PAGES_PER_MMTK_REGION / EmbeddedMetaData.PAGES_IN_REGION) * Constants.BYTES_IN_PAGE);
 
-    for (Address region : MarkRegion.iterate()) {
-      Log.write("#Block " + region + ": " + MarkRegion.usedSize(region) + "/" + MarkRegion.BYTES_IN_REGION);
+    MarkRegion.resetIterator();
+    while (MarkRegion.hasNext()) {
+      Address region = MarkRegion.next();
+      Log.write("#Block ", region);
+      Log.write(": ", MarkRegion.usedSize(region));
+      Log.write("/", MarkRegion.BYTES_IN_REGION);
       int usedSize = MarkRegion.usedSize(region);
       if (usedSize <= (MarkRegion.BYTES_IN_REGION >> 1)) {
         if (aliveSizeInRelocationSet + usedSize <= useableBytesForCopying) {
@@ -77,19 +82,28 @@ public class RegionalCopyRelocationTraceLocal extends TraceLocal {
     super.release();
     lock.acquire();
     int visitedPages = 0;
-    for (Address region : MarkRegion.iterate()) {
+    MarkRegion.resetIterator();
+    while (MarkRegion.hasNext()) {
+      Address region = MarkRegion.next();
       if (MarkRegion.relocationRequired(region)) {
-        Log.writeln("#Block " + region + ": " + MarkRegion.usedSize(region) + "/" + MarkRegion.BYTES_IN_REGION + " released");
+        Log.write("#Block ", region);
+        Log.write(": ", MarkRegion.usedSize(region));
+        Log.write("/", MarkRegion.BYTES_IN_REGION);
+        Log.writeln(" released");
         MarkRegion.setRelocationState(region, false);
         RegionalCopy.markRegionSpace.release(region);
       } else {
         visitedPages++;
-        Log.writeln("#Block " + region + ": " + MarkRegion.usedSize(region) + "/" + MarkRegion.BYTES_IN_REGION);
+        Log.write("#Block ", region);
+        Log.write(": ", MarkRegion.usedSize(region));
+        Log.writeln("/", MarkRegion.BYTES_IN_REGION);
       }
     }
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(visitedPages == MarkRegion.count(), "Invalid iteration, only " + visitedPages + "/" + MarkRegion.count() + " blocks are iterated");
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(visitedPages == MarkRegion.count(), "Invalid iteration");
     lock.release();
-    Log.writeln("Memory: " + VM.activePlan.global().getPagesReserved() + " / " + VM.activePlan.global().getTotalPages() + ", " + RegionalCopy.markRegionSpace.availablePhysicalPages());
+    Log.write("Memory: ", VM.activePlan.global().getPagesReserved());
+    Log.write(" / ", VM.activePlan.global().getTotalPages());
+    Log.writeln(", ", RegionalCopy.markRegionSpace.availablePhysicalPages());
   }
 
   @Override

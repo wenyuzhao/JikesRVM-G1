@@ -51,7 +51,9 @@ public class RegionalCopyMarkTraceLocal extends TraceLocal {
   @Override
   public void prepare() {
     super.prepare();
-    for (Address region : MarkRegion.iterate()) {
+    MarkRegion.resetIterator();
+    while (MarkRegion.hasNext()) {
+      Address region = MarkRegion.next();
       MarkRegion.setUsedSize(region, 0);
       MarkRegion.setRelocationState(region, false);
     };

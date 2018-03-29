@@ -157,7 +157,7 @@ public class RegionalCopy extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    return super.collectionRequired(spaceFull, space) || (getPagesAvail() <= Math.round(getTotalPages() * Options.defragHeadroomFraction.getValue()));
+    return super.collectionRequired(spaceFull, space) || (getPagesAvail() <= (int)(getTotalPages() * Options.defragHeadroomFraction.getValue() + 0.5f));
   }
 
   /**

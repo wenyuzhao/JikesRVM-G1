@@ -79,7 +79,7 @@ public class MarkRegionAllocator extends Allocator {
    */
   @Inline
   public final Address alloc(int bytes, int align, int offset) {
-    VM.assertions._assert(bytes > 0, "Trying to allocate " + bytes + " bytes");
+    VM.assertions._assert(bytes > 0, "Trying to allocate negative bytes");
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
