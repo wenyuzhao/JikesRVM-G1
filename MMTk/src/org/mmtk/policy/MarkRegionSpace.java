@@ -239,7 +239,7 @@ public final class MarkRegionSpace extends Space {
             Log.flush();
         }
         Header.writeMarkState(object);
-        ForwardingWord.clearForwardingBits(object);
+        //ForwardingWord.clearForwardingBits(object);
         if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
             Log.write("<<< postCopy ");
             Log.flush();
@@ -277,8 +277,14 @@ public final class MarkRegionSpace extends Space {
      */
     @Inline
     public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
+        if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+            Log.write("=== traceMarkObject");
+            Log.flush();
+            VM.objectModel.dumpObject(object);
+            Log.flush();
+        }
         ObjectReference rtn = object;
-        if (ForwardingWord.isForwarded(object)) {
+        /*if (ForwardingWord.isForwarded(object)) {
             rtn = getForwardingPointer(object);
             //Log.write("# ", object);
             //Log.writeln(" -> ", rtn);
@@ -294,7 +300,7 @@ public final class MarkRegionSpace extends Space {
                 VM.objectModel.dumpObject(rtn);
                 Log.flush();
             }
-        }
+        }*/
 
         if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
             Log.write(">>> traceMarkObject testAndMark ");
@@ -324,6 +330,9 @@ public final class MarkRegionSpace extends Space {
                 Log.flush();
             }
         }
+
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+        if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
         return rtn;
     }
 
