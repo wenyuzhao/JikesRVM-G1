@@ -274,8 +274,8 @@ public final class MarkRegionSpace extends Space {
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
             rtn = getForwardingPointer(object);
-            Log.write("# ", object);
-            Log.writeln(" -> ", rtn);
+            //Log.write("# ", object);
+            //Log.writeln(" -> ", rtn);
         }
         //Log.write("Object ", rtn);
         //Log.flush();
@@ -312,8 +312,8 @@ public final class MarkRegionSpace extends Space {
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-            Log.write("# ", object);
-            Log.writeln(" -> ", rtn);
+            //Log.write("# ", object);
+            //Log.writeln(" -> ", rtn);
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
