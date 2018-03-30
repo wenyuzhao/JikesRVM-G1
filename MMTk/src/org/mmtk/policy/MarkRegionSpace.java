@@ -278,7 +278,7 @@ public final class MarkRegionSpace extends Space {
     @Inline
     public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
         if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-            Log.write("=== traceMarkObject");
+            Log.write("=== traceMarkObject ");
             Log.flush();
             VM.objectModel.dumpObject(object);
             Log.flush();

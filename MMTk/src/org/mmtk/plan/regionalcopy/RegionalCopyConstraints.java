@@ -36,7 +36,7 @@ public class RegionalCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int gcHeaderWords() {
-    return MarkRegionSpace.GC_HEADER_WORDS_REQUIRED;
+    return 1; //MarkRegionSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {

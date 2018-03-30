@@ -82,6 +82,7 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
       VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
       VM.assertions._assert(allocator == RegionalCopy.ALLOC_DEFAULT);
     }
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkRegion.BYTES_IN_REGION);
     return copy.alloc(bytes, align, offset);
   }
 

@@ -14,9 +14,12 @@ package org.mmtk.plan.regionalcopy;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.policy.MarkRegion;
+import org.mmtk.policy.MarkRegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.MarkRegionAllocator;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -68,9 +71,10 @@ public class RegionalCopyMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == RegionalCopy.ALLOC_Z)
+    if (allocator == RegionalCopy.ALLOC_Z) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkRegion.BYTES_IN_REGION);
       return zgc.alloc(bytes, align, offset);
-    else
+    } else
       return super.alloc(bytes, align, offset, allocator, site);
   }
 
