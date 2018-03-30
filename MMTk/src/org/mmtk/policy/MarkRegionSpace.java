@@ -233,7 +233,7 @@ public final class MarkRegionSpace extends Space {
     public void postCopy(ObjectReference object, int bytes) {
         // 0x0000120100402018
         if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-            Log.write(">>> postCopy");
+            Log.write(">>> postCopy ");
             Log.flush();
             VM.objectModel.dumpObject(object);
             Log.flush();
@@ -241,7 +241,7 @@ public final class MarkRegionSpace extends Space {
         Header.writeMarkState(object);
         ForwardingWord.clearForwardingBits(object);
         if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-            Log.write("<<< postCopy");
+            Log.write("<<< postCopy ");
             Log.flush();
             VM.objectModel.dumpObject(object);
             Log.flush();
@@ -283,13 +283,13 @@ public final class MarkRegionSpace extends Space {
             //Log.write("# ", object);
             //Log.writeln(" -> ", rtn);
             if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-                Log.write(">>> traceMarkObject forward");
+                Log.write(">>> traceMarkObject forward ");
                 Log.flush();
                 VM.objectModel.dumpObject(object);
                 Log.flush();
             }
             if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-                Log.write("<<< traceMarkObject forward");
+                Log.write("<<< traceMarkObject forward ");
                 Log.flush();
                 VM.objectModel.dumpObject(rtn);
                 Log.flush();
@@ -297,7 +297,7 @@ public final class MarkRegionSpace extends Space {
         }
 
         if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-            Log.write(">>> traceMarkObject testAndMark");
+            Log.write(">>> traceMarkObject testAndMark ");
             Log.flush();
             VM.objectModel.dumpObject(rtn);
             Log.flush();
@@ -309,7 +309,7 @@ public final class MarkRegionSpace extends Space {
             MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getCurrentSize(rtn));
 
             if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-                Log.write("<<< traceMarkObject testAndMark");
+                Log.write("<<< traceMarkObject testAndMark ");
                 Log.flush();
                 VM.objectModel.dumpObject(rtn);
                 Log.flush();
@@ -318,7 +318,7 @@ public final class MarkRegionSpace extends Space {
             trace.processNode(rtn);
         } else {
             if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-                Log.write("<<< traceMarkObject testAndMark ELSE");
+                Log.write("<<< traceMarkObject testAndMark ELSE ");
                 Log.flush();
                 VM.objectModel.dumpObject(rtn);
                 Log.flush();
@@ -349,13 +349,13 @@ public final class MarkRegionSpace extends Space {
             //Log.write("# ", object);
             //Log.writeln(" -> ", rtn);
             if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-                Log.write(">>> traceRelocateObject forward");
+                Log.write(">>> traceRelocateObject forward ");
                 Log.flush();
                 VM.objectModel.dumpObject(object);
                 Log.flush();
             }
             if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
-                Log.write("<<< traceRelocateObject forward");
+                Log.write("<<< traceRelocateObject forward ");
                 Log.flush();
                 VM.objectModel.dumpObject(rtn);
                 Log.flush();
@@ -366,7 +366,19 @@ public final class MarkRegionSpace extends Space {
             byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
             if (Header.isMarked(priorState)) {
                 /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
+                if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                    Log.write(">>> traceRelocateObject returnToPriorStateAndEnsureUnlogged ");
+                    Log.flush();
+                    VM.objectModel.dumpObject(object);
+                    Log.flush();
+                }
                 Header.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
+                if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                    Log.write("<<< traceRelocateObject returnToPriorStateAndEnsureUnlogged ");
+                    Log.flush();
+                    VM.objectModel.dumpObject(object);
+                    Log.flush();
+                }
                 if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
                 return object;
             } else {
