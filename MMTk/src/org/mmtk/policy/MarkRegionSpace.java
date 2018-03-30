@@ -217,12 +217,6 @@ public final class MarkRegionSpace extends Space {
      */
     @Inline
     public void postAlloc(ObjectReference object, int bytes) {
-        if (object.toAddress().EQ(Address.fromLong(0x0000120100402018L))) {
-            Log.write("@@Obj ");
-            Log.flush();
-            VM.objectModel.dumpObject(object);
-            Log.flush();
-        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     }
@@ -238,8 +232,20 @@ public final class MarkRegionSpace extends Space {
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
         // 0x0000120100402018
+        if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+            Log.write(">>> postCopy");
+            Log.flush();
+            VM.objectModel.dumpObject(object);
+            Log.flush();
+        }
         Header.writeMarkState(object);
-        //ForwardingWord.clearForwardingBits(object);
+        ForwardingWord.clearForwardingBits(object);
+        if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+            Log.write("<<< postCopy");
+            Log.flush();
+            VM.objectModel.dumpObject(object);
+            Log.flush();
+        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
@@ -274,21 +280,50 @@ public final class MarkRegionSpace extends Space {
         ObjectReference rtn = object;
         if (ForwardingWord.isForwarded(object)) {
             rtn = getForwardingPointer(object);
-            Log.write("# ", object);
-            Log.writeln(" -> ", rtn);
+            //Log.write("# ", object);
+            //Log.writeln(" -> ", rtn);
+            if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                Log.write(">>> traceMarkObject forward");
+                Log.flush();
+                VM.objectModel.dumpObject(object);
+                Log.flush();
+            }
+            if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                Log.write("<<< traceMarkObject forward");
+                Log.flush();
+                VM.objectModel.dumpObject(rtn);
+                Log.flush();
+            }
         }
-        Log.write("Object ");
-        Log.flush();
-        VM.objectModel.dumpObject(object);
-        Log.flush();
+
+        if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+            Log.write(">>> traceMarkObject testAndMark");
+            Log.flush();
+            VM.objectModel.dumpObject(rtn);
+            Log.flush();
+        }
         if (Header.testAndMark(rtn)) {
             //Log.writeln("{");
             Address region = MarkRegion.of(rtn.toAddress());
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
             MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getCurrentSize(rtn));
-            //Log.writeln("}");
+
+            if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                Log.write("<<< traceMarkObject testAndMark");
+                Log.flush();
+                VM.objectModel.dumpObject(rtn);
+                Log.flush();
+            }
+
             trace.processNode(rtn);
-        }// else Log.writeln();
+        } else {
+            if (rtn.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                Log.write("<<< traceMarkObject testAndMark ELSE");
+                Log.flush();
+                VM.objectModel.dumpObject(rtn);
+                Log.flush();
+            }
+        }
         return rtn;
     }
 
@@ -311,8 +346,20 @@ public final class MarkRegionSpace extends Space {
             /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
             ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
             if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-            Log.write("# ", object);
-            Log.writeln(" -> ", rtn);
+            //Log.write("# ", object);
+            //Log.writeln(" -> ", rtn);
+            if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                Log.write(">>> traceRelocateObject forward");
+                Log.flush();
+                VM.objectModel.dumpObject(object);
+                Log.flush();
+            }
+            if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                Log.write("<<< traceRelocateObject forward");
+                Log.flush();
+                VM.objectModel.dumpObject(rtn);
+                Log.flush();
+            }
             return rtn;
         } else {
             /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
@@ -332,7 +379,19 @@ public final class MarkRegionSpace extends Space {
                     Log.write("# ", object);
                     Log.writeln(" => ", rtn);
                 } else {
+                    if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                        Log.write(">>> traceRelocateObject setMarkStateUnlogAndUnlock ");
+                        Log.flush();
+                        VM.objectModel.dumpObject(object);
+                        Log.flush();
+                    }
                     Header.setMarkStateUnlogAndUnlock(object, priorState);
+                    if (object.toAddress().EQ(Address.fromIntZeroExtend(0x6983f000))) {
+                        Log.write("<<< traceRelocateObject setMarkStateUnlogAndUnlock ");
+                        Log.flush();
+                        VM.objectModel.dumpObject(object);
+                        Log.flush();
+                    }
                     if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
                 }
                 trace.processNode(rtn);
