@@ -239,7 +239,7 @@ public final class MarkRegionSpace extends Space {
     public void postCopy(ObjectReference object, int bytes) {
         // 0x0000120100402018
         Header.writeMarkState(object);
-        ForwardingWord.clearForwardingBits(object);
+        //ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
     }
