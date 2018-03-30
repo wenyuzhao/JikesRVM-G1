@@ -187,7 +187,7 @@ public class MarkRegion {
         region.plus(PREV_POINTER_OFFSET_IN_MMTK_REGION).store((int) 0);
         region.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).store((int) 0);
         region.plus(BLOCK_COUNT_OFFSET_IN_MMTK_REGION).store((int) 0);
-        lock2.acquire();
+        lock2.release();
     }
 
     private static boolean allocated(Address block) {
@@ -212,7 +212,7 @@ public class MarkRegion {
         moveToNextAllocatedBlock();
     }
 
-    private static Lock lock3 = VM.newLock("xxxxxx");
+    //private static Lock lock3 = VM.newLock("xxxxxx");
     private static void moveToNextAllocatedBlock() {
         //lock3.acquire();
         Log.write("#MMTK REGION ", currentRegion);
