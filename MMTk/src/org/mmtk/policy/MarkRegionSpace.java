@@ -277,19 +277,19 @@ public final class MarkRegionSpace extends Space {
             Log.write("# ", object);
             Log.writeln(" -> ", rtn);
         }
-        Log.write("Object ", rtn);
-        Log.flush();
-        VM.objectModel.dumpObject(object);
-        Log.flush();
-        Log.write(": size=", VM.objectModel.getCurrentSize(rtn));
+        //Log.write("Object ", rtn);
+        //Log.flush();
+        //VM.objectModel.dumpObject(object);
+        //Log.flush();
+        //Log.write(": size=", VM.objectModel.getCurrentSize(rtn));
         if (Header.testAndMark(rtn)) {
-            Log.writeln("{");
+            //Log.writeln("{");
             Address region = MarkRegion.of(rtn.toAddress());
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
             MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getCurrentSize(rtn));
-            Log.writeln("}");
+            //Log.writeln("}");
             trace.processNode(rtn);
-        } else Log.writeln();
+        }// else Log.writeln();
         return rtn;
     }
 
