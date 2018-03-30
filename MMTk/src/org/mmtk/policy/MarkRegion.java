@@ -126,9 +126,6 @@ public class MarkRegion {
 
     //static Lock lock2 = VM.newLock("mark-region");
     public static void setRelocationState(Address block, boolean relocation) {
-        if (relocation) {
-            Log.writeln("@MarkRelocate: ", block);
-        }
         //lock2.acquire();
         metaDataOf(block, METADATA_RELOCATE_OFFSET).store((byte) (relocation ? 1 : 0));
         //lock2.release();
@@ -215,8 +212,8 @@ public class MarkRegion {
     //private static Lock lock3 = VM.newLock("xxxxxx");
     private static void moveToNextAllocatedBlock() {
         //lock3.acquire();
-        Log.write("#MMTK REGION ", currentRegion);
-        Log.writeln(currentRegion == null || currentRegion.isZero() ? " true" : " false");
+        //Log.write("#MMTK REGION ", currentRegion);
+        //Log.writeln(currentRegion == null || currentRegion.isZero() ? " true" : " false");
         if (currentRegion == null || currentRegion.isZero()) {
             currentRegion = null;
             nextBlock = null;
@@ -227,20 +224,20 @@ public class MarkRegion {
         for (int index = curser + 1; index < REGIONS_IN_MMTK_REGION; index++) {
             int offset = METADATA_OFFSET_IN_MMTK_REGION + index * METADATA_BYTES + METADATA_ALLOCATED_OFFSET;
             Address ptr = currentRegion.plus(offset);
-            Log.write("# curser ", index);
-            Log.writeln(" alloc_ptr ", ptr);
+            //Log.write("# curser ", index);
+            //Log.writeln(" alloc_ptr ", ptr);
             if (ptr.loadByte() > 0) {
                 curser = index;
                 nextBlock = currentRegion.plus(REGIONS_START_OFFSET + BYTES_IN_REGION * index);
-                Log.writeln("# allocated ", ptr.loadByte());
+                //Log.writeln("# allocated ", ptr.loadByte());
                 //lock3.release();
                 return;
             }
         }
         Address nextRegion = currentRegion.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).loadAddress();
-        Log.write("#REGION ", currentRegion);
-        Log.write(" -> ", nextRegion);
-        Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
+        //Log.write("#REGION ", currentRegion);
+        //Log.write(" -> ", nextRegion);
+        //Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
         currentRegion = nextRegion;
         curser = -1;
         //lock3.release();
