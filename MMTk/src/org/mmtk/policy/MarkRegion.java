@@ -25,8 +25,8 @@ public class MarkRegion {
 
 
     private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
-    private static final int METADATA_RELOCATE_OFFSET = 4;
-    private static final int METADATA_ALLOCATED_OFFSET = 5;
+    private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + Constants.BYTES_IN_INT;
+    private static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + Constants.BYTES_IN_BYTE;
     private static final int METADATA_BYTES = 8;
     public static final int METADATA_PAGES_PER_MMTK_REGION = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_REGION * METADATA_BYTES / Constants.BYTES_IN_PAGE;
     private static final int REGIONS_IN_MMTK_REGION = (EmbeddedMetaData.PAGES_IN_REGION - METADATA_PAGES_PER_MMTK_REGION) / PAGES_IN_REGION;
@@ -206,21 +206,22 @@ public class MarkRegion {
     private static int curser = -1; // index of nextBlock in currentRegion
 
     public static void resetIterator() {
-        lock3.acquire();
+        //lock3.acquire();
         currentRegion = firstRegion;
-        lock3.release();
+        //lock3.release();
         moveToNextAllocatedBlock();
     }
 
     private static Lock lock3 = VM.newLock("xxxxxx");
     private static void moveToNextAllocatedBlock() {
-        lock3.acquire();
+        //lock3.acquire();
         Log.write("#MMTK REGION ", currentRegion);
         Log.writeln(currentRegion == null || currentRegion.isZero() ? " true" : " false");
         if (currentRegion == null || currentRegion.isZero()) {
             currentRegion = null;
             nextBlock = null;
             curser = -1;
+            //lock3.release();
             return;
         }
         for (int index = curser + 1; index < REGIONS_IN_MMTK_REGION; index++) {
@@ -231,6 +232,8 @@ public class MarkRegion {
             if (ptr.loadByte() > 0) {
                 curser = index;
                 nextBlock = currentRegion.plus(REGIONS_START_OFFSET + BYTES_IN_REGION * index);
+                Log.writeln("# allocated ", ptr.loadByte());
+                //lock3.release();
                 return;
             }
         }
@@ -240,7 +243,7 @@ public class MarkRegion {
         Log.writeln(" NEXT_POINTER_OFFSET_IN_MMTK_REGION ", NEXT_POINTER_OFFSET_IN_MMTK_REGION);
         currentRegion = nextRegion;
         curser = -1;
-        lock3.release();
+        //lock3.release();
         moveToNextAllocatedBlock();
     }
 

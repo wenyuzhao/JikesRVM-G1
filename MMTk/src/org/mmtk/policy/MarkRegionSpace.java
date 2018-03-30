@@ -217,6 +217,12 @@ public final class MarkRegionSpace extends Space {
      */
     @Inline
     public void postAlloc(ObjectReference object, int bytes) {
+        if (object.toAddress().EQ(Address.fromLong(0x0000120100402018L))) {
+            Log.write("@@Obj ");
+            Log.flush();
+            VM.objectModel.dumpObject(object);
+            Log.flush();
+        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     }
@@ -231,6 +237,7 @@ public final class MarkRegionSpace extends Space {
      */
     @Inline
     public void postCopy(ObjectReference object, int bytes) {
+        // 0x0000120100402018
         Header.writeMarkState(object);
         ForwardingWord.clearForwardingBits(object);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
@@ -270,12 +277,19 @@ public final class MarkRegionSpace extends Space {
             Log.write("# ", object);
             Log.writeln(" -> ", rtn);
         }
+        Log.write("Object ", rtn);
+        Log.flush();
+        VM.objectModel.dumpObject(object);
+        Log.flush();
+        Log.write(": size=", VM.objectModel.getCurrentSize(rtn));
         if (Header.testAndMark(rtn)) {
+            Log.writeln("{");
             Address region = MarkRegion.of(rtn.toAddress());
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
             MarkRegion.setUsedSize(region, MarkRegion.usedSize(region) + VM.objectModel.getCurrentSize(rtn));
+            Log.writeln("}");
             trace.processNode(rtn);
-        }
+        } else Log.writeln();
         return rtn;
     }
 
