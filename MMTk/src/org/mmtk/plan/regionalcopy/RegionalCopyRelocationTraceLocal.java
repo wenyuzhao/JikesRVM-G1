@@ -75,12 +75,12 @@ public class RegionalCopyRelocationTraceLocal extends TraceLocal {
     };
   }
 
-  static Lock lock = VM.newLock("RelocationGlobal");
+  //static Lock lock = VM.newLock("RelocationGlobal");
 
   @Override
   public void release() {
     super.release();
-    lock.acquire();
+    //lock.acquire();
     int visitedPages = 0;
     MarkRegion.resetIterator();
     while (MarkRegion.hasNext()) {
@@ -100,7 +100,7 @@ public class RegionalCopyRelocationTraceLocal extends TraceLocal {
       }
     }
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(visitedPages == MarkRegion.count(), "Invalid iteration");
-    lock.release();
+    //lock.release();
     Log.write("Memory: ", VM.activePlan.global().getPagesReserved());
     Log.write(" / ", VM.activePlan.global().getTotalPages());
     Log.writeln(", ", RegionalCopy.markRegionSpace.availablePhysicalPages());

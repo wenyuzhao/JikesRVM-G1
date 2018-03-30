@@ -60,9 +60,9 @@ public class MarkRegion {
     public static boolean isValidBlock(final Address block) {
         return block != null && !block.isZero() && isAligned(block);
     }
-    private static Lock lock = VM.newLock("mark-block-register");
+    //private static Lock lock = VM.newLock("mark-block-register");
     public static void register(Address block) {
-        lock.acquire();
+        //lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
         count += 1;
         clearState(block);
@@ -86,11 +86,11 @@ public class MarkRegion {
             // Clear
         }
         blockCount.store(blocks);
-        lock.release();
+        //lock.release();
     }
 
     public static void unregister(Address block) {
-        lock.acquire();
+        //lock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
         count -= 1;
         clearState(block);
@@ -121,17 +121,17 @@ public class MarkRegion {
         } else {
             blockCount.store(blocks);
         }
-        lock.release();
+        //lock.release();
     }
 
-    static Lock lock2 = VM.newLock("mark-region");
+    //static Lock lock2 = VM.newLock("mark-region");
     public static void setRelocationState(Address block, boolean relocation) {
         if (relocation) {
             Log.writeln("@MarkRelocate: ", block);
         }
-        lock2.acquire();
+        //lock2.acquire();
         metaDataOf(block, METADATA_RELOCATE_OFFSET).store((byte) (relocation ? 1 : 0));
-        lock2.release();
+        //lock2.release();
     }
 
     public static boolean relocationRequired(Address block) {
@@ -139,9 +139,9 @@ public class MarkRegion {
     }
 
     public static void setUsedSize(Address block, int bytes) {
-        lock2.acquire();
+        //lock2.acquire();
         metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET).store(bytes);
-        lock2.release();
+        //lock2.release();
     }
 
     public static int usedSize(Address block) {
@@ -177,17 +177,17 @@ public class MarkRegion {
 
 
     private static void setAllocated(Address block, boolean allocated) {
-        lock2.acquire();
+        //lock2.acquire();
         metaDataOf(block, METADATA_ALLOCATED_OFFSET).store((byte) (allocated ? 1 : 0));
-        lock2.release();
+        //lock2.release();
     }
 
     private static void clearRegionState(Address region) {
-        lock2.acquire();
+        //lock2.acquire();
         region.plus(PREV_POINTER_OFFSET_IN_MMTK_REGION).store((int) 0);
         region.plus(NEXT_POINTER_OFFSET_IN_MMTK_REGION).store((int) 0);
         region.plus(BLOCK_COUNT_OFFSET_IN_MMTK_REGION).store((int) 0);
-        lock2.release();
+        //lock2.release();
     }
 
     private static boolean allocated(Address block) {
