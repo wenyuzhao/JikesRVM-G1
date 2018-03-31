@@ -13,9 +13,9 @@
 
 package org.mmtk.utility.alloc;
 
-import org.mmtk.policy.MarkRegion;
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -25,7 +25,7 @@ import org.vmmagic.unboxed.Address;
  *
  */
 @Uninterruptible
-public class MarkRegionAllocator extends Allocator {
+public class MarkBlockAllocator extends Allocator {
 
   /****************************************************************************
    *
@@ -33,12 +33,12 @@ public class MarkRegionAllocator extends Allocator {
    */
 
   /** space this allocator is associated with */
-  protected final MarkRegionSpace space;
+  protected final MarkBlockSpace space;
   //private final boolean hot;
   private final boolean copy;
 
   /** bump pointer */
-  private Address cursor;
+  public Address cursor;
   /** limit for bump pointer */
   private Address limit;
 
@@ -48,7 +48,7 @@ public class MarkRegionAllocator extends Allocator {
    * @param space The space to bump point into.
    * @param copy TODO
    */
-  public MarkRegionAllocator(MarkRegionSpace space, boolean copy) {
+  public MarkBlockAllocator(MarkBlockSpace space, boolean copy) {
     this.space = space;
     this.copy = copy;
     reset();
@@ -79,7 +79,7 @@ public class MarkRegionAllocator extends Allocator {
    */
   @Inline
   public final Address alloc(int bytes, int align, int offset) {
-    VM.assertions._assert(bytes > 0, "Trying to allocate negative bytes");
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes > 0, "Trying to allocate negative bytes");
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
@@ -114,9 +114,9 @@ public class MarkRegionAllocator extends Allocator {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkRegion.isAligned(ptr));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(ptr));
     cursor = ptr;
-    limit = ptr.plus(MarkRegion.BYTES_IN_REGION);
+    limit = ptr.plus(MarkBlock.BYTES_IN_BLOCK);
     return alloc(bytes, align, offset);
   }
 

@@ -10,15 +10,14 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regionalcopy;
+package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
-import org.mmtk.policy.MarkRegion;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.MarkRegionAllocator;
+import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -34,19 +33,19 @@ import org.vmmagic.unboxed.ObjectReference;
  * and per-mutator thread collection semantics (flushing and restoring
  * per-mutator allocator state).<p>
  *
- * See {@link RegionalCopy} for an overview of the semi-space algorithm.
+ * See {@link MarkCopy} for an overview of the semi-space algorithm.
  *
- * @see RegionalCopy
- * @see RegionalCopyCollector
+ * @see MarkCopy
+ * @see MarkCopyCollector
  * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class RegionalCopyMutator extends StopTheWorldMutator {
+public class MarkCopyMutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final MarkRegionAllocator zgc;
+  protected final MarkBlockAllocator mc;
 
   /****************************************************************************
    *
@@ -56,8 +55,8 @@ public class RegionalCopyMutator extends StopTheWorldMutator {
   /**
    * Constructor
    */
-  public RegionalCopyMutator() {
-    zgc = new MarkRegionAllocator(RegionalCopy.markRegionSpace, false);
+  public MarkCopyMutator() {
+    mc = new MarkBlockAllocator(MarkCopy.markBlockSpace, false);
   }
 
   /****************************************************************************
@@ -71,19 +70,20 @@ public class RegionalCopyMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == RegionalCopy.ALLOC_Z) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkRegion.BYTES_IN_REGION);
-      return zgc.alloc(bytes, align, offset);
-    } else
+    if (allocator == MarkCopy.ALLOC_MC) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+      return mc.alloc(bytes, align, offset);
+    } else {
       return super.alloc(bytes, align, offset, allocator, site);
+    }
   }
 
   @Override
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (allocator == RegionalCopy.ALLOC_Z) {
-      RegionalCopy.markRegionSpace.postAlloc(object, bytes);
+    if (allocator == MarkCopy.ALLOC_MC) {
+      MarkCopy.markBlockSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -91,7 +91,7 @@ public class RegionalCopyMutator extends StopTheWorldMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == RegionalCopy.markRegionSpace) return zgc;
+    if (space == MarkCopy.markBlockSpace) return mc;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -106,14 +106,14 @@ public class RegionalCopyMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == RegionalCopy.PREPARE) {
+    if (phaseId == MarkCopy.PREPARE) {
       super.collectionPhase(phaseId, primary);
-      zgc.reset();
+      mc.reset();
       return;
     }
 
-    if (phaseId == RegionalCopy.RELEASE) {
-      zgc.reset();
+    if (phaseId == MarkCopy.RELEASE) {
+      mc.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }

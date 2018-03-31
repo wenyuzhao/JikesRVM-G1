@@ -14,11 +14,9 @@ package org.mmtk.plan.concurrent.concmark;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkRegion;
 import org.mmtk.policy.Space;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -51,12 +49,14 @@ public class ConcMarkMarkTraceLocal extends TraceLocal {
   @Override
   public void prepare() {
     super.prepare();
+    /*
     MarkRegion.resetIterator();
     while (MarkRegion.hasNext()) {
       Address region = MarkRegion.next();
       MarkRegion.setUsedSize(region, 0);
       MarkRegion.setRelocationState(region, false);
     };
+    */
   }
 
   @Override

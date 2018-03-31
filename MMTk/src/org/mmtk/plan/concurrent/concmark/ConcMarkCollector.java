@@ -17,10 +17,10 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
-import org.mmtk.policy.MarkRegion;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.MarkRegionAllocator;
+import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -53,7 +53,7 @@ public class ConcMarkCollector extends ConcurrentCollector {
   /**
    *
    */
-  protected final MarkRegionAllocator copy = new MarkRegionAllocator(ConcMark.markRegionSpace, true);
+  protected final MarkBlockAllocator copy = new MarkBlockAllocator(ConcMark.markRegionSpace, true);
   protected final ConcMarkMarkTraceLocal markTrace = new ConcMarkMarkTraceLocal(global().markTrace);
   protected final ConcMarkRelocationTraceLocal relocateTrace = new ConcMarkRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
@@ -99,12 +99,12 @@ public class ConcMarkCollector extends ConcurrentCollector {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == ConcMark.ALLOC_DEFAULT);
 
     ConcMark.markRegionSpace.postCopy(object, bytes);
-    MarkRegionSpace.Header.mark(object);
+    MarkBlockSpace.Header.mark(object);
 
     if (VM.VERIFY_ASSERTIONS) {
       // VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.write("#Block ", MarkRegion.of(object.toAddress()));
+        Log.write("#Block ", MarkBlock.of(object.toAddress()));
         Log.writeln(" is marked for relocate");
       }
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));

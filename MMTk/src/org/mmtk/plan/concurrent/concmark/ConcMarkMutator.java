@@ -13,15 +13,13 @@
 package org.mmtk.plan.concurrent.concmark;
 
 import org.mmtk.plan.MutatorContext;
-import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
-import org.mmtk.plan.concurrent.marksweep.CMS;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.MarkRegionAllocator;
+import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -49,7 +47,7 @@ public class ConcMarkMutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final MarkRegionAllocator zgc;
+  protected final MarkBlockAllocator zgc;
   private final TraceWriteBuffer remset;
 
   /****************************************************************************
@@ -61,7 +59,7 @@ public class ConcMarkMutator extends ConcurrentMutator {
    * Constructor
    */
   public ConcMarkMutator() {
-    zgc = new MarkRegionAllocator(ConcMark.markRegionSpace, false);
+    zgc = new MarkBlockAllocator(ConcMark.markRegionSpace, false);
     remset = new TraceWriteBuffer(global().markTrace);
   }
 
@@ -88,7 +86,7 @@ public class ConcMarkMutator extends ConcurrentMutator {
       int bytes, int allocator) {
     if (allocator == ConcMark.ALLOC_Z) {
       ConcMark.markRegionSpace.postAlloc(object, bytes);
-      MarkRegionSpace.Header.mark(object);
+      MarkBlockSpace.Header.mark(object);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }

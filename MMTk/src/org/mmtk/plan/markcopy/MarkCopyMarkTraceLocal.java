@@ -10,12 +10,14 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regionalcopy;
+package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkRegion;
+import org.mmtk.policy.MarkBlock;
+import org.mmtk.utility.Log;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -26,10 +28,10 @@ import org.vmmagic.unboxed.ObjectReference;
  * closure over the heap graph.
  */
 @Uninterruptible
-public class RegionalCopyMarkTraceLocal extends TraceLocal {
+public class MarkCopyMarkTraceLocal extends TraceLocal {
 
-  public RegionalCopyMarkTraceLocal(Trace trace) {
-    super(RegionalCopy.SCAN_MARK, trace);
+  public MarkCopyMarkTraceLocal(Trace trace) {
+    super(MarkCopy.SCAN_MARK, trace);
   }
 
   /****************************************************************************
@@ -43,28 +45,45 @@ public class RegionalCopyMarkTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(RegionalCopy.RC, object))
-      return RegionalCopy.markRegionSpace.isLive(object);
+    if (Space.isInSpace(MarkCopy.MC, object))
+      return MarkCopy.markBlockSpace.isLive(object);
     return super.isLive(object);
   }
 
   @Override
   public void prepare() {
     super.prepare();
-    MarkRegion.resetIterator();
-    while (MarkRegion.hasNext()) {
-      Address region = MarkRegion.next();
-      MarkRegion.setUsedSize(region, 0);
-      MarkRegion.setRelocationState(region, false);
-    };
+    MarkCopyRelocationTraceLocal.lock.acquire();
+    int count = 0;
+
+    Address region = MarkBlock.firstBlock();
+    while (region != null) {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(MarkBlock.isValidBlock(region));
+        VM.assertions._assert(MarkBlock.allocated(region));
+      }
+      count++;
+
+      MarkBlock.setUsedSize(region, 0);
+      MarkBlock.setRelocationState(region, false);
+
+      region = MarkBlock.nextBlock(region);
+    }
+    if (count != MarkBlock.count()) {
+        Log.write("Invalid iteration: ", count);
+        Log.writeln(" / ", MarkBlock.count());
+    }
+    VM.assertions._assert(count == MarkBlock.count());
+
+    MarkCopyRelocationTraceLocal.lock.release();
   }
 
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(RegionalCopy.RC, object))
-      return RegionalCopy.markRegionSpace.traceMarkObject(this, object);
+    if (Space.isInSpace(MarkCopy.MC, object))
+      return MarkCopy.markBlockSpace.traceMarkObject(this, object);
     return super.traceObject(object);
   }
 
@@ -76,7 +95,7 @@ public class RegionalCopyMarkTraceLocal extends TraceLocal {
    */
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
-    if (Space.isInSpace(RegionalCopy.RC, object)) {
+    if (Space.isInSpace(MarkCopy.MC, object)) {
       return true;
     } else {
       return super.willNotMoveInCurrentCollection(object);

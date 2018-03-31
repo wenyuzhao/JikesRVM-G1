@@ -14,7 +14,7 @@ package org.mmtk.plan.concurrent.concmark;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
@@ -51,7 +51,7 @@ public class ConcMark extends Concurrent {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkRegionSpace markRegionSpace = new MarkRegionSpace("rc", VMRequest.discontiguous());
+  public static final MarkBlockSpace markRegionSpace = new MarkBlockSpace("rc", VMRequest.discontiguous());
   public static final int RC = markRegionSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);

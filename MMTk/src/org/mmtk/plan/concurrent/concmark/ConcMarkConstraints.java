@@ -12,10 +12,9 @@
  */
 package org.mmtk.plan.concurrent.concmark;
 
-import org.mmtk.plan.StopTheWorldConstraints;
 import org.mmtk.plan.concurrent.ConcurrentConstraints;
-import org.mmtk.policy.MarkRegion;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkBlockSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -33,11 +32,11 @@ public class ConcMarkConstraints extends ConcurrentConstraints {
   }
   @Override
   public int gcHeaderBits() {
-    return MarkRegionSpace.LOCAL_GC_BITS_REQUIRED;
+    return MarkBlockSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return MarkRegionSpace.GC_HEADER_WORDS_REQUIRED;
+    return MarkBlockSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {
@@ -45,6 +44,6 @@ public class ConcMarkConstraints extends ConcurrentConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return MarkRegion.BYTES_IN_REGION;
+    return MarkBlock.BYTES_IN_BLOCK;
   }
 }

@@ -14,7 +14,7 @@ package org.mmtk.plan.concurrent.concmark;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkRegion;
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
@@ -23,7 +23,6 @@ import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -53,18 +52,19 @@ public class ConcMarkRelocationTraceLocal extends TraceLocal {
     super.prepare();
     Log.write("Memory: ", VM.activePlan.global().getPagesUsed());
     Log.writeln(" / ", VM.activePlan.global().getTotalPages());
-    Log.writeln("BLOCK SIZE ", MarkRegion.count());
+    Log.writeln("BLOCK SIZE ", MarkBlock.count());
     int aliveSizeInRelocationSet = 0;
-    int useableBytesForCopying = (int) (VM.activePlan.global().getPagesAvail() * (1.0 - MarkRegion.METADATA_PAGES_PER_MMTK_REGION / EmbeddedMetaData.PAGES_IN_REGION) * Constants.BYTES_IN_PAGE);
+    int useableBytesForCopying = (int) (VM.activePlan.global().getPagesAvail() * (1.0 - MarkBlock.METADATA_PAGES_PER_REGION / EmbeddedMetaData.PAGES_IN_REGION) * Constants.BYTES_IN_PAGE);
 
+    /*
     MarkRegion.resetIterator();
     while (MarkRegion.hasNext()) {
       Address region = MarkRegion.next();
       Log.write("#Block ", region);
       Log.write(": ", MarkRegion.usedSize(region));
-      Log.write("/", MarkRegion.BYTES_IN_REGION);
+      Log.write("/", MarkRegion.BYTES_IN_BLOCK);
       int usedSize = MarkRegion.usedSize(region);
-      if (usedSize <= (MarkRegion.BYTES_IN_REGION >> 1)) {
+      if (usedSize <= (MarkRegion.BYTES_IN_BLOCK >> 1)) {
         if (aliveSizeInRelocationSet + usedSize <= useableBytesForCopying) {
           Log.write(" relocate");
           MarkRegion.setRelocationState(region, true);
@@ -73,6 +73,7 @@ public class ConcMarkRelocationTraceLocal extends TraceLocal {
       }
       Log.writeln();
     };
+    */
   }
 
   static Lock lock = VM.newLock("RelocationGlobal");
@@ -82,24 +83,26 @@ public class ConcMarkRelocationTraceLocal extends TraceLocal {
     super.release();
     lock.acquire();
     int visitedPages = 0;
+    /*
     MarkRegion.resetIterator();
     while (MarkRegion.hasNext()) {
       Address region = MarkRegion.next();
       if (MarkRegion.relocationRequired(region)) {
         Log.write("#Block ", region);
         Log.write(": ", MarkRegion.usedSize(region));
-        Log.write("/", MarkRegion.BYTES_IN_REGION);
+        Log.write("/", MarkRegion.BYTES_IN_BLOCK);
         Log.writeln(" released");
         MarkRegion.setRelocationState(region, false);
-        ConcMark.markRegionSpace.release(region);
+        ConcMark.markBlockSpace.release(region);
       } else {
         visitedPages++;
         Log.write("#Block ", region);
         Log.write(": ", MarkRegion.usedSize(region));
-        Log.writeln("/", MarkRegion.BYTES_IN_REGION);
+        Log.writeln("/", MarkRegion.BYTES_IN_BLOCK);
       }
     }
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(visitedPages == MarkRegion.count(), "Invalid iteration");
+    */
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(visitedPages == MarkBlock.count(), "Invalid iteration");
     lock.release();
     Log.write("Memory: ", VM.activePlan.global().getPagesReserved());
     Log.write(" / ", VM.activePlan.global().getTotalPages());
@@ -124,7 +127,7 @@ public class ConcMarkRelocationTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(ConcMark.RC, object)) {
-      return !MarkRegion.relocationRequired(MarkRegion.of(object.toAddress()));
+      return !MarkBlock.relocationRequired(MarkBlock.of(object.toAddress()));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

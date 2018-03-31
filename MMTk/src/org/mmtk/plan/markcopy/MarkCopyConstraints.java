@@ -10,18 +10,18 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regionalcopy;
+package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.MarkRegion;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkBlockSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
  * SemiSpace common constants.
  */
 @Uninterruptible
-public class RegionalCopyConstraints extends StopTheWorldConstraints {
+public class MarkCopyConstraints extends StopTheWorldConstraints {
   @Override
   public boolean movesObjects() {
     return true;
@@ -32,11 +32,11 @@ public class RegionalCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int gcHeaderBits() {
-    return MarkRegionSpace.LOCAL_GC_BITS_REQUIRED;
+    return MarkBlockSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return 1; //MarkRegionSpace.GC_HEADER_WORDS_REQUIRED;
+    return MarkBlockSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {
@@ -44,6 +44,6 @@ public class RegionalCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return MarkRegion.BYTES_IN_REGION;
+    return MarkBlock.BYTES_IN_BLOCK;
   }
 }

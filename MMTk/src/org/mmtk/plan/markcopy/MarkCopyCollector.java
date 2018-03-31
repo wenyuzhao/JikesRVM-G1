@@ -10,15 +10,15 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regionalcopy;
+package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkRegion;
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.MarkRegionAllocator;
+import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -34,15 +34,15 @@ import org.vmmagic.unboxed.ObjectReference;
  * (through <code>trace</code> and the <code>collectionPhase</code>
  * method), and collection-time allocation (copying of objects).<p>
  *
- * See {@link RegionalCopy} for an overview of the semi-space algorithm.
+ * See {@link MarkCopy} for an overview of the semi-space algorithm.
  *
- * @see RegionalCopy
- * @see RegionalCopyMutator
+ * @see MarkCopy
+ * @see MarkCopyMutator
  * @see StopTheWorldCollector
  * @see CollectorContext
  */
 @Uninterruptible
-public class RegionalCopyCollector extends StopTheWorldCollector {
+public class MarkCopyCollector extends StopTheWorldCollector {
 
   /****************************************************************************
    * Instance fields
@@ -51,9 +51,9 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected final MarkRegionAllocator copy = new MarkRegionAllocator(RegionalCopy.markRegionSpace, true);
-  protected final RegionalCopyMarkTraceLocal markTrace = new RegionalCopyMarkTraceLocal(global().markTrace);
-  protected final RegionalCopyRelocationTraceLocal relocateTrace = new RegionalCopyRelocationTraceLocal(global().relocateTrace);
+  protected final MarkBlockAllocator copy = new MarkBlockAllocator(MarkCopy.markBlockSpace, true);
+  protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
+  protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -64,7 +64,7 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
   /**
    * Constructor
    */
-  public RegionalCopyCollector() {}
+  public MarkCopyCollector() {}
 
   /****************************************************************************
    *
@@ -80,26 +80,57 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
       int align, int offset, int allocator) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
-      VM.assertions._assert(allocator == RegionalCopy.ALLOC_DEFAULT);
+      VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
     }
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkRegion.BYTES_IN_REGION);
-    return copy.alloc(bytes, align, offset);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+    //Log.write("AllocCopy ");
+    Address addr = copy.alloc(bytes, align, offset);
+    //Log.write(addr);
+    //Log.write("..<", copy.cursor);
+    Address region = MarkBlock.of(addr);
+    //Log.writeln(" in region ", region);
+    //Log.flush();
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!region.isZero()) {
+        VM.assertions._assert(MarkBlock.allocated(region));
+        VM.assertions._assert(!MarkBlock.relocationRequired(region));
+        VM.assertions._assert(MarkBlock.usedSize(region) == 0);
+      } else {
+        Log.writeln("ALLOCATED A NULL REGION");
+      }
+    }
+    return addr;
   }
 
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == RegionalCopy.ALLOC_DEFAULT);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
 
-    RegionalCopy.markRegionSpace.postCopy(object, bytes);
-
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       // VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
         Log.write("#Block ", MarkRegion.of(object.toAddress()));
-        Log.writeln(" is marked for relocate");
+        Log.write(" is marked for relocate:");
+        Log.write(MarkRegion.relocationRequired(MarkRegion.of(object.toAddress())) ? "true" : "false");
+        Log.write(" allocated:");
+        Log.write(MarkRegion.allocated(MarkRegion.of(object.toAddress())) ? "true" : "false");
+        Log.writeln(" used:", MarkRegion.usedSize(MarkRegion.of(object.toAddress())));
       }
+      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
+    }*/
+
+    MarkCopy.markBlockSpace.postCopy(object, bytes);
+
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(getCurrentTrace().isLive(object));
+      if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
+        Log.write("#Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
+        Log.write(" is marked for relocate:");
+        Log.writeln(MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
+      }
+
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
     }
   }
@@ -115,47 +146,47 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (phaseId == RegionalCopy.PREPARE) {
-      Log.writeln("RegionalCopy PREPARE");
+    if (phaseId == MarkCopy.PREPARE) {
+      Log.writeln("MarkCopy PREPARE");
       currentTrace = markTrace;
       super.collectionPhase(phaseId, primary);
       markTrace.prepare();
       return;
     }
 
-    if (phaseId == RegionalCopy.CLOSURE) {
-      Log.writeln("RegionalCopy CLOSURE");
+    if (phaseId == MarkCopy.CLOSURE) {
+      Log.writeln("MarkCopy CLOSURE");
       markTrace.completeTrace();
       return;
     }
 
-    if (phaseId == RegionalCopy.RELEASE) {
-      Log.writeln("RegionalCopy RELEASE");
+    if (phaseId == MarkCopy.RELEASE) {
+      Log.writeln("MarkCopy RELEASE");
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == RegionalCopy.RELOCATE_PREPARE) {
-      Log.writeln("RegionalCopy RELOCATE_PREPARE");
+    if (phaseId == MarkCopy.RELOCATE_PREPARE) {
+      Log.writeln("MarkCopy RELOCATE_PREPARE");
       currentTrace = relocateTrace;
-      super.collectionPhase(RegionalCopy.PREPARE, primary);
+      super.collectionPhase(MarkCopy.PREPARE, primary);
       relocateTrace.prepare();
       copy.reset();
       return;
     }
 
-    if (phaseId == RegionalCopy.RELOCATE_CLOSURE) {
-      Log.writeln("RegionalCopy RELOCATE_CLOSURE");
+    if (phaseId == MarkCopy.RELOCATE_CLOSURE) {
+      Log.writeln("MarkCopy RELOCATE_CLOSURE");
       relocateTrace.completeTrace();
       return;
     }
 
-    if (phaseId == RegionalCopy.RELOCATE_RELEASE) {
-      Log.writeln("RegionalCopy RELOCATE_RELEASE");
+    if (phaseId == MarkCopy.RELOCATE_RELEASE) {
+      Log.writeln("MarkCopy RELOCATE_RELEASE");
       relocateTrace.release();
       copy.reset();
-      super.collectionPhase(RegionalCopy.RELEASE, primary);
+      super.collectionPhase(MarkCopy.RELEASE, primary);
       return;
     }
 
@@ -207,8 +238,8 @@ public class RegionalCopyCollector extends StopTheWorldCollector {
 
   /** @return The active global plan as an <code>RegionalCopy</code> instance. */
   @Inline
-  private static RegionalCopy global() {
-    return (RegionalCopy) VM.activePlan.global();
+  private static MarkCopy global() {
+    return (MarkCopy) VM.activePlan.global();
   }
 
   @Override

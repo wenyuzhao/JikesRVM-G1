@@ -10,11 +10,11 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regionalcopy;
+package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkRegionSpace;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
@@ -42,7 +42,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * performance properties of this plan.
  */
 @Uninterruptible
-public class RegionalCopy extends StopTheWorld {
+public class MarkCopy extends StopTheWorld {
 
   /****************************************************************************
    *
@@ -50,8 +50,8 @@ public class RegionalCopy extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkRegionSpace markRegionSpace = new MarkRegionSpace("rc", VMRequest.discontiguous());
-  public static final int RC = markRegionSpace.getDescriptor();
+  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("rc", VMRequest.discontiguous());
+  public static final int MC = markBlockSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
@@ -64,7 +64,7 @@ public class RegionalCopy extends StopTheWorld {
   /**
    *
    */
-  public static final int ALLOC_Z = Plan.ALLOC_DEFAULT;
+  public static final int ALLOC_MC = Plan.ALLOC_DEFAULT;
   public static final int SCAN_MARK = 0;
   public static final int SCAN_RELOCATE = 1;
 
@@ -103,7 +103,7 @@ public class RegionalCopy extends StopTheWorld {
   /**
    * Constructor
    */
-  public RegionalCopy() {
+  public MarkCopy() {
     collection = zCollection;
   }
 
@@ -121,7 +121,7 @@ public class RegionalCopy extends StopTheWorld {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepare();
-      markRegionSpace.prepare();
+      markBlockSpace.prepare();
       return;
     }
     if (phaseId == CLOSURE) {
@@ -137,12 +137,12 @@ public class RegionalCopy extends StopTheWorld {
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       relocateTrace.prepare();
-      markRegionSpace.prepare();
+      markBlockSpace.prepare();
       return;
     }
     if (phaseId == RELOCATE_RELEASE) {
       relocateTrace.release();
-      markRegionSpace.release();
+      markBlockSpace.release();
       super.collectionPhase(RELEASE);
       return;
     }
@@ -167,7 +167,7 @@ public class RegionalCopy extends StopTheWorld {
   public final int getCollectionReserve() {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
-    return markRegionSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
+    return markBlockSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
   }
 
   /**
@@ -177,7 +177,7 @@ public class RegionalCopy extends StopTheWorld {
    */
   @Override
   public int getPagesUsed() {
-    return super.getPagesUsed() + markRegionSpace.reservedPages();
+    return super.getPagesUsed() + markBlockSpace.reservedPages();
   }
 
   /**
@@ -191,15 +191,15 @@ public class RegionalCopy extends StopTheWorld {
 
   @Override
   public boolean willNeverMove(ObjectReference object) {
-    if (Space.isInSpace(RC, object)) return true;
+    if (Space.isInSpace(MC, object)) return false;
     return super.willNeverMove(object);
   }
 
   @Override
   @Interruptible
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_MARK, RegionalCopyMarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, RegionalCopyRelocationTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, MarkCopyMarkTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, MarkCopyRelocationTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }
