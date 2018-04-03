@@ -10,11 +10,13 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.markcopy;
+package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.Space;
+import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
@@ -42,7 +44,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * performance properties of this plan.
  */
 @Uninterruptible
-public class MarkCopy extends StopTheWorld {
+public class MarkCopy extends Concurrent {
 
   /****************************************************************************
    *
@@ -59,6 +61,9 @@ public class MarkCopy extends StopTheWorld {
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
     Options.defragHeadroomFraction.setDefaultValue(0.05f);
+    // msSpace.makeAllocAsMarked();
+    smallCodeSpace.makeAllocAsMarked();
+    nonMovingSpace.makeAllocAsMarked();
   }
 
   /**
@@ -69,42 +74,61 @@ public class MarkCopy extends StopTheWorld {
   public static final int SCAN_RELOCATE = 1;
 
   /* Phases */
-  public static final short RELOCATE_PREPARE     = Phase.createSimple("relocate-prepare");
-  public static final short RELOCATE_CLOSURE     = Phase.createSimple("relocate-closure");
-  public static final short RELOCATE_RELEASE     = Phase.createSimple("relocate-release");
+  public static final short RELOCATE_PREPARE = Phase.createSimple("relocate-prepare");
+  public static final short RELOCATE_CLOSURE = Phase.createSimple("relocate-closure");
+  public static final short RELOCATE_RELEASE = Phase.createSimple("relocate-release");
+
+  public static final short CONCURRENT_RELOCATE_PREPARE = Phase.createConcurrent("concurrent-relocate-prepare-simple", Phase.scheduleCollector(RELOCATE_PREPARE));
+  public static final short concurrentRelocatePrepare = Phase.createComplex("concurrent-relocate-prepare", null,
+    Phase.scheduleConcurrent(CONCURRENT_RELOCATE_PREPARE),
+    Phase.scheduleCollector(RELOCATE_PREPARE)
+  );
+
+  public static final short CONCURRENT_RELOCATE_RELEASE = Phase.createConcurrent("concurrent-relocate-release-simple", Phase.scheduleCollector(RELOCATE_RELEASE));
 
   /**
    * This is the phase that is executed to perform a mark-compact collection.
    *
    * FIXME: Far too much duplication and inside knowledge of StopTheWorld
    */
-  public short zCollection = Phase.createComplex("collection", null,
+  public short _collection = Phase.createComplex("_collection", null,
       Phase.scheduleComplex  (initPhase),
       Phase.scheduleComplex  (rootClosurePhase),
       Phase.scheduleComplex  (refTypeClosurePhase),
       Phase.scheduleComplex  (completeClosurePhase),
 
+
       Phase.scheduleGlobal   (RELOCATE_PREPARE),
+      //Phase.scheduleComplex(concurrentRelocatePrepare),
       Phase.scheduleCollector(RELOCATE_PREPARE),
       Phase.scheduleMutator  (PREPARE),
       Phase.scheduleCollector(STACK_ROOTS),
       Phase.scheduleCollector(ROOTS),
       Phase.scheduleGlobal   (ROOTS),
 
-      Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex  (forwardPhase),
+
 
       Phase.scheduleCollector(RELOCATE_CLOSURE),
       Phase.scheduleMutator  (RELEASE),
+      //Phase.scheduleConcurrent(CONCURRENT_RELOCATE_RELEASE),
       Phase.scheduleCollector(RELOCATE_RELEASE),
       Phase.scheduleGlobal   (RELOCATE_RELEASE),
 
       Phase.scheduleComplex  (finishPhase)
   );
+
   /**
    * Constructor
    */
   public MarkCopy() {
-    collection = zCollection;
+    collection = _collection;
+  }
+
+  @Override
+  protected boolean concurrentCollectionRequired() {
+    return !Phase.concurrentPhaseActive() &&
+        ((getPagesReserved() * 100) / getTotalPages()) > 40;
   }
 
   /****************************************************************************
@@ -120,14 +144,11 @@ public class MarkCopy extends StopTheWorld {
   public void collectionPhase(short phaseId) {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
-      markTrace.prepare();
+      markTrace.prepareNonBlocking();
       markBlockSpace.prepare();
       return;
     }
-    if (phaseId == CLOSURE) {
-      // markTrace.prepare();
-      return;
-    }
+
     if (phaseId == RELEASE) {
       markTrace.release();
       markBlockSpace.release();
@@ -137,6 +158,7 @@ public class MarkCopy extends StopTheWorld {
 
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
+      // inConcurrentCollection = false;
       relocateTrace.prepare();
       markBlockSpace.prepare();
       return;
@@ -158,7 +180,7 @@ public class MarkCopy extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    return super.collectionRequired(spaceFull, space) || (getPagesAvail() <= (int)(getTotalPages() * Options.defragHeadroomFraction.getValue() + 0.5f));
+    return super.collectionRequired(spaceFull, space) ||  ((getPagesReserved() * 100) / getTotalPages()) > 95;
   }
 
   /**

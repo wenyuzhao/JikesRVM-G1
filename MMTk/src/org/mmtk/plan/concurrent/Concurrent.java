@@ -124,7 +124,7 @@ public abstract class Concurrent extends Simple {
   /**
    *
    */
-  private boolean inConcurrentCollection = false;
+  protected boolean inConcurrentCollection = false;
 
   @Override
   @Inline

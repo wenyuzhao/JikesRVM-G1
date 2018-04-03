@@ -10,13 +10,13 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.markcopy;
+package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkBlock;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
@@ -40,6 +40,8 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
    *
    * Externally visible Object processing and tracing
    */
+
+  // @Override protected boolean overwriteReferenceDuringTrace() { return false; }
 
   /**
    * {@inheritDoc}
@@ -70,7 +72,7 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return true;
+      return false;
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

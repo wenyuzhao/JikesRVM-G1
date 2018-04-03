@@ -10,10 +10,13 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.markcopy;
+package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.MutatorContext;
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.plan.TraceWriteBuffer;
+import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
@@ -41,11 +44,12 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see MutatorContext
  */
 @Uninterruptible
-public class MarkCopyMutator extends StopTheWorldMutator {
+public class MarkCopyMutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
   protected final MarkBlockAllocator mc;
+  private final TraceWriteBuffer remset;
 
   /****************************************************************************
    *
@@ -57,6 +61,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
    */
   public MarkCopyMutator() {
     mc = new MarkBlockAllocator(MarkCopy.markBlockSpace, false);
+    remset = new TraceWriteBuffer(global().markTrace);
   }
 
   /****************************************************************************
@@ -122,7 +127,38 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   }
 
   @Override
+  protected void checkAndEnqueueReference(ObjectReference ref) {
+    if (ref.isNull()) return;
+    //if (barrierActive) {
+    ObjectReference newRef = null;
+    if (Space.isInSpace(MarkCopy.MC, ref)) newRef = MarkCopy.markBlockSpace.traceMarkObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.IMMORTAL, ref)) newRef = MarkCopy.immortalSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.LOS, ref)) newRef = MarkCopy.loSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.NON_MOVING, ref)) newRef = MarkCopy.nonMovingSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.SMALL_CODE, ref)) newRef = MarkCopy.smallCodeSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.LARGE_CODE, ref)) newRef = MarkCopy.largeCodeSpace.traceObject(remset, ref);
+    //}
+
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!newRef.isNull() && !Plan.gcInProgress()) {
+        if (Space.isInSpace(MarkCopy.MC, newRef)) VM.assertions._assert(MarkCopy.markBlockSpace.isLive(newRef));
+        else if (Space.isInSpace(MarkCopy.IMMORTAL, newRef)) VM.assertions._assert(MarkCopy.immortalSpace.isLive(newRef));
+        else if (Space.isInSpace(MarkCopy.LOS, newRef)) VM.assertions._assert(MarkCopy.loSpace.isLive(newRef));
+        else if (Space.isInSpace(MarkCopy.NON_MOVING, newRef)) VM.assertions._assert(MarkCopy.nonMovingSpace.isLive(newRef));
+        else if (Space.isInSpace(MarkCopy.SMALL_CODE, newRef)) VM.assertions._assert(MarkCopy.smallCodeSpace.isLive(newRef));
+        else if (Space.isInSpace(MarkCopy.LARGE_CODE, newRef)) VM.assertions._assert(MarkCopy.largeCodeSpace.isLive(newRef));
+      }
+    }
+  }
+
+  @Override
   public void flushRememberedSets() {
+    remset.flush();
     mc.reset();
+  }
+
+  @Inline
+  private static MarkCopy global() {
+    return (MarkCopy) VM.activePlan.global();
   }
 }

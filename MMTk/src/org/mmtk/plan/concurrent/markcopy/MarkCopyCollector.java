@@ -10,20 +10,18 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.markcopy;
+package org.mmtk.plan.concurrent.markcopy;
 
-import org.mmtk.plan.CollectorContext;
-import org.mmtk.plan.Plan;
-import org.mmtk.plan.StopTheWorldCollector;
-import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.*;
+import org.mmtk.plan.concurrent.Concurrent;
+import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.MarkBlock;
-import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
-import org.mmtk.vm.Memory;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -44,7 +42,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see CollectorContext
  */
 @Uninterruptible
-public class MarkCopyCollector extends StopTheWorldCollector {
+public class MarkCopyCollector extends ConcurrentCollector {
 
   /****************************************************************************
    * Instance fields
@@ -78,17 +76,21 @@ public class MarkCopyCollector extends StopTheWorldCollector {
    */
   @Override
   @Inline
-  public Address allocCopy(ObjectReference original, int bytes, int align, int offset, int allocator) {
+  public Address allocCopy(ObjectReference original, int bytes,
+      int align, int offset, int allocator) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
-      VM.assertions._assert(allocator == MarkCopy.ALLOC_MC);
-      VM.assertions._assert(ForwardingWord.stateIsBeingForwarded(VM.objectModel.readAvailableBitsWord(original)));
+      VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
     }
-
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+    //Log.write("AllocCopy ");
     Address addr = copy.alloc(bytes, align, offset);
-    org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
+    //Log.write(addr);
+    //Log.write("..<", copy.cursor);
+    Address region = MarkBlock.of(addr);
+    //Log.writeln(" in region ", region);
+    //Log.flush();
     if (VM.VERIFY_ASSERTIONS) {
-      Address region = MarkBlock.of(addr);
       if (!region.isZero()) {
         VM.assertions._assert(MarkBlock.allocated(region));
         VM.assertions._assert(!MarkBlock.relocationRequired(region));
@@ -110,13 +112,13 @@ public class MarkCopyCollector extends StopTheWorldCollector {
 
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
-      if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
+      /*if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
         Log.write("#Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
         Log.write(" is marked for relocate:");
         Log.writeln(MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
       }
 
-      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
+      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));*/
     }
   }
 
@@ -132,7 +134,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == MarkCopy.PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy PREPARE");
+      Log.writeln("MarkCopy PREPARE");
       currentTrace = markTrace;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
@@ -140,20 +142,21 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == MarkCopy.CLOSURE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CLOSURE");
+      Log.writeln("MarkCopy CLOSURE");
       markTrace.completeTrace();
       return;
     }
 
     if (phaseId == MarkCopy.RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELEASE");
+      Log.writeln("MarkCopy RELEASE");
+      markTrace.completeTrace();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATE_PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_PREPARE");
+      Log.writeln("MarkCopy RELOCATE_PREPARE");
       currentTrace = relocateTrace;
       relocateTrace.prepare();
       copy.reset();
@@ -162,13 +165,13 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == MarkCopy.RELOCATE_CLOSURE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_CLOSURE");
+      Log.writeln("MarkCopy RELOCATE_CLOSURE");
       relocateTrace.completeTrace();
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATE_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_RELEASE");
+      Log.writeln("MarkCopy RELOCATE_RELEASE");
       relocateTrace.release();
       copy.reset();
       super.collectionPhase(MarkCopy.RELEASE, primary);
@@ -179,22 +182,61 @@ public class MarkCopyCollector extends StopTheWorldCollector {
   }
 
 
+
+  @Override
+  protected boolean concurrentTraceComplete() {
+    if (!global().markTrace.hasWork()) {
+      return true;
+    }
+    return false;
+  }
+
+
+
+  @Override
+  @Unpreemptible
+  public void concurrentCollectionPhase(short phaseId) {
+    if (phaseId == MarkCopy.CONCURRENT_CLOSURE) {
+      currentTrace = markTrace;
+      Log.writeln("MarkCopy CONCURRENT_CLOSURE");
+      super.concurrentCollectionPhase(phaseId);
+      return;
+    }
+
+    if (phaseId == MarkCopy.CONCURRENT_RELOCATE_PREPARE) {
+      Log.writeln("MarkCopy CONCURRENT_RELOCATE_PREPARE");
+      currentTrace = relocateTrace;
+      relocateTrace.prepare();
+      copy.reset();
+      if (rendezvous() == 0) {
+        if (!group.isAborted()) {
+          VM.collection.requestMutatorFlush();
+          continueCollecting = Phase.notifyConcurrentPhaseComplete();
+        }
+      }
+      rendezvous();
+      return;
+    }
+    if (phaseId == MarkCopy.CONCURRENT_RELOCATE_RELEASE) {
+      Log.writeln("MarkCopy CONCURRENT_RELOCATE_RELEASE");
+      relocateTrace.release();
+      copy.reset();
+      if (rendezvous() == 0) {
+        if (!group.isAborted()) {
+          VM.collection.requestMutatorFlush();
+          continueCollecting = Phase.notifyConcurrentPhaseComplete();
+        }
+      }
+      rendezvous();
+      return;
+    }
+    super.concurrentCollectionPhase(phaseId);
+  }
+
   /****************************************************************************
    *
    * Object processing and tracing
    */
-
-  /**
-   * Return {@code true} if the given reference is to an object that is within
-   * one of the semi-spaces.
-   *
-   * @param object The object in question
-   * @return {@code true} if the given reference is to an object that is within
-   * one of the semi-spaces.
-   */
-  /*public static boolean isSemiSpaceObject(ObjectReference object) {
-    return Space.isInSpace(RegionalCopy.SS0, object) || Space.isInSpace(RegionalCopy.SS1, object);
-  }*/
 
   /****************************************************************************
    *
@@ -209,6 +251,11 @@ public class MarkCopyCollector extends StopTheWorldCollector {
 
   @Override
   public TraceLocal getCurrentTrace() {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(markTrace != null);
+      VM.assertions._assert(relocateTrace != null);
+      VM.assertions._assert(currentTrace != null);
+    }
     return currentTrace;
   }
 }

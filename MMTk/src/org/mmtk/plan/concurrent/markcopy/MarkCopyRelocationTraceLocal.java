@@ -10,13 +10,13 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.markcopy;
+package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkBlock;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
@@ -52,7 +52,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
   private static Lock relocationSetSelectionLock = VM.newLock("relocation-set-selection-lock");
   private static boolean relocationSetSelected = false;
 
-  @Override
+  //@Override
   public void prepare() {
     super.prepare();
     blocksReleased = false;
@@ -71,15 +71,15 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       Log.writeln(" / ", VM.activePlan.global().getTotalPages());
       Log.writeln("BLOCK SIZE ", MarkBlock.count());
     }
-
-    MarkCopy.markBlockSpace.selectRelocationBlocks();
+    MarkBlockSpace space = ((MarkCopy) VM.activePlan.global()).markBlockSpace;
+    space.selectRelocationBlocks();
   }
 
   private static Lock blocksReleaseLock = VM.newLock("blocks-release-lock");
   private static boolean blocksReleased = false;
 
 
-  @Override
+  //@Override
   public void release() {
     super.release();
 
@@ -95,7 +95,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
 
     //lock.acquire();
     int visitedPages = 0;
-    MarkBlockSpace space = MarkCopy.markBlockSpace;
+    MarkBlockSpace space = ((MarkCopy) VM.activePlan.global()).markBlockSpace;
     Address region = space.firstBlock();
     while (region != null) {
       Address nextRegion = space.nextBlock(region);
@@ -118,13 +118,6 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       }
       region = nextRegion;
     }
-    if (VM.VERIFY_ASSERTIONS) {
-      if (visitedPages != MarkBlock.count()) {
-        Log.write(visitedPages);
-        Log.writeln(" / ", MarkBlock.count());
-      }
-      VM.assertions._assert(visitedPages == MarkBlock.count(), "Invalid iteration");
-    }
     //lock.release();
     if (VM.VERIFY_ASSERTIONS) {
       Log.write("Memory: ", VM.activePlan.global().getPagesReserved());
@@ -132,6 +125,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       Log.writeln(", ", MarkCopy.markBlockSpace.availablePhysicalPages());
     }
   }
+
 
   @Override
   @Inline
@@ -151,7 +145,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
+      return false;
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

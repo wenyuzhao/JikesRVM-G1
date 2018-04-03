@@ -60,6 +60,7 @@ public class MarkBlockAllocator extends Allocator {
   public void reset() {
     cursor = Address.zero();
     limit = Address.zero();
+    space.allocBlock = Address.zero();
   }
 
   /*****************************************************************************
@@ -108,7 +109,8 @@ public class MarkBlockAllocator extends Allocator {
    */
   @Override
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
-    Address ptr = space.getSpace(copy);
+    Address ptr = space.getSpace(copy); // New block
+    space.allocBlock = ptr;
 
     if (ptr.isZero()) {
       return ptr; // failed allocation --- we will need to GC

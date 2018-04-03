@@ -6,8 +6,10 @@ import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
+import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.Extent;
 import org.vmmagic.unboxed.Word;
 
@@ -18,22 +20,23 @@ public class MarkBlock {
     public static final int PAGES_IN_BLOCK = 1;
     public static final int BYTES_IN_BLOCK = BYTES_IN_PAGE * PAGES_IN_BLOCK;
 
-    private static final int PREV_POINTER_OFFSET_IN_REGION = 0;
-    private static final int NEXT_POINTER_OFFSET_IN_REGION = PREV_POINTER_OFFSET_IN_REGION + Constants.BYTES_IN_ADDRESS;
-    private static final int BLOCK_COUNT_OFFSET_IN_REGION = NEXT_POINTER_OFFSET_IN_REGION + Constants.BYTES_IN_ADDRESS;
-    private static final int METADATA_OFFSET_IN_REGION = BLOCK_COUNT_OFFSET_IN_REGION + Constants.BYTES_IN_INT;
+    //private static final int PREV_POINTER_OFFSET_IN_REGION = 0;
+    //private static final int NEXT_POINTER_OFFSET_IN_REGION = PREV_POINTER_OFFSET_IN_REGION + Constants.BYTES_IN_ADDRESS;
+    //private static final int BLOCK_COUNT_OFFSET_IN_REGION = NEXT_POINTER_OFFSET_IN_REGION + Constants.BYTES_IN_ADDRESS;
+    public static final int METADATA_OFFSET_IN_REGION = 0;//BLOCK_COUNT_OFFSET_IN_REGION + Constants.BYTES_IN_INT;
 
     private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
     private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + Constants.BYTES_IN_INT;
-    private static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + Constants.BYTES_IN_BYTE;
-    private static final int METADATA_BYTES = 8;
-    public static final int METADATA_PAGES_PER_REGION = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK * METADATA_BYTES / Constants.BYTES_IN_PAGE;
-    private static final int BLOCKS_IN_REGION = (EmbeddedMetaData.PAGES_IN_REGION - METADATA_PAGES_PER_REGION) / PAGES_IN_BLOCK;
-    private static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
+    public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + Constants.BYTES_IN_BYTE;
+    public static final int METADATA_BYTES = 8;
+    public static final int METADATA_PAGES_PER_REGION = (int) (EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK * METADATA_BYTES / Constants.BYTES_IN_PAGE + 0.5f);
+    // TODO: Incorrect calculation for PAGES_IN_BLOCK > 1
+    public static final int BLOCKS_IN_REGION = (EmbeddedMetaData.PAGES_IN_REGION - METADATA_PAGES_PER_REGION) / PAGES_IN_BLOCK;
+    public static final int BLOCKS_START_OFFSET = Constants.BYTES_IN_PAGE * METADATA_PAGES_PER_REGION;
 
     private static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);
 
-    private static Address firstRegion = null;
+    // private static Address firstRegion = null;
 
     private static int count = 0;
 
@@ -54,7 +57,7 @@ public class MarkBlock {
     private static void set(Address addr, int val) {
         assertInMetadata(addr, Constants.BYTES_IN_INT);
         addr.store(val);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadInt() == val);
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadInt() == val);
     }
     private static void set(Address addr, byte val) {
         assertInMetadata(addr, Constants.BYTES_IN_BYTE);
@@ -64,8 +67,9 @@ public class MarkBlock {
 
     // Block operations
 
-    private static Lock blockStateLock = VM.newLock("block-state-lock");
-    private static Lock blockRegisterLock = VM.newLock("block-register-lock");
+    // private static Lock blockStateLock = VM.newLock("block-state-lock");
+    // private static Lock blockRegistrationLock = VM.newLock("block-registration-lock");
+    // public static Lock regionReleaseLock = VM.newLock("region-release-lock");
 
     public static Address of(final Address ptr) {
         return align(ptr);
@@ -85,9 +89,9 @@ public class MarkBlock {
     }
 
     public static void setRelocationState(Address block, boolean relocation) {
-        blockStateLock.acquire();
+        // blockStateLock.acquire();
         set(metaDataOf(block, METADATA_RELOCATE_OFFSET), (byte) (relocation ? 1 : 0));
-        blockStateLock.release();
+        // blockStateLock.release();
     }
 
     public static boolean relocationRequired(Address block) {
@@ -95,9 +99,9 @@ public class MarkBlock {
     }
 
     public static void setUsedSize(Address block, int bytes) {
-        blockStateLock.acquire();
+        //blockStateLock.acquire();
         set(metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET), bytes);
-        blockStateLock.release();
+        //blockStateLock.release();
     }
 
     public static int usedSize(Address block) {
@@ -105,30 +109,29 @@ public class MarkBlock {
     }
 
     public static void register(Address block) {
-        blockRegisterLock.acquire();
+        // blockRegistrationLock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
+        /*
         // Handle regions
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         Address blockCount = region.plus(BLOCK_COUNT_OFFSET_IN_REGION);
         int blocks = blockCount.loadInt() + 1;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocks >= 1);
-        if (blocks == 1) {
-            // This is a new region
-            addRegion(region);
-        }
         set(blockCount, blocks);
+        */
         // Handle this block
         count += 1;
         clearState(block);
         setAllocated(block, true);
-        blockRegisterLock.release();
+        // blockRegistrationLock.release();
     }
 
     public static void unregister(Address block) {
-        blockRegisterLock.acquire();
+        // blockRegistrationLock.acquire();
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
         count -= 1;
         clearState(block);
+        /*
         // Handle regions
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         Address blockCount = region.plus(BLOCK_COUNT_OFFSET_IN_REGION);
@@ -136,11 +139,11 @@ public class MarkBlock {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocks >= 0);
         if (blocks == 0) {
             // This region should be removed
-            removeRegion(region);
         } else {
             set(blockCount, blocks);
         }
-        blockRegisterLock.release();
+        // blockRegistrationLock.release();
+        */
     }
 
     public static boolean allocated(Address block) {
@@ -157,7 +160,7 @@ public class MarkBlock {
         return ptr.toWord().and(PAGE_MASK.not()).toAddress();
     }
 
-    private static int indexOf(Address block) {
+    public static int indexOf(Address block) {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block), "Invalid block");
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         double index = block.diff(region.plus(BLOCKS_START_OFFSET)).toInt() / BYTES_IN_BLOCK;
@@ -172,106 +175,8 @@ public class MarkBlock {
     }
 
     private static void setAllocated(Address block, boolean allocated) {
-        blockStateLock.acquire();
+        //blockStateLock.acquire();
         set(metaDataOf(block, METADATA_ALLOCATED_OFFSET), (byte) (allocated ? 1 : 0));
-        blockStateLock.release();
-    }
-
-    // Region operations
-
-    private static void addRegion(Address region) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(region.EQ(EmbeddedMetaData.getMetaDataBase(region)));
-        clearRegionState(region);
-        if (firstRegion == null || firstRegion.isZero()) {
-            firstRegion = region;
-            if (VM.DEBUG) Log.writeln("Add First Region ", region);
-        } else {
-            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(firstRegion.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress().isZero());
-            set(firstRegion.plus(PREV_POINTER_OFFSET_IN_REGION), region);
-            set(region.plus(NEXT_POINTER_OFFSET_IN_REGION), firstRegion);
-            firstRegion = region;
-            if (VM.DEBUG) Log.writeln("Add Region ", region);
-        }
-    }
-
-    private static void removeRegion(Address region) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(region.EQ(EmbeddedMetaData.getMetaDataBase(region)));
-        if (VM.DEBUG) Log.writeln("Remove Region ", region);
-        if (region.EQ(firstRegion)) {
-            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress().isZero());
-            Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
-            if (next.isZero()) {
-                firstRegion = null;
-            } else {
-                if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(next.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress().EQ(region));
-                firstRegion = next;
-                set(next.plus(PREV_POINTER_OFFSET_IN_REGION), Address.zero());
-            }
-        } else {
-            Address prev = region.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress();
-            Address next = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
-            if (VM.VERIFY_ASSERTIONS) {
-                VM.assertions._assert(prev.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress().EQ(region));
-                if (!next.isZero()) VM.assertions._assert(next.plus(PREV_POINTER_OFFSET_IN_REGION).loadAddress().EQ(region));
-            }
-            set(prev.plus(NEXT_POINTER_OFFSET_IN_REGION), next);
-            if (!next.isZero()) set(next.plus(PREV_POINTER_OFFSET_IN_REGION), prev);
-        }
-        clearRegionState(region);
-    }
-
-    private static void clearRegionState(Address region) {
-        blockStateLock.acquire();
-        set(region.plus(PREV_POINTER_OFFSET_IN_REGION), Address.zero());
-        set(region.plus(NEXT_POINTER_OFFSET_IN_REGION), Address.zero());
-        set(region.plus(BLOCK_COUNT_OFFSET_IN_REGION), (int) 0);
-        blockStateLock.release();
-    }
-
-    public static void clearRegionMetadata(Address chunk) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.EQ(EmbeddedMetaData.getMetaDataBase(chunk)));
-        HeapLayout.mmapper.ensureMapped(chunk, METADATA_PAGES_PER_REGION);
-        VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(BLOCKS_START_OFFSET));
-    }
-
-    // Block iterator
-
-    public static Address firstBlock() {
-        return nextBlock(firstRegion);
-    }
-
-    public static Address nextBlock(Address block) {
-        if (VM.VERIFY_ASSERTIONS) {
-            if (!(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (indexOf(block) >= 0 && indexOf(block) < BLOCKS_IN_REGION))) {
-                Log.write("Invalid block ", block);
-                Log.write(" at region ", EmbeddedMetaData.getMetaDataBase(block));
-                Log.write(" with index ", indexOf(block));
-                Log.writeln(isAligned(block) ? " aligned" : " not aligned");
-            }
-            VM.assertions._assert(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (indexOf(block) >= 0 && indexOf(block) < BLOCKS_IN_REGION));
-
-        }
-        int i = block.EQ(EmbeddedMetaData.getMetaDataBase(block)) ? 0 : indexOf(block) + 1;
-        Address region = EmbeddedMetaData.getMetaDataBase(block);
-        if (i >= BLOCKS_IN_REGION) {
-            i = 0;
-            region = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
-        }
-
-        while (true) {
-            if (region.isZero()) return null;
-
-            Address allocated = region.plus(METADATA_OFFSET_IN_REGION + i * METADATA_BYTES + METADATA_ALLOCATED_OFFSET);
-            if (allocated.loadByte() != ((byte) 0)) {
-                Address rtn = region.plus(BLOCKS_START_OFFSET + i * BYTES_IN_BLOCK);
-                return rtn;
-            }
-
-            i++;
-            if (i >= BLOCKS_IN_REGION) {
-                i = 0;
-                region = region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
-            }
-        }
+        //blockStateLock.release();
     }
 }

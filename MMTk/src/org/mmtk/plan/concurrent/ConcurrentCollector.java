@@ -50,15 +50,15 @@ public abstract class ConcurrentCollector extends SimpleCollector {
   public void run() {
     while (true) {
       park();
-      if (Plan.concurrentWorkers.isMember(this)) {
-        concurrentCollect();
-      } else {
+      if (Plan.parallelWorkers.isMember(this)) {
         collect();
+      } else {
+        concurrentCollect();
       }
     }
   }
 
-  private static volatile boolean continueCollecting;
+  protected static volatile boolean continueCollecting;
 
   /** Perform some concurrent garbage collection */
   @Unpreemptible
@@ -66,6 +66,12 @@ public abstract class ConcurrentCollector extends SimpleCollector {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Plan.gcInProgress());
     do {
       short phaseId = Phase.getConcurrentPhaseId();
+      /*if (VM.VERIFY_ASSERTIONS) {
+        if (phaseId == 0) {
+          Log.writeln(continueCollecting ? "continueCollecting=true" : "continueCollecting=false");
+        }
+        VM.assertions._assert(phaseId != 0);
+      }*/
       concurrentCollectionPhase(phaseId);
     } while (continueCollecting);
   }
@@ -130,6 +136,7 @@ public abstract class ConcurrentCollector extends SimpleCollector {
       return;
     }
 
+    Log.writeln("###Conc Phase ", phaseId);
     Log.write("Concurrent phase ");
     Log.write(Phase.getName(phaseId));
     Log.writeln(" not handled.");

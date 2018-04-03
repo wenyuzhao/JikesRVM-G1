@@ -440,6 +440,10 @@ public abstract class Phase {
 
     if (primary) {
       /* Only allow concurrent collection if we are not collecting due to resource exhaustion */
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!Plan.isInternalTriggeredCollection()) Log.writeln("!isInternalTriggeredCollection");
+        if (Plan.isEmergencyCollection()) Log.writeln("isEmergencyCollection");
+      }
       allowConcurrentPhase = Plan.isInternalTriggeredCollection() && !Plan.isEmergencyCollection();
 
       /* First phase will be even, so we say we are odd here so that the next phase set is even*/
