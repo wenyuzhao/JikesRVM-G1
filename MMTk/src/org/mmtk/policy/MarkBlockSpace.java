@@ -124,7 +124,7 @@ public final class MarkBlockSpace extends Space {
    * @param vmRequest The virtual memory request
    */
   public MarkBlockSpace(String name, VMRequest vmRequest) {
-    this(name, true, vmRequest);
+    this(name, true, VMRequest.discontiguous());
   }
 
   /**
@@ -137,7 +137,7 @@ public final class MarkBlockSpace extends Space {
    * @param vmRequest The virtual memory request
    */
   public MarkBlockSpace(String name, boolean zeroed, VMRequest vmRequest) {
-    super(name, true, false, zeroed, vmRequest);
+    super(name, true, false, zeroed, VMRequest.discontiguous());
     if (vmRequest.isDiscontiguous())
       pr = new FreeListPageResource(this, MarkBlock.METADATA_PAGES_PER_REGION);
     else
@@ -446,13 +446,13 @@ public final class MarkBlockSpace extends Space {
     // Block iterator
 
     public Address firstBlock() {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
         return nextBlock(headDiscontiguousRegion);
     }
 
     public Address nextBlock(Address block) {
         if (VM.VERIFY_ASSERTIONS) {
-            VM.assertions._assert(!contiguous);
+            //VM.assertions._assert(!contiguous);
             if (!(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (MarkBlock.indexOf(block) >= 0 && MarkBlock.indexOf(block) < MarkBlock.BLOCKS_IN_REGION))) {
                 Log.write("Invalid block ", block);
                 Log.write(" at region ", EmbeddedMetaData.getMetaDataBase(block));
@@ -466,7 +466,7 @@ public final class MarkBlockSpace extends Space {
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         if (i >= MarkBlock.BLOCKS_IN_REGION) {
             i = 0;
-            region = HeapLayout.vmMap.getNextContiguousRegion(region);//region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
+            region = getNextRegion(region);//region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
         }
 
         while (true) {
@@ -481,13 +481,28 @@ public final class MarkBlockSpace extends Space {
             i++;
             if (i >= MarkBlock.BLOCKS_IN_REGION) {
                 i = 0;
-                region = HeapLayout.vmMap.getNextContiguousRegion(region);
+                region = getNextRegion(region);
             }
         }
     }
 
+    private Address getNextRegion(Address region) {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(!region.isZero());
+        VM.assertions._assert(EmbeddedMetaData.getMetaDataBase(region).EQ(region));
+      }
+      if (contiguous) {
+        Address nextRegion = region.plus(EmbeddedMetaData.BYTES_IN_REGION);
+        Address end = ((FreeListPageResource) pr).getHighWater();
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(EmbeddedMetaData.getMetaDataBase(nextRegion).EQ(nextRegion));
+        return nextRegion.LT(end) ? nextRegion : Address.zero();
+      } else {
+        return HeapLayout.vmMap.getNextContiguousRegion(region);
+      }
+    }
+
     public void selectRelocationBlocks() {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
 
       // Perform relocation set selection
       int blocksCount = MarkBlock.count();

@@ -16,6 +16,7 @@ import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.MarkBlock;
+import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
@@ -80,17 +81,15 @@ public class MarkCopyCollector extends ConcurrentCollector {
       int align, int offset, int allocator) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(bytes <= Plan.MAX_NON_LOS_COPY_BYTES);
-      VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
+      VM.assertions._assert(allocator == MarkCopy.ALLOC_MC);
+      VM.assertions._assert(ForwardingWord.stateIsBeingForwarded(VM.objectModel.readAvailableBitsWord(original)));
     }
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
-    //Log.write("AllocCopy ");
+
     Address addr = copy.alloc(bytes, align, offset);
-    //Log.write(addr);
-    //Log.write("..<", copy.cursor);
-    Address region = MarkBlock.of(addr);
-    //Log.writeln(" in region ", region);
-    //Log.flush();
+    org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
     if (VM.VERIFY_ASSERTIONS) {
+      Address region = MarkBlock.of(addr);
       if (!region.isZero()) {
         VM.assertions._assert(MarkBlock.allocated(region));
         VM.assertions._assert(!MarkBlock.relocationRequired(region));
@@ -112,13 +111,6 @@ public class MarkCopyCollector extends ConcurrentCollector {
 
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
-      /*if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.write("#Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
-        Log.write(" is marked for relocate:");
-        Log.writeln(MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
-      }
-
-      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));*/
     }
   }
 
@@ -134,7 +126,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == MarkCopy.PREPARE) {
-      Log.writeln("MarkCopy PREPARE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy PREPARE");
       currentTrace = markTrace;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
@@ -142,21 +134,20 @@ public class MarkCopyCollector extends ConcurrentCollector {
     }
 
     if (phaseId == MarkCopy.CLOSURE) {
-      Log.writeln("MarkCopy CLOSURE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CLOSURE");
       markTrace.completeTrace();
       return;
     }
 
     if (phaseId == MarkCopy.RELEASE) {
-      Log.writeln("MarkCopy RELEASE");
-      markTrace.completeTrace();
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELEASE");
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATE_PREPARE) {
-      Log.writeln("MarkCopy RELOCATE_PREPARE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_PREPARE");
       currentTrace = relocateTrace;
       relocateTrace.prepare();
       copy.reset();
@@ -165,13 +156,13 @@ public class MarkCopyCollector extends ConcurrentCollector {
     }
 
     if (phaseId == MarkCopy.RELOCATE_CLOSURE) {
-      Log.writeln("MarkCopy RELOCATE_CLOSURE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_CLOSURE");
       relocateTrace.completeTrace();
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATE_RELEASE) {
-      Log.writeln("MarkCopy RELOCATE_RELEASE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_RELEASE");
       relocateTrace.release();
       copy.reset();
       super.collectionPhase(MarkCopy.RELEASE, primary);
@@ -198,13 +189,13 @@ public class MarkCopyCollector extends ConcurrentCollector {
   public void concurrentCollectionPhase(short phaseId) {
     if (phaseId == MarkCopy.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
-      Log.writeln("MarkCopy CONCURRENT_CLOSURE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_CLOSURE");
       super.concurrentCollectionPhase(phaseId);
       return;
     }
 
     if (phaseId == MarkCopy.CONCURRENT_RELOCATE_PREPARE) {
-      Log.writeln("MarkCopy CONCURRENT_RELOCATE_PREPARE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATE_PREPARE");
       currentTrace = relocateTrace;
       relocateTrace.prepare();
       copy.reset();
@@ -218,7 +209,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
       return;
     }
     if (phaseId == MarkCopy.CONCURRENT_RELOCATE_RELEASE) {
-      Log.writeln("MarkCopy CONCURRENT_RELOCATE_RELEASE");
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATE_RELEASE");
       relocateTrace.release();
       copy.reset();
       if (rendezvous() == 0) {

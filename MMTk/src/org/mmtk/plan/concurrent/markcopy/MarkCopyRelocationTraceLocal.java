@@ -71,8 +71,8 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       Log.writeln(" / ", VM.activePlan.global().getTotalPages());
       Log.writeln("BLOCK SIZE ", MarkBlock.count());
     }
-    MarkBlockSpace space = ((MarkCopy) VM.activePlan.global()).markBlockSpace;
-    space.selectRelocationBlocks();
+
+    MarkCopy.markBlockSpace.selectRelocationBlocks();
   }
 
   private static Lock blocksReleaseLock = VM.newLock("blocks-release-lock");
@@ -95,7 +95,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
 
     //lock.acquire();
     int visitedPages = 0;
-    MarkBlockSpace space = ((MarkCopy) VM.activePlan.global()).markBlockSpace;
+    MarkBlockSpace space = MarkCopy.markBlockSpace;
     Address region = space.firstBlock();
     while (region != null) {
       Address nextRegion = space.nextBlock(region);
@@ -145,7 +145,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return false;
+      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

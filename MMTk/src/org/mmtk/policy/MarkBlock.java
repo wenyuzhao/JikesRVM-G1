@@ -161,7 +161,10 @@ public class MarkBlock {
     }
 
     public static int indexOf(Address block) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero() && isAligned(block), "Invalid block");
+        if (VM.VERIFY_ASSERTIONS) {
+            VM.assertions._assert(!block.isZero());
+            VM.assertions._assert(isAligned(block));
+        }
         Address region = EmbeddedMetaData.getMetaDataBase(block);
         double index = block.diff(region.plus(BLOCKS_START_OFFSET)).toInt() / BYTES_IN_BLOCK;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index == (int) index);

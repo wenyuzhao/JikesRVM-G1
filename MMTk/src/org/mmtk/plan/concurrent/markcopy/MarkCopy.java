@@ -16,7 +16,6 @@ import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
@@ -158,6 +157,7 @@ public class MarkCopy extends Concurrent {
 
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
+      inConcurrentCollection = false;
       // inConcurrentCollection = false;
       relocateTrace.prepare();
       markBlockSpace.prepare();

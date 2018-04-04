@@ -72,7 +72,7 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return false;
+      return true;
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }
