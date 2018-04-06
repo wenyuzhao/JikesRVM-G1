@@ -30,11 +30,6 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
     super(MarkCopy.SCAN_MARK, trace);
   }
 
-  /****************************************************************************
-   *
-   * Externally visible Object processing and tracing
-   */
-
   /**
    * {@inheritDoc}
    */

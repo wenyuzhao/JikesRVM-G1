@@ -19,9 +19,11 @@ import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -56,6 +58,7 @@ public class MarkCopy extends Concurrent {
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
+  public AddressArray blocksSnapshot;
 
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
@@ -77,29 +80,22 @@ public class MarkCopy extends Concurrent {
   public static final short RELOCATE_CLOSURE = Phase.createSimple("relocate-closure");
   public static final short RELOCATE_RELEASE = Phase.createSimple("relocate-release");
 
-  public static final short CONCURRENT_RELOCATE_PREPARE = Phase.createConcurrent("concurrent-relocate-prepare-simple", Phase.scheduleCollector(RELOCATE_PREPARE));
-  public static final short concurrentRelocatePrepare = Phase.createComplex("concurrent-relocate-prepare", null,
-    Phase.scheduleConcurrent(CONCURRENT_RELOCATE_PREPARE),
-    Phase.scheduleCollector(RELOCATE_PREPARE)
+  public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
+  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection", Phase.scheduleCollector(RELOCATION_SET_SELECTION));
+
+  public static final short relocationSetSelection = Phase.createComplex("relocationSetSelection",
+    Phase.scheduleGlobal(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleCollector(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleCollector(RELOCATION_SET_SELECTION)
   );
 
-  public static final short CONCURRENT_RELOCATE_RELEASE = Phase.createConcurrent("concurrent-relocate-release-simple", Phase.scheduleCollector(RELOCATE_RELEASE));
-
-  /**
-   * This is the phase that is executed to perform a mark-compact collection.
-   *
-   * FIXME: Far too much duplication and inside knowledge of StopTheWorld
-   */
-  public short _collection = Phase.createComplex("_collection", null,
-    Phase.scheduleComplex  (initPhase),
-    Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (forwardPhase),
-    Phase.scheduleComplex  (completeClosurePhase),
-
+  public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleGlobal   (RELOCATE_PREPARE),
     Phase.scheduleCollector(RELOCATE_PREPARE),
-    Phase.scheduleMutator  (PREPARE),
+    Phase.scheduleMutator  (RELOCATE_PREPARE),
+
 
     Phase.scheduleMutator  (PREPARE_STACKS),
     Phase.scheduleGlobal   (PREPARE_STACKS),
@@ -125,9 +121,26 @@ public class MarkCopy extends Concurrent {
 
     Phase.scheduleComplex  (forwardPhase),
 
-    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleMutator  (RELOCATE_RELEASE),
     Phase.scheduleCollector(RELOCATE_RELEASE),
-    Phase.scheduleGlobal   (RELOCATE_RELEASE),
+    Phase.scheduleGlobal   (RELOCATE_RELEASE)
+  );
+
+  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+  public static final short CONCURRENT_CLEANUP_BLOCKS = Phase.createConcurrent("concurrent-cleanup-blocks", Phase.scheduleCollector(CLEANUP_BLOCKS));
+
+  public static short _collection = Phase.createComplex("_collection", null,
+    Phase.scheduleComplex  (initPhase),
+    Phase.scheduleComplex  (rootClosurePhase),
+    Phase.scheduleComplex  (refTypeClosurePhase),
+    Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex  (completeClosurePhase),
+
+    Phase.scheduleComplex  (relocationSetSelection),
+
+    Phase.scheduleComplex  (relocationPhase),
+
+    Phase.scheduleCollector(CLEANUP_BLOCKS),
 
     Phase.scheduleComplex  (finishPhase)
   );
@@ -140,8 +153,11 @@ public class MarkCopy extends Concurrent {
   }
 
   @Override
-  protected boolean concurrentCollectionRequired() {
-    return !Phase.concurrentPhaseActive() && ((getPagesReserved() * 100) / getTotalPages()) > 40;
+  @Interruptible
+  public void processOptions() {
+    super.processOptions();
+    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
+    replacePhase(Phase.scheduleCollector(CLEANUP_BLOCKS), Phase.scheduleConcurrent(CONCURRENT_CLEANUP_BLOCKS));
   }
 
   /****************************************************************************
@@ -162,7 +178,6 @@ public class MarkCopy extends Concurrent {
       return;
     }
 
-
     if (phaseId == CLOSURE) {
       markTrace.prepareNonBlocking();
       return;
@@ -175,6 +190,11 @@ public class MarkCopy extends Concurrent {
       return;
     }
 
+    if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
+      blocksSnapshot = markBlockSpace.shapshotBlocks();
+      return;
+    }
+
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       inConcurrentCollection = false;
@@ -183,10 +203,12 @@ public class MarkCopy extends Concurrent {
       markBlockSpace.prepare(true);
       return;
     }
+
     if (phaseId == RELOCATE_CLOSURE) {
       relocateTrace.prepareNonBlocking();
       return;
     }
+
     if (phaseId == RELOCATE_RELEASE) {
       relocateTrace.release();
       markBlockSpace.release();

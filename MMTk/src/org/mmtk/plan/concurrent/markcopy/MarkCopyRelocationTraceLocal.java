@@ -18,11 +18,13 @@ import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.deque.AddressDeque;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -46,84 +48,6 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       return MarkCopy.markBlockSpace.isLive(object);
     return super.isLive(object);
   }
-
-  private static Lock relocationSetSelectionLock = VM.newLock("relocation-set-selection-lock");
-  private static boolean relocationSetSelected = false;
-
-  //@Override
-  public void prepare() {
-    super.prepare();
-    blocksReleased = false;
-    // Only 1 collector thread can perform relocation set selection
-    relocationSetSelectionLock.acquire();
-    if (relocationSetSelected) {
-      relocationSetSelectionLock.release();
-      return;
-    }
-    relocationSetSelected = true;
-    relocationSetSelectionLock.release();
-
-
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.write("Memory: ", VM.activePlan.global().getPagesUsed());
-      Log.writeln(" / ", VM.activePlan.global().getTotalPages());
-      Log.writeln("BLOCK SIZE ", MarkBlock.count());
-    }
-
-    MarkCopy.markBlockSpace.selectRelocationBlocks();
-  }
-
-  private static Lock blocksReleaseLock = VM.newLock("blocks-release-lock");
-  private static boolean blocksReleased = false;
-
-
-  //@Override
-  public void release() {
-    super.release();
-
-    relocationSetSelected = false;
-    // Only 1 collector thread can performs relocation set selection
-    blocksReleaseLock.acquire();
-    if (blocksReleased) {
-      blocksReleaseLock.release();
-      return;
-    }
-    blocksReleased = true;
-    blocksReleaseLock.release();
-
-    //lock.acquire();
-    int visitedPages = 0;
-    MarkBlockSpace space = MarkCopy.markBlockSpace;
-    Address region = space.firstBlock();
-    while (region != null) {
-      Address nextRegion = space.nextBlock(region);
-      if (MarkBlock.relocationRequired(region)) {
-        if (VM.VERIFY_ASSERTIONS) {
-          Log.write("Block ", region);
-          Log.write(": ", MarkBlock.usedSize(region));
-          Log.write("/", MarkBlock.BYTES_IN_BLOCK);
-          Log.writeln(" released");
-        }
-        MarkCopy.markBlockSpace.release(region);
-      } else {
-        visitedPages++;
-        MarkBlock.setUsedSize(region, 0);
-        if (VM.VERIFY_ASSERTIONS) {
-          Log.write("Block ", region);
-          Log.write(": ", MarkBlock.usedSize(region));
-          Log.writeln("/", MarkBlock.BYTES_IN_BLOCK);
-        }
-      }
-      region = nextRegion;
-    }
-    //lock.release();
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.write("Memory: ", VM.activePlan.global().getPagesReserved());
-      Log.write(" / ", VM.activePlan.global().getTotalPages());
-      Log.writeln(", ", MarkCopy.markBlockSpace.availablePhysicalPages());
-    }
-  }
-
 
   @Override
   @Inline

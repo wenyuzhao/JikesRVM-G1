@@ -22,6 +22,7 @@ import org.mmtk.utility.sanitychecker.SanityChecker;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -56,6 +57,7 @@ public class MarkCopy extends StopTheWorld {
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
+  public AddressArray blocksSnapshot;
 
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
@@ -70,24 +72,25 @@ public class MarkCopy extends StopTheWorld {
   public static final int SCAN_RELOCATE = 1;
 
   /* Phases */
-  public static final short RELOCATE_PREPARE     = Phase.createSimple("relocate-prepare");
-  public static final short RELOCATE_CLOSURE     = Phase.createSimple("relocate-closure");
-  public static final short RELOCATE_RELEASE     = Phase.createSimple("relocate-release");
+  public static final short RELOCATE_PREPARE = Phase.createSimple("relocate-prepare");
+  public static final short RELOCATE_CLOSURE = Phase.createSimple("relocate-closure");
+  public static final short RELOCATE_RELEASE = Phase.createSimple("relocate-release");
 
-  /**
-   * This is the phase that is executed to perform a mark-compact collection.
-   *
-   * FIXME: Far too much duplication and inside knowledge of StopTheWorld
-   */
-  public short _collection = Phase.createComplex("_collection", null,
-    Phase.scheduleComplex  (initPhase),
-    Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (completeClosurePhase),
+  public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
 
+  public static final short relocationSetSelection = Phase.createComplex("relocationSetSelection",
+    Phase.scheduleGlobal(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleCollector(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleCollector(RELOCATION_SET_SELECTION)
+  );
+
+  public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleGlobal   (RELOCATE_PREPARE),
     Phase.scheduleCollector(RELOCATE_PREPARE),
-    Phase.scheduleMutator  (PREPARE),
+    Phase.scheduleMutator  (RELOCATE_PREPARE),
+
 
     Phase.scheduleMutator  (PREPARE_STACKS),
     Phase.scheduleGlobal   (PREPARE_STACKS),
@@ -113,9 +116,25 @@ public class MarkCopy extends StopTheWorld {
 
     Phase.scheduleComplex  (forwardPhase),
 
-    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleMutator  (RELOCATE_RELEASE),
     Phase.scheduleCollector(RELOCATE_RELEASE),
-    Phase.scheduleGlobal   (RELOCATE_RELEASE),
+    Phase.scheduleGlobal   (RELOCATE_RELEASE)
+  );
+
+  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+
+  public static short _collection = Phase.createComplex("_collection", null,
+    Phase.scheduleComplex  (initPhase),
+    Phase.scheduleComplex  (rootClosurePhase),
+    Phase.scheduleComplex  (refTypeClosurePhase),
+    Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex  (completeClosurePhase),
+
+    Phase.scheduleComplex  (relocationSetSelection),
+
+    Phase.scheduleComplex  (relocationPhase),
+
+    Phase.scheduleCollector(CLEANUP_BLOCKS),
 
     Phase.scheduleComplex  (finishPhase)
   );
@@ -151,6 +170,11 @@ public class MarkCopy extends StopTheWorld {
       markTrace.release();
       markBlockSpace.release();
       super.collectionPhase(phaseId);
+      return;
+    }
+
+    if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
+      blocksSnapshot = markBlockSpace.shapshotBlocks();
       return;
     }
 

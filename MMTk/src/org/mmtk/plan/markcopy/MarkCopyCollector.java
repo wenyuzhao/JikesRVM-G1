@@ -17,6 +17,7 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
@@ -24,6 +25,7 @@ import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -56,6 +58,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
   protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
   protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
+  private static AddressArray relocationSet;
 
   /****************************************************************************
    *
@@ -151,6 +154,22 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       return;
     }
 
+    if (phaseId == MarkCopy.RELOCATION_SET_SELECTION_PREPARE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION_PREPARE");
+      copy.reset();
+      MarkBlockSpace.prepareComputeRelocationBlocks();
+      return;
+    }
+
+    if (phaseId == MarkCopy.RELOCATION_SET_SELECTION) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION");
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot);
+      if (relocationSet != null) {
+        MarkCopyCollector.relocationSet = relocationSet;
+      }
+      return;
+    }
+
     if (phaseId == MarkCopy.RELOCATE_PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_PREPARE");
       currentTrace = relocateTrace;
@@ -174,26 +193,14 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       return;
     }
 
+    if (phaseId == MarkCopy.CLEANUP_BLOCKS) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CLEANUP_BLOCKS");
+      MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, false);
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
-
-
-  /****************************************************************************
-   *
-   * Object processing and tracing
-   */
-
-  /**
-   * Return {@code true} if the given reference is to an object that is within
-   * one of the semi-spaces.
-   *
-   * @param object The object in question
-   * @return {@code true} if the given reference is to an object that is within
-   * one of the semi-spaces.
-   */
-  /*public static boolean isSemiSpaceObject(ObjectReference object) {
-    return Space.isInSpace(RegionalCopy.SS0, object) || Space.isInSpace(RegionalCopy.SS1, object);
-  }*/
 
   /****************************************************************************
    *

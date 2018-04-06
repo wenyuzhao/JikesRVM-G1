@@ -118,6 +118,21 @@ public class MarkCopyMutator extends StopTheWorldMutator {
       return;
     }
 
+    if (phaseId == MarkCopy.RELOCATION_SET_SELECTION_PREPARE) {
+      mc.reset();
+      return;
+    }
+
+    if (phaseId == MarkCopy.RELOCATE_PREPARE) {
+      super.collectionPhase(MarkCopy.PREPARE, primary);
+      mc.reset();
+      return;
+    }
+    if (phaseId == MarkCopy.RELOCATE_RELEASE) {
+      super.collectionPhase(MarkCopy.RELEASE, primary);
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
 

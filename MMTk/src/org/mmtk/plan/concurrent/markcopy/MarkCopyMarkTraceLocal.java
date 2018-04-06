@@ -30,13 +30,6 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
     super(MarkCopy.SCAN_MARK, trace);
   }
 
-  /****************************************************************************
-   *
-   * Externally visible Object processing and tracing
-   */
-
-  // @Override protected boolean overwriteReferenceDuringTrace() { return false; }
-
   /**
    * {@inheritDoc}
    */

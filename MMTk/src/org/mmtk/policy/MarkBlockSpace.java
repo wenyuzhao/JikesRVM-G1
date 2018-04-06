@@ -19,6 +19,7 @@ import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.*;
@@ -53,8 +54,7 @@ public final class MarkBlockSpace extends Space {
 
   private static boolean relocation = false;
   private static boolean allocAsMarked = false;
-
-  public  Address allocBlock = Address.zero();
+  public Address allocBlock = Address.zero();
 
   @Uninterruptible
   public static class Header {
@@ -476,29 +476,56 @@ public final class MarkBlockSpace extends Space {
     //}
   }
 
-  public void selectRelocationBlocks() {
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
+  public AddressArray shapshotBlocks() {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
-    // Perform relocation set selection
     int blocksCount = MarkBlock.count();
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
     AddressArray blockSizes = AddressArray.create(blocksCount);
 
     // Initialize blocks array
-    {
-      int index = 0;
-      Address block = firstBlock();
-      while (block != null) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
-        if (index >= blocks.length()) break;
-        blocks.set(index, block);
-        blockSizes.set(index, Address.fromIntZeroExtend(MarkBlock.usedSize(block)));
-        block = nextBlock(block);
-        index++;
-      }
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocksCount == index);
-      // blockRegistrationLock.release();
+    int index = 0;
+    Address block = firstBlock();
+    while (block != null) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
+      if (index >= blocks.length()) break;
+      blocks.set(index, block);
+      blockSizes.set(index, Address.fromIntZeroExtend(MarkBlock.usedSize(block)));
+      block = nextBlock(block);
+      index++;
+    }
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocksCount == index);
+
+    return blocks;
+  }
+
+
+  private static Lock relocationSetSelectionLock = VM.newLock("relocation-set-selection-lock");
+  private static boolean relocationSetSelected = false;
+
+  public static void prepareComputeRelocationBlocks() {
+    relocationSetSelected = false;
+  }
+
+  public static AddressArray computeRelocationBlocks(AddressArray blocks) {
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
+
+    relocationSetSelectionLock.acquire();
+    if (relocationSetSelected) {
+      relocationSetSelectionLock.release();
+      return null;
+    }
+    relocationSetSelected = true;
+    relocationSetSelectionLock.release();
+
+    // Perform relocation set selection
+    int blocksCount = blocks.length();
+
+    // Initialize blockSizes array
+    AddressArray blockSizes = AddressArray.create(blocksCount);
+    for (int i = 0; i < blocksCount; i++) {
+      blockSizes.set(i, Address.fromIntZeroExtend(MarkBlock.usedSize(blocks.get(i))));
     }
 
     // quick sort
@@ -508,6 +535,7 @@ public final class MarkBlockSpace extends Space {
     final int useableBytesForCopying = (int) (VM.activePlan.global().getPagesAvail() * (1.0 - MarkBlock.METADATA_PAGES_PER_REGION / EmbeddedMetaData.PAGES_IN_REGION) * Constants.BYTES_IN_PAGE);
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Copy pages: ", useableBytesForCopying / MarkBlock.BYTES_IN_BLOCK);
     int currentSize = 0;
+    int relocationBlocks = 0;
     for (int i = 0; i < blocks.length(); i++) {
       int size = blockSizes.get(i).toInt();
       Address block = blocks.get(i);
@@ -516,10 +544,6 @@ public final class MarkBlockSpace extends Space {
         Log.write("Block ", block);
         Log.write(": ", MarkBlock.usedSize(block));
         Log.write("/", MarkBlock.BYTES_IN_BLOCK);
-      }
-      if (block.EQ(allocBlock)) {
-        if (VM.VERIFY_ASSERTIONS) Log.writeln(" alloc");
-        continue;
       }
       if (currentSize + size > useableBytesForCopying || size * 2 > MarkBlock.BYTES_IN_BLOCK) {
         if (VM.VERIFY_ASSERTIONS) Log.writeln();
@@ -530,7 +554,15 @@ public final class MarkBlockSpace extends Space {
 
       currentSize += size;
       MarkBlock.setRelocationState(block, true);
+      relocationBlocks++;
     }
+
+    // Return relocationSet array
+    AddressArray relocationSet = AddressArray.create(relocationBlocks);
+    for (int i = 0; i < relocationBlocks; i++) {
+      relocationSet.set(i, blocks.get(i));
+    }
+    return relocationSet;
   }
 
   @Uninterruptible
@@ -575,6 +607,34 @@ public final class MarkBlockSpace extends Space {
       temp = blockSizes.get(i);
       blockSizes.set(i, blockSizes.get(j));
       blockSizes.set(j, temp);
+    }
+  }
+
+  private static Lock relocationSetReleaseLock = VM.newLock("relocation-set-release-lock");
+
+  public void cleanupBlocks(AddressArray relocationSet, boolean concurrent) {
+    int workers = VM.activePlan.collector().parallelWorkerCount();
+    int id = VM.activePlan.collector().getId();
+    if (concurrent) id -= workers;
+    int blocksToRelease = (int) (relocationSet.length() / workers + 0.5f);
+
+    for (int i = 0; i < blocksToRelease; i++) {
+      int cursor = blocksToRelease * id + i;
+      if (cursor >= relocationSet.length()) continue;
+      relocationSetReleaseLock.acquire();
+      Address block = relocationSet.get(cursor);
+      relocationSet.set(cursor, Address.zero());
+      relocationSetReleaseLock.release();
+      if (!block.isZero()) {
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(MarkBlock.relocationRequired(block));
+          Log.write("Block ", block);
+          Log.write(": ", MarkBlock.usedSize(block));
+          Log.write("/", MarkBlock.BYTES_IN_BLOCK);
+          Log.writeln(" released");
+        }
+        this.release(block);
+      }
     }
   }
 }

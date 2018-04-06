@@ -15,6 +15,7 @@ package org.mmtk.plan.concurrent.markcopy;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
@@ -23,6 +24,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -55,6 +57,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
   protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
   protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
+  private static AddressArray relocationSet;
 
   /****************************************************************************
    *
@@ -147,6 +150,22 @@ public class MarkCopyCollector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == MarkCopy.RELOCATION_SET_SELECTION_PREPARE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION_PREPARE");
+      copy.reset();
+      MarkBlockSpace.prepareComputeRelocationBlocks();
+      return;
+    }
+
+    if (phaseId == MarkCopy.RELOCATION_SET_SELECTION) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION");
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot);
+      if (relocationSet != null) {
+        MarkCopyCollector.relocationSet = relocationSet;
+      }
+      return;
+    }
+
     if (phaseId == MarkCopy.RELOCATE_PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_PREPARE");
       currentTrace = relocateTrace;
@@ -163,10 +182,19 @@ public class MarkCopyCollector extends ConcurrentCollector {
     }
 
     if (phaseId == MarkCopy.RELOCATE_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_RELEASE");
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.write("MarkCopy RELOCATE_RELEASE #", VM.activePlan.collector().getId());
+        Log.writeln("/", VM.activePlan.collector().parallelWorkerCount());
+      }
       relocateTrace.release();
       copy.reset();
       super.collectionPhase(MarkCopy.RELEASE, primary);
+      return;
+    }
+
+    if (phaseId == MarkCopy.CLEANUP_BLOCKS) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CLEANUP_BLOCKS");
+      MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, false);
       return;
     }
 
@@ -195,11 +223,12 @@ public class MarkCopyCollector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == MarkCopy.CONCURRENT_RELOCATE_PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATE_PREPARE");
-      currentTrace = relocateTrace;
-      relocateTrace.prepare();
-      copy.reset();
+    if (phaseId == MarkCopy.CONCURRENT_RELOCATION_SET_SELECTION) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATION_SET_SELECTION");
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot);
+      if (relocationSet != null) {
+        MarkCopyCollector.relocationSet = relocationSet;
+      }
       if (rendezvous() == 0) {
         if (!group.isAborted()) {
           VM.collection.requestMutatorFlush();
@@ -209,10 +238,12 @@ public class MarkCopyCollector extends ConcurrentCollector {
       rendezvous();
       return;
     }
-    if (phaseId == MarkCopy.CONCURRENT_RELOCATE_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATE_RELEASE");
-      relocateTrace.release();
-      copy.reset();
+    if (phaseId == MarkCopy.CONCURRENT_CLEANUP_BLOCKS) {
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.write("MarkCopy CONCURRENT_CLEANUP_BLOCKS #", VM.activePlan.collector().getId());
+        Log.writeln("/", VM.activePlan.collector().parallelWorkerCount());
+      }
+      MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, true);
       if (rendezvous() == 0) {
         if (!group.isAborted()) {
           VM.collection.requestMutatorFlush();
@@ -224,11 +255,6 @@ public class MarkCopyCollector extends ConcurrentCollector {
     }
     super.concurrentCollectionPhase(phaseId);
   }
-
-  /****************************************************************************
-   *
-   * Object processing and tracing
-   */
 
   /****************************************************************************
    *

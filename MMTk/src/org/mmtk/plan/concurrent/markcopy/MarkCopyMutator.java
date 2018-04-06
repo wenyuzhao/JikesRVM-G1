@@ -49,7 +49,8 @@ public class MarkCopyMutator extends ConcurrentMutator {
    * Instance fields
    */
   protected final MarkBlockAllocator mc;
-  private final TraceWriteBuffer remset;
+  private final TraceWriteBuffer markRemset, relocateRemset;
+  private TraceWriteBuffer currentRemset;
 
   /****************************************************************************
    *
@@ -61,7 +62,9 @@ public class MarkCopyMutator extends ConcurrentMutator {
    */
   public MarkCopyMutator() {
     mc = new MarkBlockAllocator(MarkCopy.markBlockSpace, false);
-    remset = new TraceWriteBuffer(global().markTrace);
+    markRemset = new TraceWriteBuffer(global().markTrace);
+    relocateRemset = new TraceWriteBuffer(global().relocateTrace);
+    currentRemset = markRemset;
   }
 
   /****************************************************************************
@@ -114,6 +117,7 @@ public class MarkCopyMutator extends ConcurrentMutator {
     if (phaseId == MarkCopy.PREPARE) {
       super.collectionPhase(phaseId, primary);
       mc.reset();
+      currentRemset = markRemset;
       return;
     }
 
@@ -123,9 +127,22 @@ public class MarkCopyMutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == MarkCopy.RELOCATE_CLOSURE) {
+    if (phaseId == MarkCopy.RELOCATION_SET_SELECTION_PREPARE) {
+      mc.reset();
       return;
     }
+
+    if (phaseId == MarkCopy.RELOCATE_PREPARE) {
+      super.collectionPhase(MarkCopy.PREPARE, primary);
+      mc.reset();
+      // currentRemset = relocateRemset;
+      return;
+    }
+    if (phaseId == MarkCopy.RELOCATE_RELEASE) {
+      super.collectionPhase(MarkCopy.RELEASE, primary);
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
 
@@ -134,12 +151,12 @@ public class MarkCopyMutator extends ConcurrentMutator {
     if (ref.isNull()) return;
     //if (barrierActive) {
 
-    if (Space.isInSpace(MarkCopy.MC, ref)) MarkCopy.markBlockSpace.traceMarkObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.IMMORTAL, ref)) MarkCopy.immortalSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.LOS, ref)) MarkCopy.loSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.NON_MOVING, ref)) MarkCopy.nonMovingSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.SMALL_CODE, ref)) MarkCopy.smallCodeSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.LARGE_CODE, ref)) MarkCopy.largeCodeSpace.traceObject(remset, ref);
+    if (Space.isInSpace(MarkCopy.MC, ref)) MarkCopy.markBlockSpace.traceMarkObject(currentRemset, ref);
+    else if (Space.isInSpace(MarkCopy.IMMORTAL, ref)) MarkCopy.immortalSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(MarkCopy.LOS, ref)) MarkCopy.loSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(MarkCopy.NON_MOVING, ref)) MarkCopy.nonMovingSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(MarkCopy.SMALL_CODE, ref)) MarkCopy.smallCodeSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(MarkCopy.LARGE_CODE, ref)) MarkCopy.largeCodeSpace.traceObject(currentRemset, ref);
     //}
 
     if (VM.VERIFY_ASSERTIONS) {
@@ -156,7 +173,8 @@ public class MarkCopyMutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    remset.flush();
+    markRemset.flush();
+    relocateRemset.flush();
     mc.reset();
   }
 
