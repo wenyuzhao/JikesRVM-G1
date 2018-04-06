@@ -74,7 +74,7 @@ public class MarkBlock {
 
   public static boolean isValidBlock(final Address block) {
     int index = indexOf(block);
-    return block != null && !block.isZero() && isAligned(block) && index >= 0 && index < BLOCKS_IN_REGION;
+    return /*block != null &&*/ !block.isZero() && isAligned(block) && index >= 0 && index < BLOCKS_IN_REGION;
   }
 
   public static int count() {

@@ -94,7 +94,7 @@ public abstract class Space {
   protected PageResource pr;
   protected final Address start;
   protected final Extent extent;
-  protected Address headDiscontiguousRegion;
+  protected Address headDiscontiguousRegion = Address.zero();
 
   /****************************************************************************
    *

@@ -445,7 +445,7 @@ public final class MarkBlockSpace extends Space {
     }
 
     while (true) {
-      if (region.isZero()) return null;
+      if (region.isZero()) return Address.zero();
 
       Address allocated = region.plus(MarkBlock.METADATA_OFFSET_IN_REGION + i * MarkBlock.METADATA_BYTES + MarkBlock.METADATA_ALLOCATED_OFFSET);
       if (allocated.loadByte() != ((byte) 0)) {
@@ -482,16 +482,14 @@ public final class MarkBlockSpace extends Space {
     int blocksCount = MarkBlock.count();
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
-    AddressArray blockSizes = AddressArray.create(blocksCount);
 
     // Initialize blocks array
     int index = 0;
     Address block = firstBlock();
-    while (block != null) {
+    while (!block.isZero()) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
       if (index >= blocks.length()) break;
       blocks.set(index, block);
-      blockSizes.set(index, Address.fromIntZeroExtend(MarkBlock.usedSize(block)));
       block = nextBlock(block);
       index++;
     }
@@ -521,11 +519,14 @@ public final class MarkBlockSpace extends Space {
 
     // Perform relocation set selection
     int blocksCount = blocks.length();
-
     // Initialize blockSizes array
     AddressArray blockSizes = AddressArray.create(blocksCount);
     for (int i = 0; i < blocksCount; i++) {
-      blockSizes.set(i, Address.fromIntZeroExtend(MarkBlock.usedSize(blocks.get(i))));
+      Address block = blocks.get(i);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
+      int size = MarkBlock.usedSize(block);
+      Address size2 = Address.fromIntZeroExtend(size);
+      blockSizes.set(i, size2);
     }
 
     // quick sort
@@ -536,6 +537,7 @@ public final class MarkBlockSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Copy pages: ", useableBytesForCopying / MarkBlock.BYTES_IN_BLOCK);
     int currentSize = 0;
     int relocationBlocks = 0;
+
     for (int i = 0; i < blocks.length(); i++) {
       int size = blockSizes.get(i).toInt();
       Address block = blocks.get(i);
@@ -556,7 +558,6 @@ public final class MarkBlockSpace extends Space {
       MarkBlock.setRelocationState(block, true);
       relocationBlocks++;
     }
-
     // Return relocationSet array
     AddressArray relocationSet = AddressArray.create(relocationBlocks);
     for (int i = 0; i < relocationBlocks; i++) {
