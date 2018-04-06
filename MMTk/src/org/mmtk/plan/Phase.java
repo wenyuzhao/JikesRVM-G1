@@ -441,8 +441,8 @@ public abstract class Phase {
     if (primary) {
       /* Only allow concurrent collection if we are not collecting due to resource exhaustion */
       if (VM.VERIFY_ASSERTIONS) {
-        if (!Plan.isInternalTriggeredCollection()) Log.writeln("!isInternalTriggeredCollection");
-        if (Plan.isEmergencyCollection()) Log.writeln("isEmergencyCollection");
+        if (!Plan.isInternalTriggeredCollection()) Log.writeln("[isInternalTriggeredCollection=true]");
+        if (Plan.isEmergencyCollection()) Log.writeln("[isEmergencyCollection=true]");
       }
       allowConcurrentPhase = Plan.isInternalTriggeredCollection() && !Plan.isEmergencyCollection();
 

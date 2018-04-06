@@ -14,15 +14,9 @@ package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.Log;
-import org.mmtk.vm.Lock;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**

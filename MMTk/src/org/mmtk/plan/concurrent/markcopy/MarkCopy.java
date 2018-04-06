@@ -60,7 +60,7 @@ public class MarkCopy extends Concurrent {
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
     Options.defragHeadroomFraction.setDefaultValue(0.05f);
-    // msSpace.makeAllocAsMarked();
+    markBlockSpace.makeAllocAsMarked();
     smallCodeSpace.makeAllocAsMarked();
     nonMovingSpace.makeAllocAsMarked();
   }

@@ -17,9 +17,7 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -101,7 +99,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       Address nextRegion = space.nextBlock(region);
       if (MarkBlock.relocationRequired(region)) {
         if (VM.VERIFY_ASSERTIONS) {
-          Log.write("#Block ", region);
+          Log.write("Block ", region);
           Log.write(": ", MarkBlock.usedSize(region));
           Log.write("/", MarkBlock.BYTES_IN_BLOCK);
           Log.writeln(" released");
@@ -111,7 +109,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
         visitedPages++;
         MarkBlock.setUsedSize(region, 0);
         if (VM.VERIFY_ASSERTIONS) {
-          Log.write("#Block ", region);
+          Log.write("Block ", region);
           Log.write(": ", MarkBlock.usedSize(region));
           Log.writeln("/", MarkBlock.BYTES_IN_BLOCK);
         }

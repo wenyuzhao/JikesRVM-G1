@@ -13,7 +13,6 @@
 package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.*;
-import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.utility.ForwardingWord;

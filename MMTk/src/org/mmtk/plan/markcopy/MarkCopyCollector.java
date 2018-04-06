@@ -20,7 +20,6 @@ import org.mmtk.policy.MarkBlock;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
-import org.mmtk.vm.Memory;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -111,7 +110,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.write("#Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
+        Log.write("Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
         Log.write(" is marked for relocate:");
         Log.writeln(MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
       }

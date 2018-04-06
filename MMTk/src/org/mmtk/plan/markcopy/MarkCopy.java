@@ -15,7 +15,6 @@ package org.mmtk.plan.markcopy;
 import org.mmtk.plan.*;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.MarkBlockSpace;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
