@@ -103,13 +103,15 @@ public class MarkCopyCollector extends ConcurrentCollector {
 
   @Override
   @Inline
-  public void postCopy(ObjectReference object, ObjectReference typeRef,
-      int bytes, int allocator) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
+  public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
+    }
 
     MarkCopy.markBlockSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))));
       VM.assertions._assert(getCurrentTrace().isLive(object));
     }
   }

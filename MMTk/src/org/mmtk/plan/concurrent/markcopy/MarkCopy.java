@@ -91,30 +91,45 @@ public class MarkCopy extends Concurrent {
    * FIXME: Far too much duplication and inside knowledge of StopTheWorld
    */
   public short _collection = Phase.createComplex("_collection", null,
-      Phase.scheduleComplex  (initPhase),
-      Phase.scheduleComplex  (rootClosurePhase),
-      Phase.scheduleComplex  (refTypeClosurePhase),
-      Phase.scheduleComplex  (completeClosurePhase),
+    Phase.scheduleComplex  (initPhase),
+    Phase.scheduleComplex  (rootClosurePhase),
+    Phase.scheduleComplex  (refTypeClosurePhase),
+    Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex  (completeClosurePhase),
 
+    Phase.scheduleGlobal   (RELOCATE_PREPARE),
+    Phase.scheduleCollector(RELOCATE_PREPARE),
+    Phase.scheduleMutator  (PREPARE),
 
-      Phase.scheduleGlobal   (RELOCATE_PREPARE),
-      //Phase.scheduleComplex(concurrentRelocatePrepare),
-      Phase.scheduleCollector(RELOCATE_PREPARE),
-      Phase.scheduleMutator  (PREPARE),
-      Phase.scheduleCollector(STACK_ROOTS),
-      Phase.scheduleCollector(ROOTS),
-      Phase.scheduleGlobal   (ROOTS),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
+
+    Phase.scheduleCollector(STACK_ROOTS),
+    Phase.scheduleGlobal   (STACK_ROOTS),
+    Phase.scheduleCollector(ROOTS),
+    Phase.scheduleGlobal   (ROOTS),
+
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(PHANTOM_REFS),
 
     Phase.scheduleComplex  (forwardPhase),
 
+    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleCollector(RELOCATE_RELEASE),
+    Phase.scheduleGlobal   (RELOCATE_RELEASE),
 
-      Phase.scheduleCollector(RELOCATE_CLOSURE),
-      Phase.scheduleMutator  (RELEASE),
-      //Phase.scheduleConcurrent(CONCURRENT_RELOCATE_RELEASE),
-      Phase.scheduleCollector(RELOCATE_RELEASE),
-      Phase.scheduleGlobal   (RELOCATE_RELEASE),
-
-      Phase.scheduleComplex  (finishPhase)
+    Phase.scheduleComplex  (finishPhase)
   );
 
   /**
@@ -126,8 +141,7 @@ public class MarkCopy extends Concurrent {
 
   @Override
   protected boolean concurrentCollectionRequired() {
-    return !Phase.concurrentPhaseActive() &&
-        ((getPagesReserved() * 100) / getTotalPages()) > 40;
+    return !Phase.concurrentPhaseActive() && ((getPagesReserved() * 100) / getTotalPages()) > 40;
   }
 
   /****************************************************************************
@@ -144,7 +158,13 @@ public class MarkCopy extends Concurrent {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
-      markBlockSpace.prepare();
+      markBlockSpace.prepare(false);
+      return;
+    }
+
+
+    if (phaseId == CLOSURE) {
+      markTrace.prepareNonBlocking();
       return;
     }
 
@@ -160,7 +180,11 @@ public class MarkCopy extends Concurrent {
       inConcurrentCollection = false;
       // inConcurrentCollection = false;
       relocateTrace.prepare();
-      markBlockSpace.prepare();
+      markBlockSpace.prepare(true);
+      return;
+    }
+    if (phaseId == RELOCATE_CLOSURE) {
+      relocateTrace.prepareNonBlocking();
       return;
     }
     if (phaseId == RELOCATE_RELEASE) {

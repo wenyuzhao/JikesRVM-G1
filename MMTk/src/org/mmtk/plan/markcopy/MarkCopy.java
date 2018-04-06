@@ -15,9 +15,11 @@ package org.mmtk.plan.markcopy;
 import org.mmtk.plan.*;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
+import org.mmtk.utility.sanitychecker.SanityChecker;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
@@ -78,35 +80,53 @@ public class MarkCopy extends StopTheWorld {
    *
    * FIXME: Far too much duplication and inside knowledge of StopTheWorld
    */
-  public short zCollection = Phase.createComplex("collection", null,
-      Phase.scheduleComplex  (initPhase),
-      Phase.scheduleComplex  (rootClosurePhase),
-      Phase.scheduleComplex  (refTypeClosurePhase),
-      Phase.scheduleComplex  (completeClosurePhase),
+  public short _collection = Phase.createComplex("_collection", null,
+    Phase.scheduleComplex  (initPhase),
+    Phase.scheduleComplex  (rootClosurePhase),
+    Phase.scheduleComplex  (refTypeClosurePhase),
+    Phase.scheduleComplex  (completeClosurePhase),
 
-      Phase.scheduleGlobal   (RELOCATE_PREPARE),
-      Phase.scheduleCollector(RELOCATE_PREPARE),
-      Phase.scheduleMutator  (PREPARE),
-      Phase.scheduleCollector(STACK_ROOTS),
-      Phase.scheduleCollector(ROOTS),
-      Phase.scheduleGlobal   (ROOTS),
+    Phase.scheduleGlobal   (RELOCATE_PREPARE),
+    Phase.scheduleCollector(RELOCATE_PREPARE),
+    Phase.scheduleMutator  (PREPARE),
 
-      Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
 
-      Phase.scheduleCollector(RELOCATE_CLOSURE),
-      Phase.scheduleMutator  (RELEASE),
-      Phase.scheduleCollector(RELOCATE_RELEASE),
-      Phase.scheduleGlobal   (RELOCATE_RELEASE),
+    Phase.scheduleCollector(STACK_ROOTS),
+    Phase.scheduleGlobal   (STACK_ROOTS),
+    Phase.scheduleCollector(ROOTS),
+    Phase.scheduleGlobal   (ROOTS),
 
-      Phase.scheduleComplex  (finishPhase)
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(PHANTOM_REFS),
+
+    Phase.scheduleComplex  (forwardPhase),
+
+    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleCollector(RELOCATE_RELEASE),
+    Phase.scheduleGlobal   (RELOCATE_RELEASE),
+
+    Phase.scheduleComplex  (finishPhase)
   );
+
   /**
    * Constructor
    */
   public MarkCopy() {
-    collection = zCollection;
+    collection = _collection;
   }
-
   /****************************************************************************
    *
    * Collection
@@ -121,11 +141,11 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepare();
-      markBlockSpace.prepare();
+      markBlockSpace.prepare(false);
       return;
     }
     if (phaseId == CLOSURE) {
-      // markTrace.prepare();
+      markTrace.prepare();
       return;
     }
     if (phaseId == RELEASE) {
@@ -138,7 +158,11 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       relocateTrace.prepare();
-      markBlockSpace.prepare();
+      markBlockSpace.prepare(true);
+      return;
+    }
+    if (phaseId == RELOCATE_CLOSURE) {
+      relocateTrace.prepare();
       return;
     }
     if (phaseId == RELOCATE_RELEASE) {
@@ -169,6 +193,20 @@ public class MarkCopy extends StopTheWorld {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
     return markBlockSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
+  }
+
+  @Override
+  public int sanityExpectedRC(ObjectReference object, int sanityRootRC) {
+    Space space = Space.getSpaceForObject(object);
+
+    // Nursery
+    if (space == markBlockSpace) {
+      // We are never sure about objects in MC.
+      // This is not very satisfying but allows us to use the sanity checker to
+      // detect dangling pointers.
+      return SanityChecker.UNSURE;
+    }
+    return super.sanityExpectedRC(object, sanityRootRC);
   }
 
   /**

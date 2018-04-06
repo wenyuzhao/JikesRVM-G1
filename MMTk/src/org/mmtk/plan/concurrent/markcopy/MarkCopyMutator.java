@@ -123,6 +123,9 @@ public class MarkCopyMutator extends ConcurrentMutator {
       return;
     }
 
+    if (phaseId == MarkCopy.RELOCATE_CLOSURE) {
+      return;
+    }
     super.collectionPhase(phaseId, primary);
   }
 
@@ -130,23 +133,23 @@ public class MarkCopyMutator extends ConcurrentMutator {
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
     //if (barrierActive) {
-    ObjectReference newRef = null;
-    if (Space.isInSpace(MarkCopy.MC, ref)) newRef = MarkCopy.markBlockSpace.traceMarkObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.IMMORTAL, ref)) newRef = MarkCopy.immortalSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.LOS, ref)) newRef = MarkCopy.loSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.NON_MOVING, ref)) newRef = MarkCopy.nonMovingSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.SMALL_CODE, ref)) newRef = MarkCopy.smallCodeSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(MarkCopy.LARGE_CODE, ref)) newRef = MarkCopy.largeCodeSpace.traceObject(remset, ref);
+
+    if (Space.isInSpace(MarkCopy.MC, ref)) MarkCopy.markBlockSpace.traceMarkObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.IMMORTAL, ref)) MarkCopy.immortalSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.LOS, ref)) MarkCopy.loSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.NON_MOVING, ref)) MarkCopy.nonMovingSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.SMALL_CODE, ref)) MarkCopy.smallCodeSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(MarkCopy.LARGE_CODE, ref)) MarkCopy.largeCodeSpace.traceObject(remset, ref);
     //}
 
     if (VM.VERIFY_ASSERTIONS) {
-      if (!newRef.isNull() && !Plan.gcInProgress()) {
-        if (Space.isInSpace(MarkCopy.MC, newRef)) VM.assertions._assert(MarkCopy.markBlockSpace.isLive(newRef));
-        else if (Space.isInSpace(MarkCopy.IMMORTAL, newRef)) VM.assertions._assert(MarkCopy.immortalSpace.isLive(newRef));
-        else if (Space.isInSpace(MarkCopy.LOS, newRef)) VM.assertions._assert(MarkCopy.loSpace.isLive(newRef));
-        else if (Space.isInSpace(MarkCopy.NON_MOVING, newRef)) VM.assertions._assert(MarkCopy.nonMovingSpace.isLive(newRef));
-        else if (Space.isInSpace(MarkCopy.SMALL_CODE, newRef)) VM.assertions._assert(MarkCopy.smallCodeSpace.isLive(newRef));
-        else if (Space.isInSpace(MarkCopy.LARGE_CODE, newRef)) VM.assertions._assert(MarkCopy.largeCodeSpace.isLive(newRef));
+      if (!ref.isNull() && !Plan.gcInProgress()) {
+        if (Space.isInSpace(MarkCopy.MC, ref)) VM.assertions._assert(MarkCopy.markBlockSpace.isLive(ref));
+        else if (Space.isInSpace(MarkCopy.IMMORTAL, ref)) VM.assertions._assert(MarkCopy.immortalSpace.isLive(ref));
+        else if (Space.isInSpace(MarkCopy.LOS, ref)) VM.assertions._assert(MarkCopy.loSpace.isLive(ref));
+        else if (Space.isInSpace(MarkCopy.NON_MOVING, ref)) VM.assertions._assert(MarkCopy.nonMovingSpace.isLive(ref));
+        else if (Space.isInSpace(MarkCopy.SMALL_CODE, ref)) VM.assertions._assert(MarkCopy.smallCodeSpace.isLive(ref));
+        else if (Space.isInSpace(MarkCopy.LARGE_CODE, ref)) VM.assertions._assert(MarkCopy.largeCodeSpace.isLive(ref));
       }
     }
   }
