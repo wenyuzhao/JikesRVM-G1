@@ -40,6 +40,10 @@ import org.vmmagic.unboxed.Word;
     return ARRAY_BASE_OFFSET;
   }
 
+  public boolean attemptInt(Object object, Offset offset, int oldValue, int newValue) {
+    return Magic.attemptInt(object, offset, oldValue, newValue);
+  }
+
   @Override
   @Inline
   public ObjectReference copy(ObjectReference from, int allocator) {

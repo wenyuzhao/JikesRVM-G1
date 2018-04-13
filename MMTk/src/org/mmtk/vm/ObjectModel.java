@@ -18,6 +18,7 @@ import org.vmmagic.unboxed.*;
 @Uninterruptible
 public abstract class ObjectModel {
 
+  public abstract boolean attemptInt(Object object, Offset offset, int oldValue, int newValue);
   /**
    * Copy an object using a plan's allocCopy to get space and install
    * the forwarding pointer.  On entry, <code>from</code> must have

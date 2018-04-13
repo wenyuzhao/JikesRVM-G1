@@ -17,6 +17,7 @@ import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
+import org.mmtk.utility.options.ConcurrentTrigger;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
@@ -63,6 +64,8 @@ public class MarkCopy extends Concurrent {
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
     Options.defragHeadroomFraction.setDefaultValue(0.05f);
+    //Options.concurrentTrigger = new ConcurrentTrigger();
+    //Options.concurrentTrigger.setDefaultValue(30);
     markBlockSpace.makeAllocAsMarked();
     smallCodeSpace.makeAllocAsMarked();
     nonMovingSpace.makeAllocAsMarked();
@@ -179,7 +182,7 @@ public class MarkCopy extends Concurrent {
     }
 
     if (phaseId == CLOSURE) {
-      markTrace.prepareNonBlocking();
+      //markTrace.prepareNonBlocking();
       return;
     }
 
@@ -198,14 +201,13 @@ public class MarkCopy extends Concurrent {
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       inConcurrentCollection = false;
-      // inConcurrentCollection = false;
       relocateTrace.prepare();
       markBlockSpace.prepare(true);
       return;
     }
 
     if (phaseId == RELOCATE_CLOSURE) {
-      relocateTrace.prepareNonBlocking();
+      //relocateTrace.prepare();
       return;
     }
 

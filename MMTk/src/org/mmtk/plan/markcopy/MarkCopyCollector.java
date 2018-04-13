@@ -163,7 +163,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
 
     if (phaseId == MarkCopy.RELOCATION_SET_SELECTION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot);
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, false);
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }
@@ -194,7 +194,10 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == MarkCopy.CLEANUP_BLOCKS) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CLEANUP_BLOCKS");
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.writeln("MarkCopy CLEANUP_BLOCKS");
+        VM.assertions._assert(relocationSet != null);
+      }
       MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, false);
       return;
     }

@@ -154,12 +154,13 @@ public class MarkCopyCollector extends ConcurrentCollector {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION_PREPARE");
       copy.reset();
       MarkBlockSpace.prepareComputeRelocationBlocks();
+      relocationSet = null;
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATION_SET_SELECTION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot);
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, false);
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }
@@ -193,7 +194,10 @@ public class MarkCopyCollector extends ConcurrentCollector {
     }
 
     if (phaseId == MarkCopy.CLEANUP_BLOCKS) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CLEANUP_BLOCKS");
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.writeln("MarkCopy CLEANUP_BLOCKS");
+        VM.assertions._assert(relocationSet != null);
+      }
       MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, false);
       return;
     }
@@ -225,7 +229,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
 
     if (phaseId == MarkCopy.CONCURRENT_RELOCATION_SET_SELECTION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot);
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, true);
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }
@@ -242,6 +246,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
       if (VM.VERIFY_ASSERTIONS) {
         Log.write("MarkCopy CONCURRENT_CLEANUP_BLOCKS #", VM.activePlan.collector().getId());
         Log.writeln("/", VM.activePlan.collector().parallelWorkerCount());
+        VM.assertions._assert(relocationSet != null);
       }
       MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, true);
       if (rendezvous() == 0) {
