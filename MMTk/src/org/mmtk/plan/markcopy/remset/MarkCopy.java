@@ -10,13 +10,13 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.markcopy;
+package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.Space;
 import org.mmtk.policy.MarkBlockSpace;
-import org.mmtk.utility.Log;
+import org.mmtk.policy.RemSet;
+import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;

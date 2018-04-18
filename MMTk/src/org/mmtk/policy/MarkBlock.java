@@ -6,10 +6,7 @@ import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.ObjectReference;
-import org.vmmagic.unboxed.Offset;
-import org.vmmagic.unboxed.Word;
+import org.vmmagic.unboxed.*;
 
 import static org.mmtk.utility.Constants.*;
 
@@ -29,18 +26,19 @@ public class MarkBlock {
   public static int METADATA_PAGES_PER_REGION;
   public static int BLOCKS_IN_REGION;
   public static int BLOCKS_START_OFFSET;
+  public static int USED_METADATA_PAGES_PER_REGION;
+  public static Extent ADDITIONAL_METADATA;
 
   private static void init() {
     METADATA_OFFSET_IN_REGION = ADDITIONAL_METADATA_PAGES_PER_REGION * BYTES_IN_PAGE; // 0
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(METADATA_OFFSET_IN_REGION == 0);
     int blocksInRegion = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK; // 1024 / 256 = 4
     int metadataBlocksInRegion = ceilDiv(8 * blocksInRegion + ADDITIONAL_METADATA_PAGES_PER_REGION * BYTES_IN_PAGE, BYTES_IN_BLOCK + 8); // 1
     BLOCKS_IN_REGION = blocksInRegion - metadataBlocksInRegion; // 3
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(BLOCKS_IN_REGION == 3);
     METADATA_PAGES_PER_REGION = metadataBlocksInRegion * PAGES_IN_BLOCK; // 256
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(METADATA_PAGES_PER_REGION == 256);
     BLOCKS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_REGION; // 1048576
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(BLOCKS_START_OFFSET == 1048576);
+    int metadataPages = ceilDiv(BLOCKS_IN_REGION * METADATA_BYTES, BYTES_IN_PAGE);
+    USED_METADATA_PAGES_PER_REGION = metadataPages + ADDITIONAL_METADATA_PAGES_PER_REGION;
+    ADDITIONAL_METADATA = Extent.fromIntZeroExtend(ADDITIONAL_METADATA_PAGES_PER_REGION * BYTES_IN_PAGE);
   }
 
   private static int ceilDiv(int a, int b) {
