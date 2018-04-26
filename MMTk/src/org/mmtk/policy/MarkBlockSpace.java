@@ -229,6 +229,9 @@ public final class MarkBlockSpace extends Space {
 
     if (!region.isZero()) {
       //int oldCount = MarkBlock.count();
+      if (MarkBlock.allocated(region)) {
+        VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
+      }
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.allocated(region));
       MarkBlock.register(region);
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.count() == oldCount + 1);
@@ -273,6 +276,7 @@ public final class MarkBlockSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
 
+    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.setFirstObjectInCardIfRequired(object);
     if (allocAsMarked) {
       Header.writeMarkState(object);
     } else {
@@ -293,6 +297,7 @@ public final class MarkBlockSpace extends Space {
   @Inline
   public void postCopy(ObjectReference object, int bytes) {
     Header.writeMarkState(object);
+    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.setFirstObjectInCardIfRequired(object);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       if (HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
@@ -326,6 +331,18 @@ public final class MarkBlockSpace extends Space {
    */
   @Inline
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
+    if (VM.VERIFY_ASSERTIONS) {
+      Address objEnd = VM.objectModel.getObjectEndAddress(object);
+      Address block = MarkBlock.of(object.toAddress());
+      Address limit = MarkBlock.getCursor(block);
+      if (objEnd.GT(limit)) {
+        Log.write("object ", object);
+        Log.write("..<", objEnd);
+        Log.write(" GE ", limit);
+        Log.writeln(" in block ", block);
+      }
+      VM.assertions._assert(objEnd.LE(limit));
+    }
     ObjectReference rtn = object;
 
     if (ForwardingWord.isForwarded(object)) {
@@ -338,6 +355,8 @@ public final class MarkBlockSpace extends Space {
         Log.writeln(" -> ", getForwardingPointer(rtn));
       }
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
+      VM.assertions._assert(VM.objectModel.getObjectEndAddress(rtn).LE(MarkBlock.getCursor(MarkBlock.of(rtn.toAddress()))));
+
     }
 
     if (Header.testAndMark(rtn)) {
@@ -355,6 +374,20 @@ public final class MarkBlockSpace extends Space {
     return rtn;
   }
 
+  @Inline
+  public ObjectReference traceRedirectObject(TraceLocal trace, ObjectReference object) {
+    if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ForwardingWord.isForwarded(object));
+      ObjectReference newObject = getForwardingPointer(object);
+      //Log.write(object);
+      //Log.writeln(" ~> ", newObject);
+      object = newObject;
+    }
+    if (Header.testAndMark(object)) {
+      trace.processNode(object);
+    }
+    return object;
+  }
   /**
    * Trace an object under a copying collection policy.
    * If the object is already copied, the copy is returned.

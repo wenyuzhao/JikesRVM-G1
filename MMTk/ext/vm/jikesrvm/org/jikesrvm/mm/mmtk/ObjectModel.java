@@ -40,6 +40,8 @@ import org.vmmagic.unboxed.Word;
     return ARRAY_BASE_OFFSET;
   }
 
+  @Override
+  @Inline
   public boolean attemptInt(Object object, Offset offset, int oldValue, int newValue) {
     return Magic.attemptInt(object, offset, oldValue, newValue);
   }

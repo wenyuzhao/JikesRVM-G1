@@ -1,7 +1,9 @@
 package org.mmtk.policy;
 
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
+import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -12,15 +14,19 @@ import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class MarkBlock {
-  public static final int PAGES_IN_BLOCK = 256; // 256
-  public static final int BYTES_IN_BLOCK = BYTES_IN_PAGE * PAGES_IN_BLOCK; // 1048576
+  public static final int LOG_PAGES_IN_BLOCK = 8;
+  public static final int PAGES_IN_BLOCK = 1 << 8; // 256
+  public static final int LOG_BYTES_IN_BLOCK = LOG_PAGES_IN_BLOCK + LOG_BYTES_IN_PAGE;
+  public static final int BYTES_IN_BLOCK = 1 << LOG_BYTES_IN_BLOCK;//BYTES_IN_PAGE * PAGES_IN_BLOCK; // 1048576
+
   private static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);// 0..011111111111
   public static int ADDITIONAL_METADATA_PAGES_PER_REGION = 0;
   // elements of block metadata table
   private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
   private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_BYTE;
-  public static final int METADATA_BYTES = 8;
+  public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_BYTE;
+  public static final int METADATA_BYTES = 16;
   // Derived constants
   public static int METADATA_OFFSET_IN_REGION; // 0
   public static int METADATA_PAGES_PER_REGION;
@@ -38,7 +44,7 @@ public class MarkBlock {
     BLOCKS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_REGION; // 1048576
     int metadataPages = ceilDiv(BLOCKS_IN_REGION * METADATA_BYTES, BYTES_IN_PAGE);
     USED_METADATA_PAGES_PER_REGION = metadataPages + ADDITIONAL_METADATA_PAGES_PER_REGION;
-    ADDITIONAL_METADATA = Extent.fromIntZeroExtend(ADDITIONAL_METADATA_PAGES_PER_REGION * BYTES_IN_PAGE);
+    ADDITIONAL_METADATA = Extent.fromIntZeroExtend(ADDITIONAL_METADATA_PAGES_PER_REGION * BYTES_IN_PAGE / BLOCKS_IN_REGION);
   }
 
   private static int ceilDiv(int a, int b) {
@@ -178,10 +184,21 @@ public class MarkBlock {
   }
 
   @Inline
+  public static void setCursor(Address block, Address cursor) {
+    set(metaDataOf(block, METADATA_CURSOR_OFFSET), cursor);
+  }
+
+  @Inline
+  public static Address getCursor(Address block) {
+    return metaDataOf(block, METADATA_CURSOR_OFFSET).loadAddress();
+  }
+
+  @Inline
   private static void clearState(Address block) {
     setAllocated(block, false);
     setRelocationState(block, false);
     setUsedSize(block, 0);
+    setCursor(block, Address.zero());
   }
 
   @Inline
@@ -201,6 +218,10 @@ public class MarkBlock {
     return (int) index;
   }
 
+  public static Address additionalMetadataStart(Address block) {
+    return EmbeddedMetaData.getMetaDataBase(block).plus(ADDITIONAL_METADATA.toInt() * indexOf(block));
+  }
+
   @Inline
   private static Address metaDataOf(Address block, int metaDataOffset) {
     Address metaData = EmbeddedMetaData.getMetaDataBase(block);
@@ -208,10 +229,133 @@ public class MarkBlock {
     return metaData.plus(METADATA_OFFSET_IN_REGION + METADATA_BYTES * indexOf(block)).plus(metaDataOffset);
   }
 
+
   @Inline
   private static void setAllocated(Address block, boolean allocated) {
     //blockStateLock.acquire();
     set(metaDataOf(block, METADATA_ALLOCATED_OFFSET), (byte) (allocated ? 1 : 0));
     //blockStateLock.release();
+  }
+
+  @Uninterruptible
+  public static class Card {
+    private static boolean _enabled = false;
+    public static final int LOG_BYTES_IN_CARD = 9;
+    public static final int BYTES_IN_CARD = 1 << LOG_BYTES_IN_CARD;
+    public static final Word CARD_MASK = Word.fromIntZeroExtend(BYTES_IN_CARD - 1);// 0..0111111111
+
+
+    @Inline
+    public static boolean isEnabled() { return _enabled; }
+    @Inline
+    public static void enable() { _enabled = true; }
+
+    @Inline
+    public static Address of(Address address) {
+      return address.toWord().and(CARD_MASK.not()).toAddress();
+    }
+
+    @Inline
+    public static int indexOf(Address card) {
+      Address block = MarkBlock.of(card);
+      int index = card.diff(block).toInt() / BYTES_IN_CARD;
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0);
+      return index;
+    }
+
+    @Inline
+    public static void setFirstObjectInCardIfRequired(ObjectReference ref) {
+      Address address = VM.objectModel.objectStartRef(ref);
+      Address card = Card.of(address);
+      Address metaList = MarkBlock.additionalMetadataStart(MarkBlock.of(address));
+      Address meta = metaList.plus(Card.indexOf(card));
+
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!meta.LT(EmbeddedMetaData.getMetaDataBase(address).plus(METADATA_OFFSET_IN_REGION))) {
+          Log.write("ObjectRef ", address);
+          Log.write(" Card ", card);
+          Log.write(" Index ", Card.indexOf(card));
+          Log.write(" Block ", MarkBlock.of(address));
+          Log.write(" Index ", MarkBlock.indexOf(address));
+          Log.write(" meta start ", metaList);
+          Log.write(" meta ", meta);
+          Log.write(" METADATA_OFFSET_IN_REGION ", METADATA_OFFSET_IN_REGION);
+          Log.write(" ADDITIONAL_METADATA ", ADDITIONAL_METADATA);
+          Log.write(" ADDITIONAL_METADATA_PAGES_PER_REGION ", ADDITIONAL_METADATA_PAGES_PER_REGION);
+          Log.writeln();
+
+        }
+        VM.assertions._assert(meta.LT(metaList.plus(ADDITIONAL_METADATA).minus(Constants.BYTES_IN_ADDRESS)));
+        VM.assertions._assert(meta.LT(EmbeddedMetaData.getMetaDataBase(address).plus(METADATA_OFFSET_IN_REGION)));
+      }
+      if (meta.loadByte() == ((byte) 0)) {
+        int offset = address.diff(card).toInt() / Constants.BYTES_IN_ADDRESS;
+        meta.store((byte) offset);
+      }
+    }
+
+    @Inline
+    public static Address getFirstObjectAddressInCard(Address card) {
+      Address metaList = MarkBlock.additionalMetadataStart(MarkBlock.of(card));
+      Address meta = metaList.plus(Card.indexOf(card));
+      int offset = meta.loadByte();
+      return offset == 0 ? Address.zero() : card.plus(offset * Constants.BYTES_IN_ADDRESS);
+    }
+
+    @Inline
+    public static void linearScan(LinearScan scan, Address card) {
+      Address end = card.plus(MarkBlock.Card.BYTES_IN_CARD);
+
+      Address cursor = MarkBlock.Card.getFirstObjectAddressInCard(card);
+      if (cursor.isZero()) return;
+      ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
+      /* Loop through each object up to the limit */
+      do {
+        /* Read end address first, as scan may be destructive */
+        Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+        scan.scan(ref);
+        //VM.scanning.scanObject(scanPointers, ref);
+        if (currentObjectEnd.GE(end)) {
+          /* We have scanned the last object */
+          break;
+        }
+        /* Find the next object from the start address (dealing with alignment gaps, etc.) */
+        ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+        if (VM.VERIFY_ASSERTIONS) {
+          /* Must be monotonically increasing */
+          VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
+        }
+        ref = next;
+      } while (true);
+    }
+  }
+
+  @Inline
+  public static void linearScan(LinearScan scan, Address block) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
+
+    Address end = getCursor(block);
+
+    Address cursor = block;
+    if (cursor.GE(end)) return;
+    ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
+    /* Loop through each object up to the limit */
+    do {
+      /* Read end address first, as scan may be destructive */
+      Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+      scan.scan(ref);
+      //VM.scanning.scanObject(scanPointers, ref);
+      if (currentObjectEnd.GE(end)) {
+        /* We have scanned the last object */
+        break;
+      }
+      /* Find the next object from the start address (dealing with alignment gaps, etc.) */
+      ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+      if (VM.VERIFY_ASSERTIONS) {
+        /* Must be monotonically increasing */
+        VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
+      }
+      ref = next;
+    } while (true);
   }
 }

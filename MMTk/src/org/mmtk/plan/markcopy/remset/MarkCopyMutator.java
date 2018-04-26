@@ -14,6 +14,7 @@ package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
@@ -21,8 +22,9 @@ import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.*;
+
+import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
 
 /**
  * This class implements <i>per-mutator thread</i> behavior
@@ -46,6 +48,9 @@ public class MarkCopyMutator extends StopTheWorldMutator {
    * Instance fields
    */
   protected final MarkBlockAllocator mc;
+  private static final int REMSET_LOG_BUFFER_SIZE = 256;
+  private AddressArray remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+  private int remSetLogBufferCursor = 0;
 
   /****************************************************************************
    *
@@ -139,5 +144,76 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Override
   public void flushRememberedSets() {
     mc.reset();
+  }
+
+  @Inline
+  private void markAndEnqueueCard(Address card) {
+    if (CardTable.cardIsMarked(card)) return;
+    CardTable.markCard(card, true);
+    if (remSetLogBufferCursor < remSetLogBuffer.length()) {
+      remSetLogBuffer.set(remSetLogBufferCursor, card);
+      remSetLogBufferCursor++;
+    } else {
+      global().enqueueFilledRSBuffer(remSetLogBuffer);
+      remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+      remSetLogBuffer.set(0, card);
+      remSetLogBufferCursor = 1;
+    }
+  }
+
+  @Inline
+  private void checkCrossRegionPointer(Address x, Address y) {
+    Word tmp = x.toWord().xor(y.toWord());
+    tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
+    tmp = y.isZero() ? Word.zero() : tmp;
+    if (tmp.isZero()) return;
+    markAndEnqueueCard(MarkBlock.Card.of(x));
+  }
+
+  @Inline
+  @Override
+  public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
+    /*if (barrierActive)*/
+    checkCrossRegionPointer(VM.objectModel.objectStartRef(src), VM.objectModel.objectStartRef(value));
+    VM.barriers.objectReferenceWrite(src, value, metaDataA, metaDataB, mode);
+  }
+
+  @Inline
+  @Override
+  public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
+    boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, value, metaDataA, metaDataB, mode);
+    checkCrossRegionPointer(VM.objectModel.objectStartRef(src), VM.objectModel.objectStartRef(value));
+    return result;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * @param src The source of the values to be copied
+   * @param srcOffset The offset of the first source address, in
+   * bytes, relative to <code>src</code> (in principle, this could be
+   * negative).
+   * @param dst The mutated object, i.e. the destination of the copy.
+   * @param dstOffset The offset of the first destination address, in
+   * bytes relative to <code>tgt</code> (in principle, this could be
+   * negative).
+   * @param bytes The size of the region being copied, in bytes.
+   */
+  @Inline
+  @Override
+  public boolean objectReferenceBulkCopy(ObjectReference src, Offset srcOffset, ObjectReference dst, Offset dstOffset, int bytes) {
+    Address cursor = dst.toAddress().plus(dstOffset);
+    Address limit = cursor.plus(bytes);
+    while (cursor.LT(limit)) {
+      ObjectReference ref = cursor.loadObjectReference();
+      checkCrossRegionPointer(VM.objectModel.objectStartRef(dst), VM.objectModel.objectStartRef(ref));
+      cursor = cursor.plus(BYTES_IN_ADDRESS);
+    }
+    return false;
+  }
+
+  @Inline
+  MarkCopy global() {
+    return (MarkCopy) VM.activePlan.global();
   }
 }

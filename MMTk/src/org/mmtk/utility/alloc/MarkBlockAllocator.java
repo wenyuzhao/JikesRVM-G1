@@ -91,6 +91,7 @@ public class MarkBlockAllocator extends Allocator {
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
+    MarkBlock.setCursor(MarkBlock.of(start), cursor);
     return start;
   }
 

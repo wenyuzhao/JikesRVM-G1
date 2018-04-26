@@ -18,6 +18,7 @@ import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.RemSet;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
@@ -167,6 +168,13 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }
+      return;
+    }
+
+
+    if (phaseId == MarkCopy.EVACUATION) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy EVACUATION");
+      RemSet.evacuateBlocks(relocationSet, false);
       return;
     }
 

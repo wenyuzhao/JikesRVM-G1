@@ -48,7 +48,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     if (Space.isInSpace(MarkCopy.MC, object))
-      return MarkCopy.markBlockSpace.traceRelocateObject(this, object, MarkCopy.ALLOC_MC);
+      return MarkCopy.markBlockSpace.traceRedirectObject(this, object);
     return super.traceObject(object);
   }
 

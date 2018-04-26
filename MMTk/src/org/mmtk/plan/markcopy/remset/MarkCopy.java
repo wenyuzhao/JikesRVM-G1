@@ -15,17 +15,15 @@ package org.mmtk.plan.markcopy.remset;
 import org.mmtk.plan.*;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
-import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
-import org.vmmagic.pragma.Inline;
-import org.vmmagic.pragma.Interruptible;
-import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -62,10 +60,15 @@ public class MarkCopy extends StopTheWorld {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
   public AddressArray blocksSnapshot;
+  public static final AddressArray[] filledRSBuffers = new AddressArray[16];
+  public static int filledRSBuffersStart = 0, filledRSBuffersEnd = 0;
+  private static Lock lock = VM.newLock("filledRSBuffersLock");
+  public static final int CONCURRENT_REFINEMENT_THRESHOLD = 4;
 
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
     Options.defragHeadroomFraction.setDefaultValue(0.05f);
+    MarkBlock.Card.enable();
   }
 
   /**
@@ -78,6 +81,7 @@ public class MarkCopy extends StopTheWorld {
   /* Phases */
   public static final short RELOCATE_PREPARE = Phase.createSimple("relocate-prepare");
   public static final short RELOCATE_CLOSURE = Phase.createSimple("relocate-closure");
+  public static final short RELOCATE_UPDATE_POINTERS = Phase.createSimple("relocate-update-pointers");
   public static final short RELOCATE_RELEASE = Phase.createSimple("relocate-release");
 
   public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
@@ -89,8 +93,13 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
     Phase.scheduleCollector(RELOCATION_SET_SELECTION)
   );
+  public static final short EVACUATION = Phase.createSimple("evacuation");
+  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
+    Phase.scheduleComplex  (relocationSetSelection),
+    Phase.scheduleCollector(EVACUATION),
+
     Phase.scheduleGlobal   (RELOCATE_PREPARE),
     Phase.scheduleCollector(RELOCATE_PREPARE),
     Phase.scheduleMutator  (RELOCATE_PREPARE),
@@ -122,23 +131,59 @@ public class MarkCopy extends StopTheWorld {
 
     Phase.scheduleMutator  (RELOCATE_RELEASE),
     Phase.scheduleCollector(RELOCATE_RELEASE),
-    Phase.scheduleGlobal   (RELOCATE_RELEASE)
+    Phase.scheduleGlobal   (RELOCATE_RELEASE),
+
+    Phase.scheduleCollector(CLEANUP_BLOCKS)
+
+    /*
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
+
+    Phase.scheduleCollector(STACK_ROOTS),
+    Phase.scheduleGlobal   (STACK_ROOTS),
+    Phase.scheduleCollector(ROOTS),
+    Phase.scheduleGlobal   (ROOTS),
+
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+*/
+    //Phase.scheduleCollector(SOFT_REFS),
+    //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    //Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    //Phase.scheduleCollector(WEAK_REFS),
+    //Phase.scheduleCollector(FINALIZABLE),
+    //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
   );
 
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+
+
 
   public static short _collection = Phase.createComplex("_collection", null,
     Phase.scheduleComplex  (initPhase),
     Phase.scheduleComplex  (rootClosurePhase),
     Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (forwardPhase),
+    //Phase.scheduleComplex  (forwardPhase),
     Phase.scheduleComplex  (completeClosurePhase),
 
-    Phase.scheduleComplex  (relocationSetSelection),
+    //Phase.scheduleComplex  (relocationSetSelection),
 
-    Phase.scheduleComplex  (relocationPhase),
+    //Phase.scheduleComplex  (relocationPhase),
 
-    Phase.scheduleCollector(CLEANUP_BLOCKS),
+    //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    //Phase.scheduleCollector(RELOCATE_CLOSURE),
+    //Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
+
+    //Phase.scheduleCollector(CLEANUP_BLOCKS),
+
+    //Phase.scheduleComplex  (relocationSetSelection),
+
+    //Phase.scheduleCollector(EVACUATION),
+
+    Phase.scheduleComplex  (relocationPhase), // update pointers
+
+
+
 
     Phase.scheduleComplex  (finishPhase)
   );
@@ -228,6 +273,13 @@ public class MarkCopy extends StopTheWorld {
   }
 
   @Override
+  @Interruptible
+  protected void spawnCollectorThreads(int numThreads) {
+    super.spawnCollectorThreads(numThreads);
+    VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement());
+  }
+
+  @Override
   public int sanityExpectedRC(ObjectReference object, int sanityRootRC) {
     Space space = Space.getSpaceForObject(object);
 
@@ -272,5 +324,48 @@ public class MarkCopy extends StopTheWorld {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, MarkCopyMarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, MarkCopyRelocationTraceLocal.class);
     super.registerSpecializedMethods();
+  }
+
+  @UninterruptibleNoWarn
+  public static void enqueueFilledRSBuffer(AddressArray buf) {
+    lock.acquire();
+    VM.assertions._assert(filledRSBuffers[filledRSBuffersEnd] == null);
+    filledRSBuffers[filledRSBuffersEnd] = buf;
+    filledRSBuffersEnd++;
+    if (filledRSBuffersEnd >= filledRSBuffers.length) filledRSBuffersEnd = 0;
+    VM.assertions._assert(filledRSBuffers[filledRSBuffersEnd] == null || filledRSBuffersEnd == filledRSBuffersStart);
+    lock.release();
+
+    if (filledRSBufferSize() > CONCURRENT_REFINEMENT_THRESHOLD) {
+      ConcurrentRemSetRefinement.trigger();
+    }
+  }
+
+  @UninterruptibleNoWarn
+  public static AddressArray dequeueFilledRSBuffer() {
+    lock.acquire();
+    VM.assertions._assert(filledRSBuffers[filledRSBuffersStart] != null);
+    AddressArray ret = filledRSBuffers[filledRSBuffersStart];
+
+    filledRSBuffersStart++;
+    if (filledRSBuffersStart >= filledRSBuffers.length) filledRSBuffersStart = 0;
+    VM.assertions._assert(filledRSBuffersStart == filledRSBuffersEnd || filledRSBuffers[filledRSBuffersStart] != null);
+    lock.release();
+    return ret;
+  }
+
+  @UninterruptibleNoWarn
+  public static int filledRSBufferSize() {
+    lock.acquire();
+    int start = filledRSBuffersStart, end = filledRSBuffersEnd;
+    lock.release();
+
+    if (start < end) {
+      return end - start;
+    } else if (start == end) {
+      return filledRSBuffers[start] == null ? 0 : filledRSBuffers.length;
+    } else {
+      return filledRSBuffers.length - (start - end);
+    }
   }
 }

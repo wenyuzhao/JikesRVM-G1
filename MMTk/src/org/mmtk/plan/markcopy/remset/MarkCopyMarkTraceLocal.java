@@ -15,6 +15,8 @@ package org.mmtk.plan.markcopy.remset;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.ForwardingWord;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -36,8 +38,10 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(MarkCopy.MC, object))
+    if (Space.isInSpace(MarkCopy.MC, object)) {
+      //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       return MarkCopy.markBlockSpace.isLive(object);
+    }
     return super.isLive(object);
   }
 
@@ -45,8 +49,10 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(MarkCopy.MC, object))
+    if (Space.isInSpace(MarkCopy.MC, object)) {
+      //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       return MarkCopy.markBlockSpace.traceMarkObject(this, object);
+    }
     return super.traceObject(object);
   }
 
