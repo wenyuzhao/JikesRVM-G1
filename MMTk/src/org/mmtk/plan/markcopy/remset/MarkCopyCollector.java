@@ -19,6 +19,7 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.RemSet;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
@@ -59,7 +60,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
   protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
   protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
-  private static AddressArray relocationSet;
+  static AddressArray relocationSet;
 
   /****************************************************************************
    *
@@ -184,6 +185,17 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       relocateTrace.prepare();
       copy.reset();
       super.collectionPhase(MarkCopy.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == MarkCopy.RELOCATE_UPDATE_POINTERS) {
+      //relocateTrace.release()
+      VM.assertions._assert(Plan.gcInProgress());
+      if (VM.activePlan.collector().getId() == 0) {
+        ConcurrentRemSetRefinement.refine();
+        RemSet.updatePointers(MarkCopyCollector.relocationSet, false);
+      }
+
       return;
     }
 

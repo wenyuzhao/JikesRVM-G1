@@ -15,7 +15,9 @@ package org.mmtk.plan.markcopy.remset;
 import org.mmtk.plan.*;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
@@ -97,14 +99,15 @@ public class MarkCopy extends StopTheWorld {
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
-    Phase.scheduleComplex  (relocationSetSelection),
-    Phase.scheduleCollector(EVACUATION),
+    //Phase.scheduleComplex  (relocationSetSelection),
+    //Phase.scheduleCollector(EVACUATION),
+
+    Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
 
     Phase.scheduleGlobal   (RELOCATE_PREPARE),
     Phase.scheduleCollector(RELOCATE_PREPARE),
     Phase.scheduleMutator  (RELOCATE_PREPARE),
 
-
     Phase.scheduleMutator  (PREPARE_STACKS),
     Phase.scheduleGlobal   (PREPARE_STACKS),
 
@@ -112,48 +115,30 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
+
+
 
     Phase.scheduleGlobal   (RELOCATE_CLOSURE),
     Phase.scheduleCollector(RELOCATE_CLOSURE),
 
     Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    Phase.scheduleCollector(RELOCATE_CLOSURE),
-
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    Phase.scheduleCollector(RELOCATE_CLOSURE),
-
-    Phase.scheduleCollector(PHANTOM_REFS),
-
-    Phase.scheduleComplex  (forwardPhase),
-
-    Phase.scheduleMutator  (RELOCATE_RELEASE),
-    Phase.scheduleCollector(RELOCATE_RELEASE),
-    Phase.scheduleGlobal   (RELOCATE_RELEASE),
-
-    Phase.scheduleCollector(CLEANUP_BLOCKS)
-
-    /*
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-
-    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    Phase.scheduleCollector(RELOCATE_CLOSURE),
-*/
-    //Phase.scheduleCollector(SOFT_REFS),
     //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
     //Phase.scheduleCollector(RELOCATE_CLOSURE),
 
-    //Phase.scheduleCollector(WEAK_REFS),
-    //Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleCollector(FINALIZABLE),
     //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    //Phase.scheduleCollector(RELOCATE_CLOSURE),
+
+    Phase.scheduleCollector(PHANTOM_REFS),
+
+    Phase.scheduleComplex  (forwardPhase)
+
+    //Phase.scheduleMutator  (RELOCATE_RELEASE),
+    //Phase.scheduleCollector(RELOCATE_RELEASE),
+    //Phase.scheduleGlobal   (RELOCATE_RELEASE)
+
+    //Phase.scheduleCollector(CLEANUP_BLOCKS)
   );
 
 
@@ -161,9 +146,10 @@ public class MarkCopy extends StopTheWorld {
 
   public static short _collection = Phase.createComplex("_collection", null,
     Phase.scheduleComplex  (initPhase),
+    // Mark
     Phase.scheduleComplex  (rootClosurePhase),
     Phase.scheduleComplex  (refTypeClosurePhase),
-    //Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex  (forwardPhase),
     Phase.scheduleComplex  (completeClosurePhase),
 
     //Phase.scheduleComplex  (relocationSetSelection),
@@ -176,13 +162,13 @@ public class MarkCopy extends StopTheWorld {
 
     //Phase.scheduleCollector(CLEANUP_BLOCKS),
 
-    //Phase.scheduleComplex  (relocationSetSelection),
-
-    //Phase.scheduleCollector(EVACUATION),
+    Phase.scheduleComplex  (relocationSetSelection),
+    Phase.scheduleCollector(EVACUATION),
 
     Phase.scheduleComplex  (relocationPhase), // update pointers
+    //Phase.scheduleGlobal(RELOCATE_UPDATE_POINTERS),
 
-
+    Phase.scheduleCollector(CLEANUP_BLOCKS),
 
 
     Phase.scheduleComplex  (finishPhase)
@@ -328,6 +314,9 @@ public class MarkCopy extends StopTheWorld {
 
   @UninterruptibleNoWarn
   public static void enqueueFilledRSBuffer(AddressArray buf) {
+    Log.write("enqueueFilledRSBuffer {");
+    Log.flush();
+
     lock.acquire();
     VM.assertions._assert(filledRSBuffers[filledRSBuffersEnd] == null);
     filledRSBuffers[filledRSBuffersEnd] = buf;
@@ -336,9 +325,15 @@ public class MarkCopy extends StopTheWorld {
     VM.assertions._assert(filledRSBuffers[filledRSBuffersEnd] == null || filledRSBuffersEnd == filledRSBuffersStart);
     lock.release();
 
+    Log.write(".");
+    Log.flush();
+
     if (filledRSBufferSize() > CONCURRENT_REFINEMENT_THRESHOLD) {
       ConcurrentRemSetRefinement.trigger();
     }
+
+    Log.writeln("}");
+    Log.flush();
   }
 
   @UninterruptibleNoWarn

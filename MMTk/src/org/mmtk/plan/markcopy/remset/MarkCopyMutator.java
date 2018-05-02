@@ -17,6 +17,7 @@ import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
@@ -148,33 +149,35 @@ public class MarkCopyMutator extends StopTheWorldMutator {
 
   @Inline
   private void markAndEnqueueCard(Address card) {
+    /*
     if (CardTable.cardIsMarked(card)) return;
     CardTable.markCard(card, true);
     if (remSetLogBufferCursor < remSetLogBuffer.length()) {
-      remSetLogBuffer.set(remSetLogBufferCursor, card);
-      remSetLogBufferCursor++;
+      remSetLogBuffer.set(remSetLogBufferCursor++, card);
     } else {
-      global().enqueueFilledRSBuffer(remSetLogBuffer);
+      ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer);
       remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
       remSetLogBuffer.set(0, card);
       remSetLogBufferCursor = 1;
     }
+    */
   }
 
   @Inline
-  private void checkCrossRegionPointer(Address x, Address y) {
-    Word tmp = x.toWord().xor(y.toWord());
-    tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
-    tmp = y.isZero() ? Word.zero() : tmp;
-    if (tmp.isZero()) return;
-    markAndEnqueueCard(MarkBlock.Card.of(x));
+  private void checkCrossRegionPointer(ObjectReference src, Address slot, Address value) {
+    if (!src.isNull() && !slot.isZero() && !value.isZero() && Space.isInSpace(MarkCopy.MC, src) && Space.isInSpace(MarkCopy.MC, slot) && Space.isInSpace(MarkCopy.MC, value)) {
+      Word tmp = slot.toWord().xor(value.toWord());
+      tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
+      tmp = value.isZero() ? Word.zero() : tmp;
+      if (tmp.isZero()) return;
+      markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
+    }
   }
 
   @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
-    /*if (barrierActive)*/
-    checkCrossRegionPointer(VM.objectModel.objectStartRef(src), VM.objectModel.objectStartRef(value));
+    checkCrossRegionPointer(src, slot, value.toAddress());
     VM.barriers.objectReferenceWrite(src, value, metaDataA, metaDataB, mode);
   }
 
@@ -182,7 +185,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Override
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
     boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, value, metaDataA, metaDataB, mode);
-    checkCrossRegionPointer(VM.objectModel.objectStartRef(src), VM.objectModel.objectStartRef(value));
+    checkCrossRegionPointer(src, slot, value.toAddress());
     return result;
   }
 
@@ -202,12 +205,14 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Inline
   @Override
   public boolean objectReferenceBulkCopy(ObjectReference src, Offset srcOffset, ObjectReference dst, Offset dstOffset, int bytes) {
+    Address srcCursor = src.toAddress().plus(srcOffset);
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
     while (cursor.LT(limit)) {
-      ObjectReference ref = cursor.loadObjectReference();
-      checkCrossRegionPointer(VM.objectModel.objectStartRef(dst), VM.objectModel.objectStartRef(ref));
+      ObjectReference ref = srcCursor.loadObjectReference();
+      checkCrossRegionPointer(dst, cursor, ref.toAddress());
       cursor = cursor.plus(BYTES_IN_ADDRESS);
+      srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
     }
     return false;
   }

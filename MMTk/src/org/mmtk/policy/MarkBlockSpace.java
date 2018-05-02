@@ -223,6 +223,7 @@ public final class MarkBlockSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(region));
 
     if (VM.VERIFY_ASSERTIONS) {
+      Log.flush();
       Log.write("Block alloc ", region);
       Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
     }
@@ -273,6 +274,9 @@ public final class MarkBlockSpace extends Space {
    */
   @Inline
   public void postAlloc(ObjectReference object, int bytes) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
+    //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
+    //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
 
@@ -296,6 +300,8 @@ public final class MarkBlockSpace extends Space {
    */
   @Inline
   public void postCopy(ObjectReference object, int bytes) {
+    //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
+    //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
     Header.writeMarkState(object);
     if (MarkBlock.Card.isEnabled()) MarkBlock.Card.setFirstObjectInCardIfRequired(object);
     if (VM.VERIFY_ASSERTIONS) {
@@ -335,13 +341,14 @@ public final class MarkBlockSpace extends Space {
       Address objEnd = VM.objectModel.getObjectEndAddress(object);
       Address block = MarkBlock.of(object.toAddress());
       Address limit = MarkBlock.getCursor(block);
-      if (objEnd.GT(limit)) {
+      /*if (objEnd.GT(limit)) {
         Log.write("object ", object);
+        Log.write(" ", VM.objectModel.objectStartRef(object));
         Log.write("..<", objEnd);
-        Log.write(" GE ", limit);
+        Log.write(" GT ", limit);
         Log.writeln(" in block ", block);
       }
-      VM.assertions._assert(objEnd.LE(limit));
+      VM.assertions._assert(objEnd.LE(limit));*/
     }
     ObjectReference rtn = object;
 
@@ -355,7 +362,7 @@ public final class MarkBlockSpace extends Space {
         Log.writeln(" -> ", getForwardingPointer(rtn));
       }
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
-      VM.assertions._assert(VM.objectModel.getObjectEndAddress(rtn).LE(MarkBlock.getCursor(MarkBlock.of(rtn.toAddress()))));
+      //VM.assertions._assert(VM.objectModel.getObjectEndAddress(rtn).LE(MarkBlock.getCursor(MarkBlock.of(rtn.toAddress()))));
 
     }
 

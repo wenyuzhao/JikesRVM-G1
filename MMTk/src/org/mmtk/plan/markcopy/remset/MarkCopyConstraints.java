@@ -46,4 +46,8 @@ public class MarkCopyConstraints extends StopTheWorldConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return MarkBlock.BYTES_IN_BLOCK;
   }
+  @Override
+  public boolean needsObjectReferenceWriteBarrier() {
+    return false;
+  }
 }

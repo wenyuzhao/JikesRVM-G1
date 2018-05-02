@@ -47,6 +47,27 @@ public class MarkBlock {
     ADDITIONAL_METADATA = Extent.fromIntZeroExtend(ADDITIONAL_METADATA_PAGES_PER_REGION * BYTES_IN_PAGE / BLOCKS_IN_REGION);
   }
 
+  public static void dumpMeta() {
+    Log.writeln("BYTES_IN_PAGE ", Constants.BYTES_IN_PAGE);
+    Log.writeln("LOG_PAGES_IN_BLOCK ", LOG_PAGES_IN_BLOCK);
+    Log.writeln("PAGES_IN_BLOCK ", PAGES_IN_BLOCK);
+    Log.writeln("LOG_BYTES_IN_BLOCK ", LOG_BYTES_IN_BLOCK);
+    Log.writeln("BYTES_IN_BLOCK ", BYTES_IN_BLOCK);
+    Log.writeln("PAGE_MASK ", PAGE_MASK);
+    Log.writeln("ADDITIONAL_METADATA_PAGES_PER_REGION ", ADDITIONAL_METADATA_PAGES_PER_REGION);
+    Log.writeln("METADATA_ALIVE_SIZE_OFFSET ", METADATA_ALIVE_SIZE_OFFSET);
+    Log.writeln("METADATA_RELOCATE_OFFSET ", METADATA_RELOCATE_OFFSET);
+    Log.writeln("METADATA_ALLOCATED_OFFSET ", METADATA_ALLOCATED_OFFSET);
+    Log.writeln("METADATA_CURSOR_OFFSET ", METADATA_CURSOR_OFFSET);
+    Log.writeln("METADATA_BYTES ", METADATA_BYTES);
+    Log.writeln("METADATA_OFFSET_IN_REGION ", METADATA_OFFSET_IN_REGION);
+    Log.writeln("METADATA_PAGES_PER_REGION ", METADATA_PAGES_PER_REGION);
+    Log.writeln("BLOCKS_IN_REGION ", BLOCKS_IN_REGION);
+    Log.writeln("BLOCKS_START_OFFSET ", BLOCKS_START_OFFSET);
+    Log.writeln("USED_METADATA_PAGES_PER_REGION ", USED_METADATA_PAGES_PER_REGION);
+    Log.writeln("ADDITIONAL_METADATA ", ADDITIONAL_METADATA);
+  }
+
   private static int ceilDiv(int a, int b) {
     return (a + b - 1) / b;
   }
@@ -75,6 +96,9 @@ public class MarkBlock {
   @Inline
   private static void set(Address addr, Address val) {
     assertInMetadata(addr, Constants.BYTES_IN_ADDRESS);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!addr.isZero());
+    //Log.write("> ", addr);
+    //Log.writeln(".store ", val);
     addr.store(val);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadAddress().EQ(val));
   }
@@ -185,7 +209,12 @@ public class MarkBlock {
 
   @Inline
   public static void setCursor(Address block, Address cursor) {
-    set(metaDataOf(block, METADATA_CURSOR_OFFSET), cursor);
+    Address meta = metaDataOf(block, METADATA_CURSOR_OFFSET);
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!meta.isZero());
+      //VM.assertions._assert(!meta.isZero());
+    }
+    set(meta, cursor);
   }
 
   @Inline
@@ -271,7 +300,7 @@ public class MarkBlock {
       Address meta = metaList.plus(Card.indexOf(card));
 
       if (VM.VERIFY_ASSERTIONS) {
-        if (!meta.LT(EmbeddedMetaData.getMetaDataBase(address).plus(METADATA_OFFSET_IN_REGION))) {
+        if (!meta.LT(metaList.plus(ADDITIONAL_METADATA))) {
           Log.write("ObjectRef ", address);
           Log.write(" Card ", card);
           Log.write(" Index ", Card.indexOf(card));
@@ -283,10 +312,9 @@ public class MarkBlock {
           Log.write(" ADDITIONAL_METADATA ", ADDITIONAL_METADATA);
           Log.write(" ADDITIONAL_METADATA_PAGES_PER_REGION ", ADDITIONAL_METADATA_PAGES_PER_REGION);
           Log.writeln();
-
         }
-        VM.assertions._assert(meta.LT(metaList.plus(ADDITIONAL_METADATA).minus(Constants.BYTES_IN_ADDRESS)));
-        VM.assertions._assert(meta.LT(EmbeddedMetaData.getMetaDataBase(address).plus(METADATA_OFFSET_IN_REGION)));
+        VM.assertions._assert(meta.LT(metaList.plus(ADDITIONAL_METADATA)));
+        //VM.assertions._assert(meta.LT(EmbeddedMetaData.getMetaDataBase(address).plus(METADATA_OFFSET_IN_REGION)));
       }
       if (meta.loadByte() == ((byte) 0)) {
         int offset = address.diff(card).toInt() / Constants.BYTES_IN_ADDRESS;
@@ -305,16 +333,21 @@ public class MarkBlock {
     @Inline
     public static void linearScan(LinearScan scan, Address card) {
       Address end = card.plus(MarkBlock.Card.BYTES_IN_CARD);
+      Address end2 = MarkBlock.getCursor(MarkBlock.of(card));
+      if (end2.LT(end)) end = end2;
 
       Address cursor = MarkBlock.Card.getFirstObjectAddressInCard(card);
       if (cursor.isZero()) return;
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
       /* Loop through each object up to the limit */
       do {
+        VM.objectModel.dumpObject(ref);
         /* Read end address first, as scan may be destructive */
         Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
         scan.scan(ref);
         //VM.scanning.scanObject(scanPointers, ref);
+        Log.write(" - ", currentObjectEnd);
+        Log.writeln(" . ", end);
         if (currentObjectEnd.GE(end)) {
           /* We have scanned the last object */
           break;

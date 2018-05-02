@@ -18,13 +18,13 @@ import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.RemSet;
+import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
-import org.vmmagic.pragma.Interruptible;
-import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.pragma.Unpreemptible;
+import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
@@ -47,6 +47,10 @@ import org.vmmagic.unboxed.ObjectReference;
  */
 @Uninterruptible
 public class ConcurrentRemSetRefinement extends CollectorContext {
+  private static final AddressArray[] filledRSBuffers = new AddressArray[16];
+  private static int filledRSBuffersCursor = 0;
+  private static final Lock filledRSBuffersLock = VM.newLock("filledRSBuffersLock ");
+
   private static Monitor lock;
 
   @Override
@@ -65,39 +69,87 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }
   }
 
+  /** Runs in mutator threads */
+  @UninterruptibleNoWarn
+  public static void enqueueFilledRSBuffer(AddressArray buf) {
+    Log.write("enqueueFilledRSBuffer {");
+    Log.flush();
+
+    /*filledRSBuffersLock.acquire();
+    if (filledRSBuffersCursor < filledRSBuffers.length) {
+      filledRSBuffers[filledRSBuffersCursor++] = buf;
+      if (filledRSBuffersCursor >= filledRSBuffers.length) {
+        ConcurrentRemSetRefinement.trigger();
+      }
+      filledRSBuffersLock.release();
+    } else {
+      filledRSBuffersLock.release();
+      refineSingleBuffer(buf);
+    }*/
+    //refineSingleBuffer(buf);
+
+    Log.writeln("}");
+    Log.flush();
+  }
+
   public static void trigger() {
     lock.broadcast();
   }
 
-  TransitiveClosure scanPointers = new TransitiveClosure() {
+  static TransitiveClosure scanPointers = new TransitiveClosure() {
     @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
       Address card = MarkBlock.Card.of(VM.objectModel.objectStartRef(source));
+      ObjectReference object = global().loadObjectReference(slot);
       Address ptr = slot.loadAddress();
-      if (MarkBlock.Card.of(ptr).NE(card)) {
+      if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // foreign pointer to MC space
         Address foreignBlock = MarkBlock.of(ptr);
-        RemSet.addCard(foreignBlock, card);
+        //RemSet.addCard(foreignBlock, card);
       }
     }
   };
 
-  LinearScan cardLinearScan = new LinearScan() {
+  static LinearScan cardLinearScan = new LinearScan() {
     @Override @Uninterruptible public void scan(ObjectReference object) {
       VM.scanning.scanObject(scanPointers, object);
     }
   };
 
-  public void processCard(Address card) {
+  public static void processCard(Address card) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.Card.getFirstObjectAddressInCard(card).isZero());
+    Log.writeln("Linear scan card ", card);
     MarkBlock.Card.linearScan(cardLinearScan, card);
   }
 
-  public void refine() {
-    Log.writeln("Concurrent Refine");
-    MarkCopy global = (MarkCopy) VM.activePlan.global();
-    while (global.filledRSBufferSize() > MarkCopy.CONCURRENT_REFINEMENT_THRESHOLD) {
-      AddressArray buffer = ((MarkCopy) VM.activePlan.global()).dequeueFilledRSBuffer();
-      for (int i = 0; i < buffer.length(); i++) {
-        processCard(buffer.get(i));
-      }
+  public static void refineSingleBuffer(AddressArray buffer) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(buffer != null);
+    for (int i = 0; i < buffer.length(); i++) {
+      processCard(buffer.get(i));
     }
+  }
+
+  public static final Lock refineLock = VM.newLock("refineLock");
+
+  @UninterruptibleNoWarn
+  public static void refine() {
+    refineLock.acquire();
+    Log.writeln("Concurrent Refine");
+    for (int i = 0; i < filledRSBuffersCursor; i++) {
+      refineSingleBuffer(filledRSBuffers[i]);
+      filledRSBuffers[i] = null;
+    }
+    filledRSBuffersLock.acquire();
+    filledRSBuffersCursor = 0;
+    filledRSBuffersLock.release();
+    //while (global().filledRSBufferSize() > MarkCopy.CONCURRENT_REFINEMENT_THRESHOLD) {
+      //AddressArray buffer = global().dequeueFilledRSBuffer();
+      //refineSingleBuffer(buffer);
+    //}
+
+    refineLock.release();
+  }
+
+  @Inline
+  private static MarkCopy global() {
+    return (MarkCopy) VM.activePlan.global();
   }
 }
