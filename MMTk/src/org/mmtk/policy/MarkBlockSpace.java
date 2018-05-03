@@ -280,7 +280,7 @@ public final class MarkBlockSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
 
-    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.setFirstObjectInCardIfRequired(object);
+    //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (allocAsMarked) {
       Header.writeMarkState(object);
     } else {
@@ -303,7 +303,7 @@ public final class MarkBlockSpace extends Space {
     //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
     //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
     Header.writeMarkState(object);
-    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.setFirstObjectInCardIfRequired(object);
+    //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       if (HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
@@ -713,6 +713,9 @@ public final class MarkBlockSpace extends Space {
           Log.write(": ", MarkBlock.usedSize(block));
           Log.write("/", MarkBlock.BYTES_IN_BLOCK);
           Log.writeln(" released");
+        }
+        if (MarkBlock.Card.isEnabled()) {
+          MarkBlock.Card.clearCardMetaForBlock(block);
         }
         this.release(block);
       }

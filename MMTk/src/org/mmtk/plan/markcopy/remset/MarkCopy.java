@@ -13,10 +13,7 @@
 package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
-import org.mmtk.policy.RemSet;
-import org.mmtk.policy.Space;
+import org.mmtk.policy.*;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
@@ -115,8 +112,6 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
-
-
 
     Phase.scheduleGlobal   (RELOCATE_CLOSURE),
     Phase.scheduleCollector(RELOCATE_CLOSURE),
@@ -268,7 +263,6 @@ public class MarkCopy extends StopTheWorld {
   @Override
   public int sanityExpectedRC(ObjectReference object, int sanityRootRC) {
     Space space = Space.getSpaceForObject(object);
-
     // Nursery
     if (space == markBlockSpace) {
       // We are never sure about objects in MC.

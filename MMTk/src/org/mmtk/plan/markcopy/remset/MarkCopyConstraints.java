@@ -48,6 +48,6 @@ public class MarkCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public boolean needsObjectReferenceWriteBarrier() {
-    return false;
+    return true;
   }
 }

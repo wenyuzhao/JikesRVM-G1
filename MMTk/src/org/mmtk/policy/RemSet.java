@@ -97,17 +97,17 @@ public class RemSet {
     return (a + b - 1) / b;
   }
 
-  public static final Offset CARDS_META_OFFSET;
-  public static final Extent CARDS_META_EXTENT;
+  //public static final Offset CARDS_META_OFFSET;
+  //public static final Extent CARDS_META_EXTENT;
   public static final Offset REMSET_OFFSET;
   public static final Extent REMSET_EXTENT;
 
   static {
     // Preserve as much meta pages as possible
     MarkBlock.setAdditionalMetadataPagesPerRegion(MarkBlock.METADATA_PAGES_PER_REGION - MarkBlock.USED_METADATA_PAGES_PER_REGION);
-    CARDS_META_OFFSET = Offset.zero();
-    CARDS_META_EXTENT = Extent.fromIntZeroExtend(MarkBlock.BYTES_IN_BLOCK / 512);
-    REMSET_OFFSET = Offset.fromIntZeroExtend(CARDS_META_EXTENT.toInt());
+    //CARDS_META_OFFSET = Offset.zero();
+    //CARDS_META_EXTENT = Extent.fromIntZeroExtend(MarkBlock.BYTES_IN_BLOCK / 512);
+    REMSET_OFFSET = Offset.fromIntZeroExtend(0);
     REMSET_EXTENT = Extent.fromIntZeroExtend(MarkBlock.ADDITIONAL_METADATA.toInt() - REMSET_OFFSET.toInt());
 
     int logEntries;

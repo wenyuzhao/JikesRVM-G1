@@ -16,10 +16,12 @@ package org.mmtk.utility.alloc;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.utility.Constants;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 
 /**
  *
@@ -32,14 +34,9 @@ public class MarkBlockAllocator extends Allocator {
    * Instance variables
    */
 
-  /** space this allocator is associated with */
   protected final MarkBlockSpace space;
-  //private final boolean hot;
   private final boolean copy;
-
-  /** bump pointer */
-  public Address cursor;
-  /** limit for bump pointer */
+  private Address cursor;
   private Address limit;
 
   /**

@@ -17,7 +17,6 @@ import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
@@ -88,6 +87,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef,
       int bytes, int allocator) {
+    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (allocator == MarkCopy.ALLOC_MC) {
       MarkCopy.markBlockSpace.postAlloc(object, bytes);
     } else {
@@ -149,7 +149,6 @@ public class MarkCopyMutator extends StopTheWorldMutator {
 
   @Inline
   private void markAndEnqueueCard(Address card) {
-    /*
     if (CardTable.cardIsMarked(card)) return;
     CardTable.markCard(card, true);
     if (remSetLogBufferCursor < remSetLogBuffer.length()) {
@@ -160,7 +159,6 @@ public class MarkCopyMutator extends StopTheWorldMutator {
       remSetLogBuffer.set(0, card);
       remSetLogBufferCursor = 1;
     }
-    */
   }
 
   @Inline

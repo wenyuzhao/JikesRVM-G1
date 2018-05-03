@@ -65,12 +65,13 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   public void run() {
     while (true) {
       lock.await();
-      refine();
+      //refine();
     }
   }
 
   /** Runs in mutator threads */
   @UninterruptibleNoWarn
+  @Inline
   public static void enqueueFilledRSBuffer(AddressArray buf) {
     Log.write("enqueueFilledRSBuffer {");
     Log.flush();
@@ -86,7 +87,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       filledRSBuffersLock.release();
       refineSingleBuffer(buf);
     }*/
-    //refineSingleBuffer(buf);
+    refineSingleBuffer(buf);
 
     Log.writeln("}");
     Log.flush();
@@ -103,7 +104,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       Address ptr = slot.loadAddress();
       if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // foreign pointer to MC space
         Address foreignBlock = MarkBlock.of(ptr);
-        //RemSet.addCard(foreignBlock, card);
+        // RemSet.addCard(foreignBlock, card);
       }
     }
   };
@@ -115,7 +116,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   };
 
   public static void processCard(Address card) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.Card.getFirstObjectAddressInCard(card).isZero());
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
     Log.writeln("Linear scan card ", card);
     MarkBlock.Card.linearScan(cardLinearScan, card);
   }
@@ -134,7 +135,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     refineLock.acquire();
     Log.writeln("Concurrent Refine");
     for (int i = 0; i < filledRSBuffersCursor; i++) {
-      refineSingleBuffer(filledRSBuffers[i]);
+      //refineSingleBuffer(filledRSBuffers[i]);
       filledRSBuffers[i] = null;
     }
     filledRSBuffersLock.acquire();

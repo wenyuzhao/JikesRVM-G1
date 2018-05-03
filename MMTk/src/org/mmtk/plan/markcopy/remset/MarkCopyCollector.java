@@ -19,7 +19,6 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.RemSet;
-import org.mmtk.utility.Constants;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
@@ -110,6 +109,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       int bytes, int allocator) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
 
+    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     MarkCopy.markBlockSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
@@ -192,9 +192,10 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       //relocateTrace.release()
       VM.assertions._assert(Plan.gcInProgress());
       if (VM.activePlan.collector().getId() == 0) {
-        ConcurrentRemSetRefinement.refine();
+        //ConcurrentRemSetRefinement.refine();
         RemSet.updatePointers(MarkCopyCollector.relocationSet, false);
       }
+      rendezvous();
 
       return;
     }
