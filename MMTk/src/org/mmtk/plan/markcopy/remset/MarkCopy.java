@@ -145,7 +145,6 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleComplex  (rootClosurePhase),
     Phase.scheduleComplex  (refTypeClosurePhase),
     Phase.scheduleComplex  (forwardPhase),
-    Phase.scheduleComplex  (completeClosurePhase),
 
     //Phase.scheduleComplex  (relocationSetSelection),
 
@@ -162,6 +161,8 @@ public class MarkCopy extends StopTheWorld {
 
     Phase.scheduleComplex  (relocationPhase), // update pointers
     //Phase.scheduleGlobal(RELOCATE_UPDATE_POINTERS),
+
+    Phase.scheduleComplex  (completeClosurePhase),
 
     Phase.scheduleCollector(CLEANUP_BLOCKS),
 
@@ -215,7 +216,7 @@ public class MarkCopy extends StopTheWorld {
       return;
     }
     if (phaseId == RELOCATE_CLOSURE) {
-      relocateTrace.prepare();
+      //relocateTrace.prepare();
       return;
     }
     if (phaseId == RELOCATE_RELEASE) {

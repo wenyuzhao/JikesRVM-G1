@@ -6,8 +6,10 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Conversions;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
@@ -20,7 +22,7 @@ import org.vmmagic.unboxed.*;
 public class RemSet {
 
   /** A bitmap of all cards in a block */
-  @Uninterruptible
+  /*@Uninterruptible
   private static class CardHashTable {
     private static final Offset KEY_OFFSET = Offset.zero();
     private static final Offset DATA_OFFSET = Offset.fromIntSignExtend(Constants.BYTES_IN_WORD);
@@ -63,33 +65,75 @@ public class RemSet {
 
       return entry;
     }
-  }
+  }*/
 
   /* RemSet of a block */
+  @Inline
   public static Address of(Address block) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(block));
     return MarkBlock.additionalMetadataStart(block).plus(REMSET_OFFSET);
   }
 
+  @Inline
+  private static int hash(Address card) {
+    return card.diff(VM.HEAP_START).toInt() >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+  }
 
+  static Lock lock2 = VM.newLock("18436rtfgyvc0218");
 
   @Inline
   public static void addCard(Address block, Address card) {
-    Address hashtbl = RemSet.of(block);
-    CardHashTable.getEntry(hashtbl, card, true);
+    lock2.acquire();
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(MarkBlock.isAligned(block));
+      VM.assertions._assert(MarkBlock.Card.isAligned(card));
+      int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
+      int totalCards = memorySize >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+      /*Log.writeln("HEAP_START=", VM.HEAP_START);
+      Log.writeln("HEAP_END=", VM.HEAP_END);
+      Log.writeln("totalCards=", totalCards);
+      Log.writeln("REMSET_EXTENT=", REMSET_EXTENT);*/
+      VM.assertions._assert(REMSET_EXTENT.GE(Extent.fromIntZeroExtend(totalCards / 8)));
+    }
+    Address cardTable = RemSet.of(block);
+    int index = hash(card);
+    int byteIndex = index >> 3;
+    int bitIndex = index ^ (byteIndex << 3);
+    Address addr = cardTable.plus(byteIndex);
+    byte b = addr.loadByte();
+    addr.store((byte) (b | (1 << (7 - bitIndex))));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(containsCard(block, card));
+    lock2.release();
   }
 
   @Inline
   public static void removeCard(Address block, Address card) {
-    Address hashtbl = RemSet.of(block);
-    Address entry = CardHashTable.getEntry(hashtbl, card, false);
-    if (!entry.isZero()) entry.store(Address.zero());
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(MarkBlock.isAligned(block));
+      VM.assertions._assert(MarkBlock.Card.isAligned(card));
+    }
+    Address cardTable = RemSet.of(block);
+    int index = hash(card);
+    int byteIndex = index >> 3;
+    int bitIndex = index ^ (byteIndex << 3);
+    Address addr = cardTable.plus(byteIndex);
+    byte b = addr.loadByte();
+    addr.store((byte) (b & ~(1 << (7 - bitIndex))));
   }
 
   @Inline
   public static boolean containsCard(Address block, Address card) {
-    Address hashtbl = RemSet.of(block);
-    return !CardHashTable.getEntry(hashtbl, card, false).isZero();
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(MarkBlock.isAligned(block));
+      VM.assertions._assert(MarkBlock.Card.isAligned(card));
+    }
+    Address cardTable = RemSet.of(block);
+    int index = hash(card);
+    int byteIndex = index >> 3;
+    int bitIndex = index ^ (byteIndex << 3);
+    Address addr = cardTable.plus(byteIndex);
+    byte b = addr.loadByte();
+    return ((byte) (b & (1 << (7 - bitIndex)))) != ((byte) 0);
   }
 
   @Inline
@@ -110,9 +154,9 @@ public class RemSet {
     REMSET_OFFSET = Offset.fromIntZeroExtend(0);
     REMSET_EXTENT = Extent.fromIntZeroExtend(MarkBlock.ADDITIONAL_METADATA.toInt() - REMSET_OFFSET.toInt());
 
-    int logEntries;
-    for (logEntries = 0; (1 << logEntries) < REMSET_EXTENT.toInt(); logEntries++);
-    CardHashTable.LOG_ENTRIES_PER_REMSET = logEntries - 1;
+    //int logEntries;
+    //for (logEntries = 0; (1 << logEntries) < REMSET_EXTENT.toInt(); logEntries++);
+    //CardHashTable.LOG_ENTRIES_PER_REMSET = logEntries - 1;
   }
 
   static LinearScan blockLinearScan = new LinearScan() {
@@ -198,7 +242,7 @@ public class RemSet {
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Uninterruptible public void scan(ObjectReference object) {
-      if (MarkBlockSpace.Header.isMarked(object))
+      if (!object.isNull() && Space.getSpaceForObject(object).isLive(object))
         VM.scanning.scanObject(redirectPointerTrace, object);
     }
   };
@@ -238,12 +282,17 @@ public class RemSet {
   }
 
   static public final Trace trace = new Trace(MarkCopy.metaDataSpace);
-  static TraceLocal redirectPointerTrace = new TraceLocal(((MarkCopy) VM.activePlan.global()).relocateTrace) {
+  static TraceLocal redirectPointerTrace = new TraceLocal(trace) {
     @Override @UninterruptibleNoWarn public boolean isLive(ObjectReference object) {
       if (object.isNull()) return false;
       if (Space.isInSpace(MarkCopy.MC, object))
         return MarkCopy.markBlockSpace.isLive(object);
       return super.isLive(object);
+    }
+    @Override @Inline @UninterruptibleNoWarn
+    public void processEdge(ObjectReference source, Address slot) {
+      Log.writeln("ObjectReference ", source);
+      super.processEdge(source, slot);
     }
     @Override @Inline @UninterruptibleNoWarn public ObjectReference traceObject(ObjectReference object) {
       if (object.isNull()) return object;
@@ -258,11 +307,50 @@ public class RemSet {
         }
         return object;
       }
-      return super.traceObject(object);
+      return object;//super.traceObject(object);
     }
   };
 
   public static void updatePointers(AddressArray relocationSet, boolean concurrent) {
+    trace.prepare();
+    for (Address c = VM.HEAP_START; c.LT(VM.HEAP_END); c = c.plus(MarkBlock.Card.BYTES_IN_CARD)) {
+      if (Space.isInSpace(MarkCopy.markBlockSpace.getDescriptor(), c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
+        continue;
+      }
+      if (MarkBlock.Card.getCardAnchor(c).isZero() || MarkBlock.Card.getCardLimit(c).isZero()) continue;
+      if (!Space.isMappedAddress(c) || !Space.isMappedAddress(c.plus(MarkBlock.Card.BYTES_IN_CARD - 1))) continue;
+
+      if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
+
+      //if (Space.isInSpace(Plan.NON_MOVING, c)) continue;
+      //if (Space.isInSpace(Plan.SMALL_CODE, c)) continue;
+
+      //if (Space.isInSpace(Plan.NON_MOVING, c)) {
+        //if (!BlockAllocator.checkBlockMeta(Conversions.pageAlign(c))) continue;
+      //}
+
+      //for (int i = 0; i < relocationSet.length(); i++) {
+      //  Address block = relocationSet.get(i);
+      //  if (containsCard(block, c)) {
+          Log.write("Linear scan card ", c);
+          Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
+          Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
+          Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
+          Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
+          Log.write(" in space: ");
+          Log.writeln(Space.getSpaceForAddress(c).getName());
+          MarkBlock.Card.linearScan(cardLinearScan, c);
+          //break;
+      //  }
+      //}
+    }
+    for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
+      if (!MarkBlock.relocationRequired(b)) {
+        Log.write("Update objects in block ", b);
+        Log.writeln(" ~ ", MarkBlock.getCursor(b));
+        MarkBlock.linearScan(cardLinearScan, b);
+      }
+    }
     //if (VM.activePlan.collector().getId() == 0) {
     //trace.prepare();
     /*for (int i = 0; i < relocationSet.length(); i++) {
@@ -281,17 +369,16 @@ public class RemSet {
     }
     */
 
-    for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
+    /*for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
       if (!MarkBlock.relocationRequired(b)) {
         Log.write("Update objects in block ", b);
         Log.writeln(" ~ ", MarkBlock.getCursor(b));
         MarkBlock.linearScan(cardLinearScan, b);
       }
-    }
+    }*/
 
-    /*
-
-      VM.scanning.computeThreadRoots(redirectPointerTrace);
+      //trace.prepare();
+      /*VM.scanning.computeThreadRoots(redirectPointerTrace);
       VM.scanning.computeGlobalRoots(redirectPointerTrace);
       VM.scanning.computeStaticRoots(redirectPointerTrace);
       if (Plan.SCAN_BOOT_IMAGE) {
@@ -306,10 +393,8 @@ public class RemSet {
       VM.softReferences.forward(redirectPointerTrace, false);
       VM.weakReferences.forward(redirectPointerTrace, false);
       VM.phantomReferences.forward(redirectPointerTrace, false);
-      VM.finalizableProcessor.forward(redirectPointerTrace, false);
-    */
-
-      //trace.release();
+      VM.finalizableProcessor.forward(redirectPointerTrace, false);*/
+      trace.release();
     //}
 
 

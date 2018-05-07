@@ -13,12 +13,16 @@
 package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.MutatorContext;
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.vm.Lock;
+import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -85,9 +89,8 @@ public class MarkCopyMutator extends StopTheWorldMutator {
 
   @Override
   @Inline
-  public void postAlloc(ObjectReference object, ObjectReference typeRef,
-      int bytes, int allocator) {
-    if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
+  public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
+    MarkBlock.Card.updateCardMeta(object);
     if (allocator == MarkCopy.ALLOC_MC) {
       MarkCopy.markBlockSpace.postAlloc(object, bytes);
     } else {
@@ -115,6 +118,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
     if (phaseId == MarkCopy.PREPARE) {
       super.collectionPhase(phaseId, primary);
       mc.reset();
+      //enqueueCurrentRSBuffer();
       return;
     }
 
@@ -148,26 +152,50 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   }
 
   @Inline
-  private void markAndEnqueueCard(Address card) {
-    if (CardTable.cardIsMarked(card)) return;
-    CardTable.markCard(card, true);
-    if (remSetLogBufferCursor < remSetLogBuffer.length()) {
-      remSetLogBuffer.set(remSetLogBufferCursor++, card);
-    } else {
-      ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer);
-      remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
-      remSetLogBuffer.set(0, card);
-      remSetLogBufferCursor = 1;
+  public void enqueueCurrentRSBuffer() {
+    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer);
+    for (int i = 0; i < remSetLogBuffer.length(); i++) {
+      //if (!remSetLogBuffer.get(i).isZero())
+      //  CardTable.attemptToMarkCard(remSetLogBuffer.get(i), false);
+      VM.assertions._assert(remSetLogBuffer.get(i).isZero() || !CardTable.cardIsMarked(remSetLogBuffer.get(i)));
     }
+    remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+    remSetLogBufferCursor = 0;
+  }
+
+  //static Monitor lock = VM.newLock("awewwenyu");
+
+  @Inline
+  private void markAndEnqueueCard(Address card) {
+    //lock.lock();
+    if (!CardTable.attemptToMarkCard(card, true)) return;
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < remSetLogBuffer.length());
+    remSetLogBuffer.set(remSetLogBufferCursor++, card);
+    if (remSetLogBufferCursor >= remSetLogBuffer.length()) {
+      //remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+      //remSetLogBufferCursor = 0;
+      enqueueCurrentRSBuffer();
+    }
+    //lock.unlock();
   }
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, Address value) {
-    if (!src.isNull() && !slot.isZero() && !value.isZero() && Space.isInSpace(MarkCopy.MC, src) && Space.isInSpace(MarkCopy.MC, slot) && Space.isInSpace(MarkCopy.MC, value)) {
+    //if (VM.activePlan.global().in)
+    // if (Plan.gcInProgress()) return;
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!value.isZero() && Space.isInSpace(MarkCopy.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
+        Log.write("Use of dead object ", value);
+        Log.writeln(", which is in released block ", MarkBlock.of(value));
+        VM.assertions._assert(false);
+      }
+    }
+    if (!src.isNull() && !slot.isZero() && !value.isZero() && Space.isInSpace(MarkCopy.MC, value)) {
       Word tmp = slot.toWord().xor(value.toWord());
       tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
+      MarkBlock.Card.updateCardMeta(src);
       markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
     }
   }
@@ -207,8 +235,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
     while (cursor.LT(limit)) {
-      ObjectReference ref = srcCursor.loadObjectReference();
-      checkCrossRegionPointer(dst, cursor, ref.toAddress());
+      checkCrossRegionPointer(dst, cursor, srcCursor.loadAddress());
       cursor = cursor.plus(BYTES_IN_ADDRESS);
       srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
     }

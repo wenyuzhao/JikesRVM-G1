@@ -4,8 +4,10 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.Simple;
 import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.SimpleHashtable;
+import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
@@ -270,23 +272,70 @@ public class MarkBlock {
     public static final int LOG_BYTES_IN_CARD = 9;
     public static final int BYTES_IN_CARD = 1 << LOG_BYTES_IN_CARD;
     public static final Word CARD_MASK = Word.fromIntZeroExtend(BYTES_IN_CARD - 1);// 0..0111111111
-    static byte[] anchors;
-    static byte[] limits;
+    public static int[] anchors;
+    public static int[] limits;
 
     static {
       int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
       int totalCards = memorySize >> Card.LOG_BYTES_IN_CARD;
-      anchors = new byte[totalCards];
-      limits = new byte[totalCards];
-      //int logTotalCards;
-      //for (logTotalCards = 0; (1 << logTotalCards) < totalCards; logTotalCards++);
-      //cardAnchors = new SimpleHashtable(Plan.metaDataSpace, logTotalCards - 1, Extent.fromIntZeroExtend(1)) {};
+      int entries = totalCards >> 2;
+      anchors = new int[entries];
+      limits = new int[entries];
+
+
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(((byte) 0xFF) == ((byte) -1));
+
+      for (int i = 0; i < entries; i++) {
+        anchors[i] = 0xFFFFFFFF;
+        limits[i] = 0xFFFFFFFF;
+      }
+    }
+
+    @Inline
+    public static boolean compareAndSwapByteInBuffer(int[] buf, int index, byte oldByte, byte newByte) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldByte != newByte);
+      int intIndex = index >> 2;
+      int byteIndex = index ^ (intIndex << 2);
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(intIndex >= 0 && intIndex < buf.length);
+        VM.assertions._assert(byteIndex >= 0 && byteIndex <= 3);
+      }
+      Offset offset = Offset.fromIntZeroExtend(intIndex << 2);
+      // Get old int
+      int oldValue = buf[intIndex];
+      // Build new int
+      int newValue = oldValue & ~(0xff << ((3 - byteIndex) << 3)); // Drop the target byte
+      newValue |= (newByte << ((3 - byteIndex) << 3)); // Set new byte
+
+      if (VM.VERIFY_ASSERTIONS) {
+        if (byteIndex == 0) VM.assertions._assert((newValue << 8) == (oldValue << 8));
+        if (byteIndex == 1) VM.assertions._assert((newValue << 16) == (oldValue << 16) && (newValue >>> 24) == (oldValue >>> 24));
+        if (byteIndex == 2) VM.assertions._assert((newValue << 24) == (oldValue << 24) && (newValue >>> 16) == (oldValue >>> 16));
+        if (byteIndex == 3) VM.assertions._assert((newValue >>> 8) == (oldValue >>> 8));
+      }
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldValue != newValue);
+      if (oldValue == newValue) return true;
+      return VM.objectModel.attemptInt(buf, offset, oldValue, newValue);
+    }
+
+    @Inline
+    public static byte getByte(int[] buf, int index) {
+      int intIndex = index >> 2;
+      int byteIndex = index ^ (intIndex << 2);
+      int entry = buf[intIndex];
+      return (byte) ((entry << (byteIndex << 3)) >> 24);
     }
 
     @Inline
     public static boolean isEnabled() { return _enabled; }
+
     @Inline
     public static void enable() { _enabled = true; }
+
+    @Inline
+    public static boolean isAligned(Address card) {
+      return card.toWord().and(CARD_MASK.not()).toAddress().EQ(card);
+    }
 
     @Inline
     public static Address of(Address address) {
@@ -302,7 +351,7 @@ public class MarkBlock {
     }
 
     @Inline
-    private static int hash(Address card) {
+    public static int hash(Address card) {
       return card.diff(VM.HEAP_START).toInt() >> Card.LOG_BYTES_IN_CARD;
     }
 
@@ -310,119 +359,120 @@ public class MarkBlock {
 
     @Inline
     public static void updateCardMeta(ObjectReference ref) {
-      lock.acquire();
-      Address objectStartAddress = VM.objectModel.objectStartRef(ref);
-      Address card = Card.of(objectStartAddress);
-      int cardIndex = hash(card);
-      if (anchors[cardIndex] == (byte) 0) {
-        int offset = objectStartAddress.diff(card).toInt() >> Constants.LOG_BYTES_IN_ADDRESS;
-        anchors[cardIndex] = (byte) offset;
-      }
 
-      Address objectEndAddress = VM.objectModel.getObjectEndAddress(ref);
-      Address endCard = Card.of(objectEndAddress);
-      if (endCard.EQ(card)) {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(objectEndAddress.LT(card.plus(BYTES_IN_CARD)));
-        byte offset = (byte) (objectEndAddress.diff(card).toInt() >> Constants.LOG_BYTES_IN_ADDRESS);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(offset > 0);
-        if (limits[cardIndex] >= ((byte) 0) && offset > limits[cardIndex]) {
-          limits[cardIndex] = offset;
-        }
-        if (VM.VERIFY_ASSERTIONS) {
-          Address end = card.plus(offset << Constants.LOG_BYTES_IN_ADDRESS);
-          VM.assertions._assert(end.EQ(objectEndAddress));
-        }
-      } else {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(endCard.GT(card));
-        limits[cardIndex] = (byte) -1;
-      }
-      lock.release();
+      //lock.acquire();
 
-      /*cardAnchors.getEntry(card.toWord(), true);
-      Address meta = cardAnchors.getPayloadAddress(card.toWord());//.store((byte) (mark ? 1 : 0));
-      if (meta.loadByte() == ((byte) 0)) {
-        int offset = objectAddress.diff(card).toInt() / Constants.BYTES_IN_ADDRESS;
-        meta.store((byte) offset);
+      // set anchor value
+      final Address objectStartAddress = VM.objectModel.objectStartRef(ref);
+      final Address card = Card.of(objectStartAddress);
+      final int cardIndex = hash(card);
+      /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
+        Log.write("Update vm-space object ", ref);
+        Log.write(" (", VM.objectModel.objectStartRef(ref));
+        Log.write(", ", VM.objectModel.getObjectEndAddress(ref));
+        Log.writeln(") {");
+        Log.write("  Old card ", card);
+        Log.write(" range (", getByte(anchors, cardIndex));
+        Log.write(", ", getByte(limits, cardIndex));
+        Log.writeln(")");
       }*/
-      /*
-      Address card = Card.of(address);
-      Address metaList = MarkBlock.additionalMetadataStart(MarkBlock.of(address));
-      Address meta = metaList.plus(Card.indexOf(card));
 
-      if (VM.VERIFY_ASSERTIONS) {
-        if (!meta.LT(metaList.plus(ADDITIONAL_METADATA))) {
-          Log.write("ObjectRef ", address);
-          Log.write(" Card ", card);
-          Log.write(" Index ", Card.indexOf(card));
-          Log.write(" Block ", MarkBlock.of(address));
-          Log.write(" Index ", MarkBlock.indexOf(address));
-          Log.write(" meta start ", metaList);
-          Log.write(" meta ", meta);
-          Log.write(" METADATA_OFFSET_IN_REGION ", METADATA_OFFSET_IN_REGION);
-          Log.write(" ADDITIONAL_METADATA ", ADDITIONAL_METADATA);
-          Log.write(" ADDITIONAL_METADATA_PAGES_PER_REGION ", ADDITIONAL_METADATA_PAGES_PER_REGION);
-          Log.writeln();
+      // CAS anchor value
+      byte oldStartOffset, newStartOffset;
+      do {
+        // Get old value
+        oldStartOffset = getByte(anchors, cardIndex);
+        // Build new value
+        newStartOffset = (byte) (objectStartAddress.diff(card).toInt() >> Constants.LOG_BYTES_IN_ADDRESS);
+        // Break if (old != -1 && old <= new)
+        if (oldStartOffset != ((byte) -1) && oldStartOffset <= newStartOffset) break;
+        /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
+          Log.write("  Update card ", card);
+          Log.writeln(" start ", newStartOffset);
+        }*/
+      } while (!compareAndSwapByteInBuffer(anchors, cardIndex, oldStartOffset, newStartOffset));
+
+      // set limit value
+      final Address objectEndAddress = VM.objectModel.getObjectEndAddress(ref);
+      final Address endCard = Card.of(objectEndAddress);
+
+      // CAS limit value
+      byte oldEndOffset, newEndOffset;
+      do {
+        // Get old value
+        oldEndOffset = getByte(limits, cardIndex);
+        // Build new value
+        if (endCard.EQ(card)) {
+          if (VM.VERIFY_ASSERTIONS) {
+            VM.assertions._assert(objectEndAddress.LT(card.plus(BYTES_IN_CARD)));
+            VM.assertions._assert(newStartOffset >= 0);
+          }
+          newEndOffset = (byte) (objectEndAddress.diff(card).toInt() >> Constants.LOG_BYTES_IN_ADDRESS);
+        } else {
+          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(endCard.GT(card));
+          newEndOffset = (byte) 0;
         }
-        VM.assertions._assert(meta.LT(metaList.plus(ADDITIONAL_METADATA)));
-        //VM.assertions._assert(meta.LT(EmbeddedMetaData.getMetaDataBase(address).plus(METADATA_OFFSET_IN_REGION)));
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(newEndOffset >= 0);
+        // Break if old >= new or oldEndOffset is already 0
+        if (oldEndOffset >= newEndOffset || oldEndOffset == 0) break;
+        //Log.write("Card ", card);
+        //Log.writeln(" end ", endOffset);
+        /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
+          Log.write("  Update card ", card);
+          Log.writeln(" end to ", newEndOffset);
+        }*/
+      } while (!compareAndSwapByteInBuffer(limits, cardIndex, oldEndOffset, newEndOffset));
+
+      /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
+        Log.write("  Card ", card);
+        Log.write(" range (", getByte(anchors, cardIndex));
+        Log.write(", ", getByte(limits, cardIndex));
+        Log.writeln(")");
+        Log.writeln("}");
+      }*/
+
+      /*byte b = getByte(limits, hash(Address.fromIntZeroExtend(0x68008200)));
+      if (!((b == (byte) 122) || (b == (byte) -1))) {
+        Log.writeln("!!! ", b);
+        Log.writeln("cardIndex ", cardIndex);
       }
-      if (meta.loadByte() == ((byte) 0)) {
-        int offset = address.diff(card).toInt() / Constants.BYTES_IN_ADDRESS;
-        meta.store((byte) offset);
-      }
+      VM.assertions._assert( (b == (byte) 122) || (b == (byte) -1));
       */
+      //lock.release();
     }
 
     @Inline
     public static Address getCardAnchor(Address card) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Card.of(card)));
       int cardIndex = hash(card);
-      int offset = anchors[cardIndex];
+      byte offset = getByte(anchors, cardIndex);
+      if (offset == (byte) -1) return Address.zero();
       return card.plus(offset << Constants.LOG_BYTES_IN_ADDRESS);
-
-
-      /*if (!cardAnchors.isValid()) cardAnchors.acquireTable();
-
-      Address meta = cardAnchors.getPayloadAddress(card.toWord());//.store((byte) (mark ? 1 : 0));
-      if (meta.isZero()) return Address.zero();
-      int offset = meta.loadByte();
-      return offset == 0 ? Address.zero() : card.plus(offset * Constants.BYTES_IN_ADDRESS);*/
-      /*
-      Address metaList = MarkBlock.additionalMetadataStart(MarkBlock.of(card));
-      Address meta = metaList.plus(Card.indexOf(card));
-      int offset = meta.loadByte();
-      return offset == 0 ? Address.zero() : card.plus(offset * Constants.BYTES_IN_ADDRESS);
-      */
     }
 
     @Inline
     public static Address getCardLimit(Address card) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Card.of(card)));
       int cardIndex = hash(card);
-      byte offset = limits[cardIndex];
-      if (offset == (byte) 0) return Address.zero();
-      return card.plus(offset == -1 ? BYTES_IN_CARD : (offset << Constants.LOG_BYTES_IN_ADDRESS));
-
-
-      /*if (!cardAnchors.isValid()) cardAnchors.acquireTable();
-
-      Address meta = cardAnchors.getPayloadAddress(card.toWord());//.store((byte) (mark ? 1 : 0));
-      if (meta.isZero()) return Address.zero();
-      int offset = meta.loadByte();
-      return offset == 0 ? Address.zero() : card.plus(offset * Constants.BYTES_IN_ADDRESS);*/
-      /*
-      Address metaList = MarkBlock.additionalMetadataStart(MarkBlock.of(card));
-      Address meta = metaList.plus(Card.indexOf(card));
-      int offset = meta.loadByte();
-      return offset == 0 ? Address.zero() : card.plus(offset * Constants.BYTES_IN_ADDRESS);
-      */
+      byte offset = getByte(limits, cardIndex);
+      if (offset == (byte) -1) return Address.zero(); // limit is unset
+      return card.plus(offset == 0 ? BYTES_IN_CARD : (offset << Constants.LOG_BYTES_IN_ADDRESS));
     }
 
     @Inline
     public static void clearCardMeta(Address card) {
       int i = hash(card);
-      anchors[i] = (byte) 0;
-      limits[i] = (byte) 0;
+      byte oldByte;
+
+      do {
+        oldByte = getByte(anchors, i);
+        if (oldByte == (byte) -1) break;
+      } while (!compareAndSwapByteInBuffer(anchors, i, oldByte, (byte) -1));
+
+      do {
+        oldByte = getByte(limits, i);
+        if (oldByte == (byte) -1) break;
+      } while (!compareAndSwapByteInBuffer(limits, i, oldByte, (byte) -1));
     }
 
     @Inline
@@ -435,38 +485,89 @@ public class MarkBlock {
 
     @Inline
     public static void clearAllCardMeta() {
-      for (int i = 0; i < anchors.length; i++) {
-        anchors[i] = (byte) 0;
-        limits[i] = (byte) 0;
+      for (Address c = VM.HEAP_START; c.LT(VM.HEAP_END); c = c.plus(Card.BYTES_IN_CARD)) {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(c));
+        clearCardMeta(c);
       }
     }
 
     @Inline
     public static void linearScan(LinearScan scan, Address card) {
+      linearScan(scan, card, false);
+    }
+    @Inline
+    public static void linearScan(LinearScan scan, Address card, boolean log) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
       Address end = getCardLimit(card);
       if (end.isZero()) return;
-
       Address cursor = MarkBlock.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
-      /* Loop through each object up to the limit */
+      if (log) {
+        Log.write("Space: ");
+        Log.writeln(Space.getSpaceForAddress(card).getName());
+      }
       do {
         if (ref.isNull()) break;
-        //VM.objectModel.dumpObject(ref);
-        /* Read end address first, as scan may be destructive */
-        Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+
+        if (log) {
+          VM.objectModel.dumpObject(ref);
+        }
+
+        // Get next object start address, i.e. current object end address
+        Address currentObjectEnd;
+        if (Space.getSpaceForAddress(card) instanceof MarkSweepSpace) {
+          // VM.objectModel.dumpObject(ref);
+          MarkSweepSpace space = (MarkSweepSpace) Space.getSpaceForAddress(card);
+          // Get current block
+          Address block = BlockAllocator.getBlkStart(ref.toAddress());
+          // Get cell size classes
+          byte cellSizeClass = BlockAllocator.getClientSizeClass(VM.objectModel.objectStartRef(ref));
+          // Get first cell address
+          Address firstCell = block.plus(space.getBlockHeaderSize(cellSizeClass));//BlockAllocator.getFreeListMeta(block);
+          // Get cell extent
+          int cellExtent = space.getBaseCellSize(cellSizeClass);
+          // Get current cell for `ref`
+          int cellIndex = VM.objectModel.objectStartRef(ref).diff(firstCell).toInt() / cellExtent;
+          Address currentCell = firstCell.plus(cellExtent * cellIndex);
+
+          /*if (currentCell.NE(VM.objectModel.objectStartRef(ref))) {
+            VM.objectModel.dumpObject(ref);
+            Log.writeln("Size ", VM.objectModel.getCurrentSize(ref));
+            Log.writeln("SizeWhenCopy ", VM.objectModel.getSizeWhenCopied(ref));
+            Log.writeln("BlockSize ", BlockAllocator.blockSize(BlockAllocator.getBlkSizeClass(ref.toAddress())));
+            Log.write("!!! ", currentCell);
+            Log.write(" vs ", VM.objectModel.objectStartRef(ref));
+            Log.write(", block ", block);
+            Log.write(" first cell ", firstCell);
+            Log.write(" cellSizeClass ", cellSizeClass);
+            Log.write(" cellExtent ", cellExtent);
+            Log.writeln(" cellIndex ", cellIndex);
+            VM.memory.dumpMemory(VM.objectModel.objectStartRef(ref), 0, VM.objectModel.getCurrentSize(ref) + 30);
+            if (VM.objectModel.objectStartRef(ref).EQ(Address.fromIntZeroExtend(0x6801a014))) {
+              ObjectReference ref2 = VM.objectModel.getObjectFromStartAddress(Address.fromIntZeroExtend(0x6801a010));
+              VM.objectModel.dumpObject(ref2);
+            }
+          }
+          VM.assertions._assert(currentCell.EQ(VM.objectModel.objectStartRef(ref)));
+          */
+          // Get next freelist start address
+          Address nextCell = currentCell.plus(cellExtent);
+          //
+          currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
+          //Log.writeln(" -> ", currentObjectEnd);
+        } else {
+          currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+        }
+
         scan.scan(ref);
-        //VM.scanning.scanObject(scanPointers, ref);
-        //Log.write(" - ", currentObjectEnd);
-        //Log.writeln(" . ", end);
+
         if (currentObjectEnd.GE(end)) {
-          /* We have scanned the last object */
           break;
         }
-        /* Find the next object from the start address (dealing with alignment gaps, etc.) */
+
         ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
         if (VM.VERIFY_ASSERTIONS) {
-          /* Must be monotonically increasing */
           VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
         }
         ref = next;

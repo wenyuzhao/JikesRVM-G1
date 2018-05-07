@@ -12,13 +12,17 @@
  */
 package org.mmtk.plan.markcopy.remset;
 
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -41,6 +45,22 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
     if (Space.isInSpace(MarkCopy.MC, object))
       return MarkCopy.markBlockSpace.isLive(object);
     return super.isLive(object);
+  }
+
+  @Override
+  @Inline
+  public void processEdge(ObjectReference source, Address slot) {
+    VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));
+    ObjectReference object = VM.activePlan.global().loadObjectReference(slot);
+    if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object)) {
+      if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+        Log.write(Space.getSpaceForObject(source).getName());
+        Log.write(" object ", source);
+        Log.write(".", object);
+        Log.writeln(" is forwarded");
+      }
+    }
+    super.processEdge(source, slot);
   }
 
   @Override

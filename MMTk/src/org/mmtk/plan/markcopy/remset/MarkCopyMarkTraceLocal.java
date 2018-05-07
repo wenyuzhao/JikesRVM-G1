@@ -46,7 +46,6 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
-    MarkBlock.Card.clearAllCardMeta();
   }
 
   @Override

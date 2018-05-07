@@ -14,8 +14,10 @@ package org.mmtk.plan.markcopy.remset;
 
 
 import org.mmtk.plan.CollectorContext;
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
@@ -73,8 +75,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   @UninterruptibleNoWarn
   @Inline
   public static void enqueueFilledRSBuffer(AddressArray buf) {
-    Log.write("enqueueFilledRSBuffer {");
-    Log.flush();
+    //Log.write("enqueueFilledRSBuffer {");
+    //Log.flush();
 
     /*filledRSBuffersLock.acquire();
     if (filledRSBuffersCursor < filledRSBuffers.length) {
@@ -89,8 +91,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }*/
     refineSingleBuffer(buf);
 
-    Log.writeln("}");
-    Log.flush();
+    //Log.writeln("}");
+    //Log.flush();
   }
 
   public static void trigger() {
@@ -102,9 +104,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       Address card = MarkBlock.Card.of(VM.objectModel.objectStartRef(source));
       ObjectReference object = global().loadObjectReference(slot);
       Address ptr = slot.loadAddress();
-      if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // foreign pointer to MC space
+      if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
         Address foreignBlock = MarkBlock.of(ptr);
-        // RemSet.addCard(foreignBlock, card);
+        RemSet.addCard(foreignBlock, card);
       }
     }
   };
@@ -116,15 +118,30 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   };
 
   public static void processCard(Address card) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
-    Log.writeln("Linear scan card ", card);
-    MarkBlock.Card.linearScan(cardLinearScan, card);
+    /*Log.write("Linear scan card ", card);
+    Log.write(", range ", MarkBlock.Card.getCardAnchor(card));
+    Log.write(" ..< ", MarkBlock.Card.getCardLimit(card));
+    Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(card)));
+    Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(card)));
+    Log.write(" in space: ");
+    Log.writeln(Space.getSpaceForAddress(card).getName());
+*/
+    if (!Space.isInSpace(Plan.VM_SPACE, card)) {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
+      }
+      MarkBlock.Card.linearScan(cardLinearScan, card);
+    }
   }
 
   public static void refineSingleBuffer(AddressArray buffer) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(buffer != null);
     for (int i = 0; i < buffer.length(); i++) {
-      processCard(buffer.get(i));
+      Address card = buffer.get(i);
+      if (!card.isZero()) {
+        CardTable.markCard(card, false);
+        processCard(card);
+      }
     }
   }
 

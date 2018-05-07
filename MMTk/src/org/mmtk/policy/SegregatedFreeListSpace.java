@@ -201,6 +201,11 @@ public abstract class SegregatedFreeListSpace extends Space {
     return expandSizeClass(sizeClass, freeList);
   }
 
+  @Inline
+  public int getBlockHeaderSize(int sizeClass) {
+    return blockHeaderSize[sizeClass];
+  }
+
   /**
    * Expand a particular size class, allocating a new block, breaking
    * the block into cells and placing those cells on a free list for

@@ -15,6 +15,7 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
@@ -386,8 +387,8 @@ public final class MarkBlockSpace extends Space {
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ForwardingWord.isForwarded(object));
       ObjectReference newObject = getForwardingPointer(object);
-      //Log.write(object);
-      //Log.writeln(" ~> ", newObject);
+      Log.write(object);
+      Log.writeln(" ~> ", newObject);
       object = newObject;
     }
     if (Header.testAndMark(object)) {
