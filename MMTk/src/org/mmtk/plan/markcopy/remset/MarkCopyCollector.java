@@ -195,16 +195,17 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       VM.assertions._assert(Plan.gcInProgress());
       if (VM.activePlan.collector().getId() == 0) {
         //ConcurrentRemSetRefinement.refine();
-        if (VM.activePlan.collector().getId() == 0) {
-          VM.activePlan.resetMutatorIterator();
-          MarkCopyMutator mutator;
-          while ((mutator = (MarkCopyMutator) VM.activePlan.getNextMutator()) != null) {
-            mutator.enqueueCurrentRSBuffer();
-          }
-          CardTable.assertAllCardsAreNotMarked();
+
+        VM.activePlan.resetMutatorIterator();
+        MarkCopyMutator mutator;
+        while ((mutator = (MarkCopyMutator) VM.activePlan.getNextMutator()) != null) {
+          mutator.enqueueCurrentRSBuffer();
+        }
+
+        CardTable.assertAllCardsAreNotMarked();
           //ConcurrentRemSetRefinement.refine();
           //RemSet.updatePointers(MarkCopyCollector.relocationSet, false);
-        }
+
         RemSet.updatePointers(MarkCopyCollector.relocationSet, false);
         // Reset card anchors & limits
         MarkBlock.Card.clearAllCardMeta();

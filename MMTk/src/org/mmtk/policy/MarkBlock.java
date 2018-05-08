@@ -359,7 +359,12 @@ public class MarkBlock {
 
     @Inline
     public static void updateCardMeta(ObjectReference ref) {
-
+      Log.write("Update ");
+      Log.write(Space.getSpaceForObject(ref).getName());
+      Log.write(" object ", ref);
+      Log.write(" (", VM.objectModel.objectStartRef(ref));
+      Log.write(", ", VM.objectModel.getObjectEndAddress(ref));
+      Log.writeln(")");
       //lock.acquire();
 
       // set anchor value
@@ -414,7 +419,8 @@ public class MarkBlock {
         }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(newEndOffset >= 0);
         // Break if old >= new or oldEndOffset is already 0
-        if (oldEndOffset >= newEndOffset || oldEndOffset == 0) break;
+        if (oldEndOffset == 0) break;
+        if (newEndOffset != 0 && oldEndOffset >= newEndOffset) break;
         //Log.write("Card ", card);
         //Log.writeln(" end ", endOffset);
         /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
@@ -504,7 +510,12 @@ public class MarkBlock {
       if (cursor.isZero()) return;
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
       if (log) {
-        Log.write("Space: ");
+        Log.write("Linear scan card ", card);
+        Log.write(", range ", MarkBlock.Card.getCardAnchor(card));
+        Log.write(" ..< ", MarkBlock.Card.getCardLimit(card));
+        Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(card)));
+        Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(card)));
+        Log.write(" in space: ");
         Log.writeln(Space.getSpaceForAddress(card).getName());
       }
       do {

@@ -130,7 +130,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
       }
-      MarkBlock.Card.linearScan(cardLinearScan, card);
+      MarkBlock.Card.linearScan(cardLinearScan, card, Plan.gcInProgress());
     }
   }
 
