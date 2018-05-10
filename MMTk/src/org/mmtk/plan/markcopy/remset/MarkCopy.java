@@ -14,6 +14,7 @@ package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.*;
+import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
@@ -23,6 +24,7 @@ import org.mmtk.utility.sanitychecker.SanityChecker;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -57,12 +59,9 @@ public class MarkCopy extends StopTheWorld {
   public static final int MC = markBlockSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
+  public final Trace redirectTrace = new Trace(metaDataSpace);
   public final Trace relocateTrace = new Trace(metaDataSpace);
   public AddressArray blocksSnapshot;
-  public static final AddressArray[] filledRSBuffers = new AddressArray[16];
-  public static int filledRSBuffersStart = 0, filledRSBuffersEnd = 0;
-  private static Lock lock = VM.newLock("filledRSBuffersLock");
-  public static final int CONCURRENT_REFINEMENT_THRESHOLD = 4;
 
   static {
     Options.defragHeadroomFraction = new DefragHeadroomFraction();
@@ -75,9 +74,13 @@ public class MarkCopy extends StopTheWorld {
    */
   public static final int ALLOC_MC = Plan.ALLOC_DEFAULT;
   public static final int SCAN_MARK = 0;
-  public static final int SCAN_RELOCATE = 1;
+  public static final int SCAN_REDIRECT = 1;
+  public static final int SCAN_RELOCATE = 2;
 
   /* Phases */
+  public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
+  public static final short REDIRECT_CLOSURE = Phase.createSimple("redirect-closure");
+  public static final short REDIRECT_RELEASE = Phase.createSimple("redirect-release");
   public static final short RELOCATE_PREPARE = Phase.createSimple("relocate-prepare");
   public static final short RELOCATE_CLOSURE = Phase.createSimple("relocate-closure");
   public static final short RELOCATE_UPDATE_POINTERS = Phase.createSimple("relocate-update-pointers");
@@ -93,6 +96,7 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleCollector(RELOCATION_SET_SELECTION)
   );
   public static final short EVACUATION = Phase.createSimple("evacuation");
+  public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
@@ -101,33 +105,46 @@ public class MarkCopy extends StopTheWorld {
 
     Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
 
-    Phase.scheduleGlobal   (RELOCATE_PREPARE),
-    Phase.scheduleCollector(RELOCATE_PREPARE),
-    Phase.scheduleMutator  (RELOCATE_PREPARE),
-
+    Phase.scheduleGlobal   (REDIRECT_PREPARE),
+    Phase.scheduleCollector(REDIRECT_PREPARE),
+    Phase.scheduleMutator  (REDIRECT_PREPARE),
     Phase.scheduleMutator  (PREPARE_STACKS),
     Phase.scheduleGlobal   (PREPARE_STACKS),
-
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
-
-    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    Phase.scheduleCollector(RELOCATE_CLOSURE),
-
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
-    //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    //Phase.scheduleCollector(RELOCATE_CLOSURE),
-
     Phase.scheduleCollector(WEAK_REFS),
     Phase.scheduleCollector(FINALIZABLE),
-    //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    //Phase.scheduleCollector(RELOCATE_CLOSURE),
-
     Phase.scheduleCollector(PHANTOM_REFS),
+    Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleMutator  (REDIRECT_RELEASE),
+    Phase.scheduleCollector(REDIRECT_RELEASE),
+    Phase.scheduleGlobal   (REDIRECT_RELEASE)
 
+/*
+    Phase.scheduleGlobal   (RELOCATE_PREPARE),
+    Phase.scheduleCollector(RELOCATE_PREPARE),
+    Phase.scheduleMutator  (RELOCATE_PREPARE),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
+    Phase.scheduleCollector(STACK_ROOTS),
+    Phase.scheduleGlobal   (STACK_ROOTS),
+    Phase.scheduleCollector(ROOTS),
+    Phase.scheduleGlobal   (ROOTS),
+    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
+    Phase.scheduleCollector(RELOCATE_CLOSURE),
+    Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleComplex  (forwardPhase)
+*/
+
+
 
     //Phase.scheduleMutator  (RELOCATE_RELEASE),
     //Phase.scheduleCollector(RELOCATE_RELEASE),
@@ -157,6 +174,8 @@ public class MarkCopy extends StopTheWorld {
     //Phase.scheduleCollector(CLEANUP_BLOCKS),
 
     Phase.scheduleComplex  (relocationSetSelection),
+    Phase.scheduleMutator(PREPARE_EVACUATION),
+    Phase.scheduleCollector(PREPARE_EVACUATION),
     Phase.scheduleCollector(EVACUATION),
 
     Phase.scheduleComplex  (relocationPhase), // update pointers
@@ -215,14 +234,28 @@ public class MarkCopy extends StopTheWorld {
       markBlockSpace.prepare(true);
       return;
     }
+
+    if (phaseId == REDIRECT_PREPARE) {
+      //super.collectionPhase(PREPARE);
+      redirectTrace.prepare();
+      //markBlockSpace.prepare(true);
+      return;
+    }
+
+    if (phaseId == REDIRECT_CLOSURE) {
+      //relocateTrace.prepare();
+      return;
+    }
+
     if (phaseId == RELOCATE_CLOSURE) {
       //relocateTrace.prepare();
       return;
     }
-    if (phaseId == RELOCATE_RELEASE) {
-      relocateTrace.release();
-      markBlockSpace.release();
-      super.collectionPhase(RELEASE);
+
+    if (phaseId == REDIRECT_RELEASE) {
+      //redirectTrace.release();
+      //markBlockSpace.release();
+      //super.collectionPhase(RELEASE);
       return;
     }
 
@@ -303,59 +336,28 @@ public class MarkCopy extends StopTheWorld {
   @Interruptible
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, MarkCopyMarkTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_REDIRECT, MarkCopyRedirectTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, MarkCopyRelocationTraceLocal.class);
     super.registerSpecializedMethods();
   }
 
-  @UninterruptibleNoWarn
-  public static void enqueueFilledRSBuffer(AddressArray buf) {
-    Log.write("enqueueFilledRSBuffer {");
-    Log.flush();
-
-    lock.acquire();
-    VM.assertions._assert(filledRSBuffers[filledRSBuffersEnd] == null);
-    filledRSBuffers[filledRSBuffersEnd] = buf;
-    filledRSBuffersEnd++;
-    if (filledRSBuffersEnd >= filledRSBuffers.length) filledRSBuffersEnd = 0;
-    VM.assertions._assert(filledRSBuffers[filledRSBuffersEnd] == null || filledRSBuffersEnd == filledRSBuffersStart);
-    lock.release();
-
-    Log.write(".");
-    Log.flush();
-
-    if (filledRSBufferSize() > CONCURRENT_REFINEMENT_THRESHOLD) {
-      ConcurrentRemSetRefinement.trigger();
-    }
-
-    Log.writeln("}");
-    Log.flush();
+  /*
+  @Override
+  @Inline
+  public void storeObjectReference(Address slot, ObjectReference value) {
+    if (!value.isNull() && Space.isInSpace(MC, value) && ForwardingWord.isForwarded(value))
+      slot.store(MarkBlockSpace.getForwardingPointer(value));
+    else
+      slot.store(value);
   }
 
-  @UninterruptibleNoWarn
-  public static AddressArray dequeueFilledRSBuffer() {
-    lock.acquire();
-    VM.assertions._assert(filledRSBuffers[filledRSBuffersStart] != null);
-    AddressArray ret = filledRSBuffers[filledRSBuffersStart];
-
-    filledRSBuffersStart++;
-    if (filledRSBuffersStart >= filledRSBuffers.length) filledRSBuffersStart = 0;
-    VM.assertions._assert(filledRSBuffersStart == filledRSBuffersEnd || filledRSBuffers[filledRSBuffersStart] != null);
-    lock.release();
-    return ret;
+  @Override
+  @Inline
+  public ObjectReference loadObjectReference(Address slot) {
+    ObjectReference obj = slot.loadObjectReference();
+    if (!obj.isNull() && Space.isInSpace(MC, obj) && ForwardingWord.isForwarded(obj))
+      return MarkBlockSpace.getForwardingPointer(obj);
+    return obj;
   }
-
-  @UninterruptibleNoWarn
-  public static int filledRSBufferSize() {
-    lock.acquire();
-    int start = filledRSBuffersStart, end = filledRSBuffersEnd;
-    lock.release();
-
-    if (start < end) {
-      return end - start;
-    } else if (start == end) {
-      return filledRSBuffers[start] == null ? 0 : filledRSBuffers.length;
-    } else {
-      return filledRSBuffers.length - (start - end);
-    }
-  }
+  */
 }

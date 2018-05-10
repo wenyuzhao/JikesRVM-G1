@@ -21,6 +21,7 @@ import org.vmmagic.pragma.Uninterruptible;
 @Uninterruptible
 public abstract class FinalizableProcessor {
 
+  public abstract void forwardReadyForFinalize(TraceLocal trace);
   /**
    * Clear the contents of the table. This is called when finalization is
    * disabled to make it easier for VMs to change this setting at runtime.

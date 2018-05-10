@@ -46,23 +46,24 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
       return MarkCopy.markBlockSpace.isLive(object);
     return super.isLive(object);
   }
-
+/*
   @Override
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
     VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));
-    ObjectReference object = VM.activePlan.global().loadObjectReference(slot);
+    ObjectReference object = slot.loadObjectReference();//VM.activePlan.global().loadObjectReference(slot);
     if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object)) {
       if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
         Log.write(Space.getSpaceForObject(source).getName());
-        Log.write(" object ", source);
+        Log.write(" object ", VM.objectModel.objectStartRef(source));
+        Log.write("  ", source);
         Log.write(".", object);
         Log.writeln(" is forwarded");
       }
     }
     super.processEdge(source, slot);
   }
-
+*/
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {

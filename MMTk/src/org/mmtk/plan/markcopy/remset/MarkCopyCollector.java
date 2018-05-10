@@ -16,10 +16,7 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
-import org.mmtk.policy.RemSet;
+import org.mmtk.policy.*;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
@@ -58,6 +55,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
    */
   protected final MarkBlockAllocator copy = new MarkBlockAllocator(MarkCopy.markBlockSpace, true);
   protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
+  protected final MarkCopyRedirectTraceLocal redirectTrace = new MarkCopyRedirectTraceLocal(global().redirectTrace);
   protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
   static AddressArray relocationSet;
@@ -173,10 +171,56 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       return;
     }
 
+    if (phaseId == MarkCopy.PREPARE_EVACUATION) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy PREPARE_EVACUATION");
+      if (VM.activePlan.collector().getId() == 0) {
+        //Log.write("RELOCATION SET @ ", ObjectReference.fromObject(relocationSet));
+        //Log.write(", ");
+        //Log.writeln(Space.getSpaceForObject(ObjectReference.fromObject(relocationSet)).getName());
+        VM.activePlan.resetMutatorIterator();
+        MarkCopyMutator m;
+        while ((m = (MarkCopyMutator) VM.activePlan.getNextMutator()) != null) {
+          m.enqueueCurrentRSBuffer();
+        }
+        ConcurrentRemSetRefinement.refineAll();
+        CardTable.assertAllCardsAreNotMarked();
+      }
+      rendezvous();
+      return;
+    }
 
     if (phaseId == MarkCopy.EVACUATION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy EVACUATION");
       RemSet.evacuateBlocks(relocationSet, false);
+      return;
+    }
+
+    if (phaseId == MarkCopy.RELOCATE_UPDATE_POINTERS) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_UPDATE_POINTERS");
+      VM.assertions._assert(Plan.gcInProgress());
+      redirectTrace.linearUpdatePointers(MarkCopyCollector.relocationSet, false);
+      if (VM.activePlan.collector().getId() == 0) {
+        // Reset card anchors & limits
+        MarkBlock.Card.clearAllCardMeta();
+      }
+      rendezvous();
+      return;
+    }
+
+    if (phaseId == MarkCopy.REDIRECT_PREPARE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy REDIRECT_PREPARE");
+      currentTrace = redirectTrace;
+      redirectTrace.prepare();
+      copy.reset();
+      super.collectionPhase(MarkCopy.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == MarkCopy.REDIRECT_CLOSURE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy REDIRECT_CLOSURE");
+      //redirectTrace.completeTrace();
+      redirectTrace.processRoots();
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy REDIRECT_CLOSURE Done.");
       return;
     }
 
@@ -186,31 +230,6 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       relocateTrace.prepare();
       copy.reset();
       super.collectionPhase(MarkCopy.PREPARE, primary);
-      return;
-    }
-
-    if (phaseId == MarkCopy.RELOCATE_UPDATE_POINTERS) {
-      //relocateTrace.release()
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_UPDATE_POINTERS");
-      VM.assertions._assert(Plan.gcInProgress());
-      if (VM.activePlan.collector().getId() == 0) {
-        //ConcurrentRemSetRefinement.refine();
-
-        VM.activePlan.resetMutatorIterator();
-        MarkCopyMutator mutator;
-        while ((mutator = (MarkCopyMutator) VM.activePlan.getNextMutator()) != null) {
-          mutator.enqueueCurrentRSBuffer();
-        }
-
-        CardTable.assertAllCardsAreNotMarked();
-          //ConcurrentRemSetRefinement.refine();
-          //RemSet.updatePointers(MarkCopyCollector.relocationSet, false);
-
-        RemSet.updatePointers(MarkCopyCollector.relocationSet, false);
-        // Reset card anchors & limits
-        MarkBlock.Card.clearAllCardMeta();
-      }
-      rendezvous();
       return;
     }
 
@@ -229,12 +248,22 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       return;
     }
 
+    if (phaseId == MarkCopy.REDIRECT_RELEASE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy REDIRECT_RELEASE");
+      redirectTrace.release();
+      copy.reset();
+      super.collectionPhase(MarkCopy.RELEASE, primary);
+      return;
+    }
+
     if (phaseId == MarkCopy.CLEANUP_BLOCKS) {
       if (VM.VERIFY_ASSERTIONS) {
         Log.writeln("MarkCopy CLEANUP_BLOCKS");
         VM.assertions._assert(relocationSet != null);
       }
+      RemSet.clearRemsetForRelocationSet(relocationSet, false);
       MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, false);
+      rendezvous();
       return;
     }
 

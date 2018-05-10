@@ -84,6 +84,8 @@ public class RemSet {
   @Inline
   public static void addCard(Address block, Address card) {
     lock2.acquire();
+    //Log.write("Add card ", card);
+    //Log.writeln(" -> ", block);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(MarkBlock.isAligned(block));
       VM.assertions._assert(MarkBlock.Card.isAligned(card));
@@ -199,13 +201,13 @@ public class RemSet {
   }
 
   public static void evacuateBlocks(AddressArray relocationSet, boolean concurrent) {
-    if (VM.activePlan.collector().getId() == 0) {
+    /*if (VM.activePlan.collector().getId() == 0) {
       for (int i = 0; i < relocationSet.length(); i++) {
         Address block = relocationSet.get(i);
         evacuateBlock(block);
       }
-    }
-    /*
+    }*/
+
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
     if (concurrent) id -= workers;
@@ -217,197 +219,145 @@ public class RemSet {
       Address block = relocationSet.get(cursor);
       evacuateBlock(block);
     }
-    */
   }
 
-  static TransitiveClosure redirectPointer = new TransitiveClosure() {
-    @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      if (!MarkBlockSpace.Header.isMarked(source)) return;
-      ObjectReference object = VM.activePlan.global().loadObjectReference(slot);
-      if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object)) {
-        if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
-          if (!ForwardingWord.isForwarded(object)) {
-            Log.write("Ref ", source);
-            Log.write(" . ", object);
-            Log.writeln(" @ ", slot);
-            MarkBlock.dumpMeta();
-            VM.objectModel.dumpObject(source);
-            VM.objectModel.dumpObject(object);
-          }
-          VM.assertions._assert(ForwardingWord.isForwarded(object));
+  @Uninterruptible
+  public static class Processor {
+    TraceLocal redirectPointerTrace;
+    Address currentCard;
+
+    public Processor(TraceLocal redirectPointerTrace) {
+      this.redirectPointerTrace = redirectPointerTrace;
+    }
+
+    LinearScan cardLinearScan = new LinearScan() {
+      @Override @Uninterruptible public void scan(ObjectReference object) {
+        if (!object.isNull()) {
+          if (Space.isInSpace(MarkCopy.MC, object) && !MarkBlockSpace.Header.isMarked(object)) return;
+          VM.scanning.scanObject(redirectPointerTrace, object);
         }
       }
-    }
-  };
+    };
 
-  static LinearScan cardLinearScan = new LinearScan() {
-    @Override @Uninterruptible public void scan(ObjectReference object) {
-      if (!object.isNull() && Space.getSpaceForObject(object).isLive(object))
-        VM.scanning.scanObject(redirectPointerTrace, object);
-    }
-  };
-
-  static Lock lock = VM.newLock("abdcdgjerbejkf");
-  static boolean updated = false;
-  public static void updatePointersForBlock(Address block) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
-    // Scan & correct all cards in remSet
-    lock.acquire();
-    if (updated) {
-      lock.release();
-      return;
-    }
-    updated = true;
-    lock.release();
-
-    //Log.writeln("> ", block);
-    for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
-      //Log.write(">> ", b);
-      if (!MarkBlock.relocationRequired(b)) {
-        Log.writeln("Update objects in block ", b);
-        MarkBlock.linearScan(cardLinearScan, b);
-      }
-    }
-    //lock.release();
-    /*
-    Address remsetStart = RemSet.of(block);
-    Address remsetEnd = remsetStart.plus(REMSET_EXTENT);
-    for (Address cursor = remsetStart; cursor.LT(remsetEnd); cursor = cursor.plus(CardHashTable.entrySize)) {
-      Address card = cursor.loadAddress();
-      if (!card.isZero()) {
-        MarkBlock.Card.linearScan(cardLinearScan, card);
-      }
-    }
-    */
-  }
-
-  static public final Trace trace = new Trace(MarkCopy.metaDataSpace);
-  static TraceLocal redirectPointerTrace = new TraceLocal(trace) {
-    @Override @UninterruptibleNoWarn public boolean isLive(ObjectReference object) {
-      if (object.isNull()) return false;
-      if (Space.isInSpace(MarkCopy.MC, object))
-        return MarkCopy.markBlockSpace.isLive(object);
-      return super.isLive(object);
-    }
-    @Override @Inline @UninterruptibleNoWarn
-    public void processEdge(ObjectReference source, Address slot) {
-      Log.writeln("ObjectReference ", source);
-      super.processEdge(source, slot);
-    }
-    @Override @Inline @UninterruptibleNoWarn public ObjectReference traceObject(ObjectReference object) {
+    public ObjectReference updateObject(ObjectReference object) {
       if (object.isNull()) return object;
       if (Space.isInSpace(MarkCopy.MC, object)) {
         if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
           if (!ForwardingWord.isForwarded(object)) VM.objectModel.dumpObject(object);
-          VM.assertions._assert(ForwardingWord.isForwarded(object));
+          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ForwardingWord.isForwarded(object));
           ObjectReference newObj = MarkBlockSpace.getForwardingPointer(object);
-          Log.write("Ref ", object);
-          Log.writeln(" ~> ", newObj);
+          if (VM.VERIFY_ASSERTIONS) {
+              Log.write("Ref ", object);
+              Log.writeln(" ~> ", newObj);
+          }
+          if (!currentCard.isZero())
+            RemSet.addCard(MarkBlock.of(newObj.toAddress()), currentCard);
           return newObj;
         }
         return object;
       }
-      return object;//super.traceObject(object);
+      return object;
     }
-  };
 
-  public static void updatePointers(AddressArray relocationSet, boolean concurrent) {
-    trace.prepare();
-    for (Address c = VM.HEAP_START; c.LT(VM.HEAP_END); c = c.plus(MarkBlock.Card.BYTES_IN_CARD)) {
-      if (Space.isInSpace(MarkCopy.markBlockSpace.getDescriptor(), c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
-        continue;
+    public void updatePointers(AddressArray relocationSet, boolean concurrent) {
+      int workers = VM.activePlan.collector().parallelWorkerCount();
+      int id = VM.activePlan.collector().getId();
+      if (concurrent) id -= workers;
+      int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+      int cardsToProcess = ceilDiv(totalCards, workers);
+
+      for (int i = 0; i < cardsToProcess; i++) {
+        int index = cardsToProcess * id + i;
+        if (index >= totalCards) break;
+        Address c = VM.HEAP_START.plus(index << MarkBlock.Card.LOG_BYTES_IN_CARD);
+
+        if (Space.isInSpace(MarkCopy.MC, c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
+          continue;
+        }
+        if (!Space.isMappedAddress(c)) continue;
+        if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
+
+        for (int j = 0; j < relocationSet.length(); j++) {
+          Address block = relocationSet.get(j);
+          if (containsCard(block, c)) {
+            if (VM.VERIFY_ASSERTIONS) {
+              Log.write("Linear scan card ", c);
+              Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
+              Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
+              Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
+              Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
+              Log.write(" in space: ");
+              Log.writeln(Space.getSpaceForAddress(c).getName());
+            }
+            currentCard = c;
+            MarkBlock.Card.linearScan(cardLinearScan, c);
+            currentCard = Address.zero();
+            break;
+          }
+        }
       }
-      if (MarkBlock.Card.getCardAnchor(c).isZero() || MarkBlock.Card.getCardLimit(c).isZero()) continue;
-      if (!Space.isMappedAddress(c) || !Space.isMappedAddress(c.plus(MarkBlock.Card.BYTES_IN_CARD - 1))) continue;
-
-      if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
-
-      //if (Space.isInSpace(Plan.NON_MOVING, c)) continue;
-      //if (Space.isInSpace(Plan.SMALL_CODE, c)) continue;
-
-      //if (Space.isInSpace(Plan.NON_MOVING, c)) {
-        //if (!BlockAllocator.checkBlockMeta(Conversions.pageAlign(c))) continue;
-      //}
-
-      //for (int i = 0; i < relocationSet.length(); i++) {
-      //  Address block = relocationSet.get(i);
-      //  if (containsCard(block, c)) {
-          Log.write("Linear scan card ", c);
-          Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
-          Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
-          Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
-          Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
-          Log.write(" in space: ");
-          Log.writeln(Space.getSpaceForAddress(c).getName());
-          MarkBlock.Card.linearScan(cardLinearScan, c);
-          //break;
-      //  }
-      //}
-    }
-    for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
-      if (!MarkBlock.relocationRequired(b)) {
-        Log.write("Update objects in block ", b);
-        Log.writeln(" ~ ", MarkBlock.getCursor(b));
-        MarkBlock.linearScan(cardLinearScan, b);
-      }
-    }
-    //if (VM.activePlan.collector().getId() == 0) {
-    //trace.prepare();
-    /*for (int i = 0; i < relocationSet.length(); i++) {
-      Address block = relocationSet.get(i);
-
-      Address hashtbl = RemSet.of(block);
-      int entries = 1 << CardHashTable.LOG_ENTRIES_PER_REMSET;
-      for (int j = 0; j < entries; i++) {
-        Address card = hashtbl.plus(CardHashTable.entrySize.toInt() * j).loadAddress();
-        if (!card.isZero()) {
-          Log.writeln("Update pointers for card ", card);
-          VM.assertions._assert(!MarkBlock.Card.getFirstObjectAddressInCard(card).isZero());
-          MarkBlock.Card.linearScan(cardLinearScan, card);
+      if (id == 0) {
+        VM.finalizableProcessor.forwardReadyForFinalize(redirectPointerTrace);
+        for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
+          if (!MarkBlock.relocationRequired(b)) {
+            if (VM.VERIFY_ASSERTIONS) {
+              Log.write("Update objects in block ", b);
+              Log.writeln(" ~ ", MarkBlock.getCursor(b));
+            }
+            MarkBlock.linearScan(cardLinearScan, b);
+          }
         }
       }
     }
-    */
+  }
 
-    /*for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
-      if (!MarkBlock.relocationRequired(b)) {
-        Log.write("Update objects in block ", b);
-        Log.writeln(" ~ ", MarkBlock.getCursor(b));
-        MarkBlock.linearScan(cardLinearScan, b);
+  @Inline
+  public static void clearRemsetMedaForBlock(Address targetBlock) {
+    Address targetBlockLimit = targetBlock.plus(MarkBlock.BYTES_IN_BLOCK);
+    MarkBlockSpace space =  (MarkBlockSpace) Space.getSpaceForAddress(targetBlock);
+    Address block = space.firstBlock();
+    while (!block.isZero()) {
+      for (Address c = targetBlock; c.LT(targetBlockLimit); c = c.plus(MarkBlock.Card.BYTES_IN_CARD)) {
+        if (containsCard(block, c)) {
+          removeCard(block, c);
+        }
       }
-    }*/
+      block = space.nextBlock(block);
+    }
+  }
 
-      //trace.prepare();
-      /*VM.scanning.computeThreadRoots(redirectPointerTrace);
-      VM.scanning.computeGlobalRoots(redirectPointerTrace);
-      VM.scanning.computeStaticRoots(redirectPointerTrace);
-      if (Plan.SCAN_BOOT_IMAGE) {
-        VM.scanning.computeBootImageRoots(redirectPointerTrace);
-      }
-
-      VM.softReferences.scan(redirectPointerTrace, false, false);
-      VM.weakReferences.scan(redirectPointerTrace, false, false);
-      VM.finalizableProcessor.scan(redirectPointerTrace, false);
-      VM.phantomReferences.scan(redirectPointerTrace, false, false);
-
-      VM.softReferences.forward(redirectPointerTrace, false);
-      VM.weakReferences.forward(redirectPointerTrace, false);
-      VM.phantomReferences.forward(redirectPointerTrace, false);
-      VM.finalizableProcessor.forward(redirectPointerTrace, false);*/
-      trace.release();
-    //}
-
-
-    /*int workers = VM.activePlan.collector().parallelWorkerCount();
+  public static void clearRemsetForRelocationSet(AddressArray relocationSet, boolean concurrent) {
+    int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
     if (concurrent) id -= workers;
-    int blocksToRelocate = ceilDiv(relocationSet.length(), workers);
+    int blocksToRelease = ceilDiv(relocationSet.length(), workers);
 
-    for (int i = 0; i < blocksToRelocate; i++) {
-      int cursor = blocksToRelocate * id + i;
+    for (int i = 0; i < blocksToRelease; i++) {
+      int cursor = blocksToRelease * id + i;
       if (cursor >= relocationSet.length()) break;
       Address block = relocationSet.get(cursor);
-      updatePointersForBlock(block);
-    }*/
+      if (!block.isZero()) {
+        clearRemsetMedaForBlock(block);
+      }
+    }
+  }
+
+  public static void assertCorrectness(MarkBlockSpace space) {
+    Address b = space.firstBlock();
+    while (!b.isZero()) {
+      for (Address c = VM.HEAP_START; c.LT(VM.HEAP_END); c = c.plus(MarkBlock.Card.BYTES_IN_CARD)) {
+        if (!Space.isMappedAddress(c)) continue;
+
+        if (containsCard(b, c)) {
+          // Should be a card within the heap
+          VM.assertions._assert(Space.isMappedAddress(c));
+          // Cannot contains a relocated card
+          if (space.isInSpace(space.descriptor, c)) {
+            VM.assertions._assert(!MarkBlock.relocationRequired(MarkBlock.of(c)));
+          }
+        }
+      }
+      b = space.nextBlock(b);
+    }
   }
 }

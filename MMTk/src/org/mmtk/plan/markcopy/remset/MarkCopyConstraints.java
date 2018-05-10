@@ -40,7 +40,7 @@ public class MarkCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int numSpecializedScans() {
-    return 2;
+    return 3;
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
@@ -48,6 +48,10 @@ public class MarkCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public boolean needsObjectReferenceWriteBarrier() {
+    return true;
+  }
+  @Override
+  public boolean objectReferenceBulkCopySupported() {
     return true;
   }
 }

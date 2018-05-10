@@ -67,7 +67,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   public void run() {
     while (true) {
       lock.await();
-      //refine();
+      refine();
     }
   }
 
@@ -78,8 +78,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     //Log.write("enqueueFilledRSBuffer {");
     //Log.flush();
 
-    /*filledRSBuffersLock.acquire();
+    filledRSBuffersLock.acquire();
     if (filledRSBuffersCursor < filledRSBuffers.length) {
+      //VM.barriers.objectArrayStoreNoGCBarrier(filledRSBuffers, filledRSBuffersCursor++, buf);
       filledRSBuffers[filledRSBuffersCursor++] = buf;
       if (filledRSBuffersCursor >= filledRSBuffers.length) {
         ConcurrentRemSetRefinement.trigger();
@@ -88,8 +89,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     } else {
       filledRSBuffersLock.release();
       refineSingleBuffer(buf);
-    }*/
-    refineSingleBuffer(buf);
+    }
+
+    //refineSingleBuffer(buf);
 
     //Log.writeln("}");
     //Log.flush();
@@ -102,9 +104,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   static TransitiveClosure scanPointers = new TransitiveClosure() {
     @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
       Address card = MarkBlock.Card.of(VM.objectModel.objectStartRef(source));
-      ObjectReference object = global().loadObjectReference(slot);
       Address ptr = slot.loadAddress();
-      if (!object.isNull() && Space.isInSpace(MarkCopy.MC, object) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
+      if (!ptr.isZero() && Space.isInSpace(MarkCopy.MC, ptr) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
         Address foreignBlock = MarkBlock.of(ptr);
         RemSet.addCard(foreignBlock, card);
       }
@@ -130,7 +131,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
       }
-      MarkBlock.Card.linearScan(cardLinearScan, card, Plan.gcInProgress());
+      MarkBlock.Card.linearScan(cardLinearScan, card);
     }
   }
 
@@ -139,8 +140,16 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     for (int i = 0; i < buffer.length(); i++) {
       Address card = buffer.get(i);
       if (!card.isZero()) {
-        CardTable.markCard(card, false);
-        processCard(card);
+        if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
+          Log.writeln("Attempt to unmark card ", card);
+        }
+        if (CardTable.attemptToMarkCard(card, false)) {
+          //Log.writeln("Unmark card ", card);
+          if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
+            Log.writeln("Unmark card ", card);
+          }
+          processCard(card);
+        }
       }
     }
   }
@@ -149,22 +158,27 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   @UninterruptibleNoWarn
   public static void refine() {
+    //refineLock.acquire();
+    if (VM.VERIFY_ASSERTIONS) Log.writeln("CONCURRENT REMSET REFINEMENT");
+    refineAll();
+  }
+
+  @UninterruptibleNoWarn
+  public static void refineAll() {
     refineLock.acquire();
-    Log.writeln("Concurrent Refine");
-    for (int i = 0; i < filledRSBuffersCursor; i++) {
-      //refineSingleBuffer(filledRSBuffers[i]);
+    for (int i = 0; i < filledRSBuffers.length; i++) {
+      if (filledRSBuffers[i] != null) {
+        refineSingleBuffer(filledRSBuffers[i]);
+      }
       filledRSBuffers[i] = null;
     }
     filledRSBuffersLock.acquire();
     filledRSBuffersCursor = 0;
     filledRSBuffersLock.release();
-    //while (global().filledRSBufferSize() > MarkCopy.CONCURRENT_REFINEMENT_THRESHOLD) {
-      //AddressArray buffer = global().dequeueFilledRSBuffer();
-      //refineSingleBuffer(buffer);
-    //}
-
     refineLock.release();
   }
+
+
 
   @Inline
   private static MarkCopy global() {

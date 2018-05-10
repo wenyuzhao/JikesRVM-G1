@@ -17,6 +17,7 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
@@ -90,6 +91,11 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
+    /*if (VM.objectModel.objectStartRef(object).EQ(Address.fromIntZeroExtend(0x68da4008))) {
+      Log.writeln(Plan.gcInProgress() ? "IN GC" : "NOT IN GC");
+    }
+    VM.assertions._assert(VM.objectModel.objectStartRef(object).NE(Address.fromIntZeroExtend(0x68da4008)));
+    */
     MarkBlock.Card.updateCardMeta(object);
     if (allocator == MarkCopy.ALLOC_MC) {
       MarkCopy.markBlockSpace.postAlloc(object, bytes);
@@ -118,7 +124,6 @@ public class MarkCopyMutator extends StopTheWorldMutator {
     if (phaseId == MarkCopy.PREPARE) {
       super.collectionPhase(phaseId, primary);
       mc.reset();
-      //enqueueCurrentRSBuffer();
       return;
     }
 
@@ -133,6 +138,18 @@ public class MarkCopyMutator extends StopTheWorldMutator {
       return;
     }
 
+    if (phaseId == MarkCopy.PREPARE_EVACUATION) {
+      //Log.writeln("Mutator #", getId());
+      //enqueueCurrentRSBuffer();
+      return;
+    }
+
+    if (phaseId == MarkCopy.REDIRECT_PREPARE) {
+      super.collectionPhase(MarkCopy.PREPARE, primary);
+      mc.reset();
+      return;
+    }
+
     if (phaseId == MarkCopy.RELOCATE_PREPARE) {
       super.collectionPhase(MarkCopy.PREPARE, primary);
       mc.reset();
@@ -143,6 +160,10 @@ public class MarkCopyMutator extends StopTheWorldMutator {
       return;
     }
 
+    if (phaseId == MarkCopy.REDIRECT_RELEASE) {
+      super.collectionPhase(MarkCopy.RELEASE, primary);
+      return;
+    }
     super.collectionPhase(phaseId, primary);
   }
 
@@ -151,14 +172,14 @@ public class MarkCopyMutator extends StopTheWorldMutator {
     mc.reset();
   }
 
+  @Override
+  public void deinitMutator() {
+    enqueueCurrentRSBuffer();
+  }
+
   @Inline
   public void enqueueCurrentRSBuffer() {
     ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer);
-    for (int i = 0; i < remSetLogBuffer.length(); i++) {
-      //if (!remSetLogBuffer.get(i).isZero())
-      //  CardTable.attemptToMarkCard(remSetLogBuffer.get(i), false);
-      VM.assertions._assert(remSetLogBuffer.get(i).isZero() || !CardTable.cardIsMarked(remSetLogBuffer.get(i)));
-    }
     remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
     remSetLogBufferCursor = 0;
   }
@@ -168,21 +189,49 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Inline
   private void markAndEnqueueCard(Address card) {
     //lock.lock();
-    if (!CardTable.attemptToMarkCard(card, true)) return;
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < remSetLogBuffer.length());
-    remSetLogBuffer.set(remSetLogBufferCursor++, card);
-    if (remSetLogBufferCursor >= remSetLogBuffer.length()) {
-      //remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
-      //remSetLogBufferCursor = 0;
-      enqueueCurrentRSBuffer();
+    if (CardTable.attemptToMarkCard(card, true)) {
+      if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
+        Log.write("Mark card ", card);
+        Log.writeln(" ", getId());
+      }
+      //VM.assertions._assert(!(Plan.gcInProgress() && card.NE(Address.fromIntZeroExtend(0x68019400))));
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < remSetLogBuffer.length());
+      remSetLogBuffer.set(remSetLogBufferCursor, card);
+      remSetLogBufferCursor += 1;
+      // VM.assertions._assert(remSetLogBuffer.get(remSetLogBufferCursor - 1).NE(Address.fromIntZeroExtend(0x601ea600)));
+      if (remSetLogBufferCursor >= remSetLogBuffer.length()) {
+        //remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+        //remSetLogBufferCursor = 0;
+        enqueueCurrentRSBuffer();
+      }
+    } else {
+      //VM.assertions._assert(CardTable.cardIsMarked(card));
     }
+
     //lock.unlock();
+
   }
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, Address value) {
     //if (VM.activePlan.global().in)
     // if (Plan.gcInProgress()) return;
+    /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x68da4014))) {
+      Log.writeln(Plan.gcInProgress() ? "IN GC" : "NOT IN GC");
+    }
+    0x68da4014)));
+    VM.assertions._assert(VM.objectModel.objectStartRef(src).NE(Address.fromIntZeroExtend(0x68da4008)));*/
+    /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x680a54cc))) {
+      Log.write("(", src);
+      Log.write(" ");
+      Log.write(src.isNull() ? "?" : Space.getSpaceForObject(src).getName());
+      Log.write(").", slot);
+      Log.write(" = ");
+      Log.write("(", value);
+      Log.write(" ");
+      Log.write(value.isZero() ? "?" : Space.getSpaceForAddress(value).getName());
+      Log.writeln(")");
+    };*/
     if (VM.VERIFY_ASSERTIONS) {
       if (!value.isZero() && Space.isInSpace(MarkCopy.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
         Log.write("Use of dead object ", value);
@@ -190,13 +239,18 @@ public class MarkCopyMutator extends StopTheWorldMutator {
         VM.assertions._assert(false);
       }
     }
-    if (!src.isNull() && !slot.isZero() && !value.isZero() && Space.isInSpace(MarkCopy.MC, value)) {
+    if (!src.isNull() && !slot.isZero() && !value.isZero()) {
       Word tmp = slot.toWord().xor(value.toWord());
       tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
-      MarkBlock.Card.updateCardMeta(src);
-      markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
+      if (Space.isInSpace(MarkCopy.MC, value)) {
+        /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x680a54cc))) {
+          Log.writeln("Add card ", MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
+        }*/
+        MarkBlock.Card.updateCardMeta(src);
+        markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
+      }
     }
   }
 

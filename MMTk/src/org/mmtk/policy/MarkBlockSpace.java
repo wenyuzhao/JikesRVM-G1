@@ -65,10 +65,16 @@ public final class MarkBlockSpace extends Space {
       return (VM.objectModel.readAvailableByte(object) & MARK_AND_FORWARDING_MASK) == NEW_OBJECT_MARK;
     }
     @Inline
-    static boolean isMarked(ObjectReference object) {
+    public static boolean isMarked(ObjectReference object) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return isMarked(VM.objectModel.readAvailableByte(object));
     }
+    /*
+    @Inline
+    public static boolean wasMarkedInPreviousGC(ObjectReference object) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
+      return isMarked(VM.objectModel.readAvailableByte(object));
+    }*/
     @Inline
     static boolean isMarked(byte gcByte) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
@@ -390,6 +396,7 @@ public final class MarkBlockSpace extends Space {
       Log.write(object);
       Log.writeln(" ~> ", newObject);
       object = newObject;
+      VM.assertions._assert(false);
     }
     if (Header.testAndMark(object)) {
       trace.processNode(object);
@@ -717,6 +724,7 @@ public final class MarkBlockSpace extends Space {
         }
         if (MarkBlock.Card.isEnabled()) {
           MarkBlock.Card.clearCardMetaForBlock(block);
+          //RemSet.clearRemsetMedaForBlock(block);
         }
         this.release(block);
       }

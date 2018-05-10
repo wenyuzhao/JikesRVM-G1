@@ -314,7 +314,7 @@ public class MarkBlock {
         if (byteIndex == 3) VM.assertions._assert((newValue >>> 8) == (oldValue >>> 8));
       }
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldValue != newValue);
-      if (oldValue == newValue) return true;
+      if (oldValue == newValue) return false;
       return VM.objectModel.attemptInt(buf, offset, oldValue, newValue);
     }
 
@@ -359,12 +359,12 @@ public class MarkBlock {
 
     @Inline
     public static void updateCardMeta(ObjectReference ref) {
-      Log.write("Update ");
+      /*Log.write("Update ");
       Log.write(Space.getSpaceForObject(ref).getName());
       Log.write(" object ", ref);
       Log.write(" (", VM.objectModel.objectStartRef(ref));
       Log.write(", ", VM.objectModel.getObjectEndAddress(ref));
-      Log.writeln(")");
+      Log.writeln(")");*/
       //lock.acquire();
 
       // set anchor value
