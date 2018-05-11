@@ -20,6 +20,7 @@ import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
+import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
@@ -53,9 +54,9 @@ public final class MarkBlockSpace extends Space {
   public static final int GLOBAL_GC_BITS_REQUIRED = 0;
   public static final int GC_HEADER_WORDS_REQUIRED = 0;
 
-  private static boolean relocation = false;
+  //private static boolean relocation = false;
   private static boolean allocAsMarked = false;
-  public Address allocBlock = Address.zero();
+  //public Address allocBlock = Address.zero();
 
   @Uninterruptible
   public static class Header {
@@ -183,8 +184,7 @@ public final class MarkBlockSpace extends Space {
    * Prepare for a new collection increment.
    */
   @Inline
-  public void prepare(boolean relocation) {
-    this.relocation = relocation;
+  public void prepare() {
     Header.increaseMarkState();
   }
 
@@ -192,9 +192,7 @@ public final class MarkBlockSpace extends Space {
    * A new collection increment has completed.  Release global resources.
    */
   @Inline
-  public void release() {
-    this.relocation = false;
-  }
+  public void release() {}
 
   /**
    * Return the number of pages reserved for copying.
@@ -241,8 +239,7 @@ public final class MarkBlockSpace extends Space {
         VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
       }
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.allocated(region));
-      MarkBlock.register(region);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.count() == oldCount + 1);
+      MarkBlock.register(region, copy);
     }
     if (VM.VERIFY_ASSERTIONS) {
       if (!region.isZero()) {
@@ -617,7 +614,16 @@ public final class MarkBlockSpace extends Space {
     // select relocation blocks
     int availBlocks = ((int) (VM.activePlan.global().getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * MarkBlock.BLOCKS_IN_REGION;
     final int usableBytesForCopying = availBlocks * MarkBlock.BYTES_IN_BLOCK;
-    if (VM.VERIFY_ASSERTIONS) Log.writeln("Copy Blocks: ", availBlocks);
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.writeln("Pages avail: ", VM.activePlan.global().getPagesAvail());
+      Log.write("Headroom: ");
+      Log.writeln((double) Options.defragHeadroomFraction.getValue());
+      Log.write("HeadroomDefault: ");
+      Log.writeln((double) Options.defragHeadroomFraction.getDefaultValue());
+      Log.writeln("PAGES_IN_REGION: ", EmbeddedMetaData.PAGES_IN_REGION);
+      Log.writeln("BLOCKS_IN_REGION: ", MarkBlock.BLOCKS_IN_REGION);
+      Log.writeln("Copy Blocks: ", availBlocks);
+    }
     int currentSize = 0;
     int relocationBlocks = 0;
 

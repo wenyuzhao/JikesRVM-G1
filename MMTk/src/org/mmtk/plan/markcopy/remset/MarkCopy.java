@@ -19,6 +19,7 @@ import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
+import org.mmtk.utility.options.G1GCLiveThresholdPercent;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.sanitychecker.SanityChecker;
 import org.mmtk.vm.Lock;
@@ -64,8 +65,7 @@ public class MarkCopy extends StopTheWorld {
   public AddressArray blocksSnapshot;
 
   static {
-    Options.defragHeadroomFraction = new DefragHeadroomFraction();
-    Options.defragHeadroomFraction.setDefaultValue(0.05f);
+    Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
     MarkBlock.Card.enable();
   }
 
@@ -209,7 +209,7 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepare();
-      markBlockSpace.prepare(false);
+      markBlockSpace.prepare();
       return;
     }
     if (phaseId == CLOSURE) {
@@ -231,7 +231,7 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       relocateTrace.prepare();
-      markBlockSpace.prepare(true);
+      markBlockSpace.prepare();
       return;
     }
 
@@ -269,9 +269,7 @@ public class MarkCopy extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int totalBlocks = ((int) (getTotalPages() / EmbeddedMetaData.PAGES_IN_REGION)) * MarkBlock.BLOCKS_IN_REGION;
-    int availBlocks = ((int) (getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * MarkBlock.BLOCKS_IN_REGION;;
-    if (availBlocks <= (int) (totalBlocks * Options.defragHeadroomFraction.getValue() + 0.5f)) {
+    if (getPagesUsed() >= (int) (getTotalPages() * Options.g1GCLiveThresholdPercent.getValue())) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);

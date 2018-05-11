@@ -177,7 +177,7 @@ public class MarkCopy extends Concurrent {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
-      markBlockSpace.prepare(false);
+      markBlockSpace.prepare();
       return;
     }
 
@@ -202,7 +202,7 @@ public class MarkCopy extends Concurrent {
       super.collectionPhase(PREPARE);
       inConcurrentCollection = false;
       relocateTrace.prepare();
-      markBlockSpace.prepare(true);
+      markBlockSpace.prepare();
       return;
     }
 

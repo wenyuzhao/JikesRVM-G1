@@ -5,6 +5,7 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.markcopy.remset.MarkCopy;
+import org.mmtk.policy.immix.Block;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Conversions;
 import org.mmtk.utility.ForwardingWord;
@@ -139,29 +140,21 @@ public class RemSet {
   }
 
   @Inline
-  private static int ceilDiv(int a, int b) {
+  protected static int ceilDiv(int a, int b) {
     return (a + b - 1) / b;
   }
 
-  //public static final Offset CARDS_META_OFFSET;
-  //public static final Extent CARDS_META_EXTENT;
   public static final Offset REMSET_OFFSET;
   public static final Extent REMSET_EXTENT;
 
   static {
     // Preserve as much meta pages as possible
     MarkBlock.setAdditionalMetadataPagesPerRegion(MarkBlock.METADATA_PAGES_PER_REGION - MarkBlock.USED_METADATA_PAGES_PER_REGION);
-    //CARDS_META_OFFSET = Offset.zero();
-    //CARDS_META_EXTENT = Extent.fromIntZeroExtend(MarkBlock.BYTES_IN_BLOCK / 512);
     REMSET_OFFSET = Offset.fromIntZeroExtend(0);
     REMSET_EXTENT = Extent.fromIntZeroExtend(MarkBlock.ADDITIONAL_METADATA.toInt() - REMSET_OFFSET.toInt());
-
-    //int logEntries;
-    //for (logEntries = 0; (1 << logEntries) < REMSET_EXTENT.toInt(); logEntries++);
-    //CardHashTable.LOG_ENTRIES_PER_REMSET = logEntries - 1;
   }
 
-  static LinearScan blockLinearScan = new LinearScan() {
+  protected static LinearScan blockLinearScan = new LinearScan() {
     @Override @Uninterruptible public void scan(ObjectReference object) {
       // Forward this object
       if (VM.VERIFY_ASSERTIONS) {
@@ -176,7 +169,7 @@ public class RemSet {
         VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       }
       if (MarkBlockSpace.Header.isMarked(object)) {
-        //VM.objectModel.dumpObject(object);
+
         Word oldState = ForwardingWord.attemptToForward(object);
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(!ForwardingWord.stateIsForwardedOrBeingForwarded(oldState));
@@ -194,24 +187,30 @@ public class RemSet {
     }
   };
 
-  public static void evacuateBlock(Address block) {
+  protected static void evacuateBlock(Address block) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
     // Forward all objects
     MarkBlock.linearScan(blockLinearScan, block);
   }
 
   public static void evacuateBlocks(AddressArray relocationSet, boolean concurrent) {
-    /*if (VM.activePlan.collector().getId() == 0) {
+    if (VM.activePlan.collector().getId() == 0) {
       for (int i = 0; i < relocationSet.length(); i++) {
         Address block = relocationSet.get(i);
+        Log.writeln("Evacuate block ", block);
         evacuateBlock(block);
       }
-    }*/
-
+    }
+    /*
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
     if (concurrent) id -= workers;
     int blocksToRelocate = ceilDiv(relocationSet.length(), workers);
+
+    Log.write("Collector ", VM.activePlan.collector().getId());
+    Log.write(" workers ", workers);
+    Log.write(" relocationSet.length() ", relocationSet.length());
+    Log.writeln(" => ", blocksToRelocate);
 
     for (int i = 0; i < blocksToRelocate; i++) {
       int cursor = blocksToRelocate * id + i;
@@ -219,6 +218,7 @@ public class RemSet {
       Address block = relocationSet.get(cursor);
       evacuateBlock(block);
     }
+    */
   }
 
   @Uninterruptible
@@ -296,6 +296,7 @@ public class RemSet {
           }
         }
       }
+
       if (id == 0) {
         VM.finalizableProcessor.forwardReadyForFinalize(redirectPointerTrace);
         for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
@@ -305,6 +306,7 @@ public class RemSet {
               Log.writeln(" ~ ", MarkBlock.getCursor(b));
             }
             MarkBlock.linearScan(cardLinearScan, b);
+            MarkBlock.mark(b, true);
           }
         }
       }

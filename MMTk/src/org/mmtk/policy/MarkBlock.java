@@ -32,6 +32,7 @@ public class MarkBlock {
   private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_BYTE;
   public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_BYTE;
+  //public static final int METADATA_MARK_OFFSET = METADATA_CURSOR_OFFSET + BYTES_IN_ADDRESS;
   public static final int METADATA_BYTES = 16;
   // Derived constants
   public static int METADATA_OFFSET_IN_REGION; // 0
@@ -166,22 +167,28 @@ public class MarkBlock {
     return metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET).loadInt();
   }
 
+  static Lock blocksCountLock = VM.newLock("blocksCountLock");
   @Inline
-  public static void register(Address block) {
-    // blockRegistrationLock.acquire();
+  public static void register(Address block, boolean copy) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
     // Handle this block
+    blocksCountLock.acquire();
     count += 1;
+    blocksCountLock.release();
     clearState(block);
     setAllocated(block, true);
-    // blockRegistrationLock.release();
+    if (!copy) {
+      mark(block, true);
+    }
   }
 
   @Inline
   public static void unregister(Address block) {
-    // blockRegistrationLock.acquire();
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
+
+    blocksCountLock.acquire();
     count -= 1;
+    blocksCountLock.release();
     clearState(block);
   }
 
@@ -223,11 +230,24 @@ public class MarkBlock {
   }
 
   @Inline
+  public static void mark(Address block, boolean state) {
+    //metaDataOf(block, METADATA_MARK_OFFSET).store((byte) (state ? 1 : 0));
+  }
+
+  @Inline
+  public static boolean isMarked(Address block) {
+    return false;
+    //return metaDataOf(block, METADATA_MARK_OFFSET).loadByte() != 0;
+  }
+
+
+  @Inline
   private static void clearState(Address block) {
     setAllocated(block, false);
     setRelocationState(block, false);
     setUsedSize(block, 0);
     setCursor(block, Address.zero());
+    mark(block, false);
   }
 
   @Inline
@@ -490,8 +510,17 @@ public class MarkBlock {
     }
 
     @Inline
-    public static void clearAllCardMeta() {
-      for (Address c = VM.HEAP_START; c.LT(VM.HEAP_END); c = c.plus(Card.BYTES_IN_CARD)) {
+    public static void clearAllCardMeta(boolean concurrent) {
+      int workers = VM.activePlan.collector().parallelWorkerCount();
+      int id = VM.activePlan.collector().getId();
+      if (concurrent) id -= workers;
+      int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> LOG_BYTES_IN_CARD;
+      int cardsToClear = ceilDiv(totalCards, workers);
+
+      for (int i = 0; i < cardsToClear; i++) {
+        int index = cardsToClear * id + i;
+        if (index >= totalCards) break;
+        Address c = VM.HEAP_START.plus(index << LOG_BYTES_IN_CARD);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(c));
         clearCardMeta(c);
       }
@@ -598,6 +627,9 @@ public class MarkBlock {
     /* Loop through each object up to the limit */
     do {
       /* Read end address first, as scan may be destructive */
+      //Log.write("Block ", block);
+      //Log.write(" ");
+      //VM.objectModel.dumpObject(ref);
       Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
       scan.scan(ref);
       //VM.scanning.scanObject(scanPointers, ref);

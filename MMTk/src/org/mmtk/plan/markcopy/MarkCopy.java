@@ -163,7 +163,7 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepare();
-      markBlockSpace.prepare(false);
+      markBlockSpace.prepare();
       return;
     }
     if (phaseId == CLOSURE) {
@@ -185,7 +185,7 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == RELOCATE_PREPARE) {
       super.collectionPhase(PREPARE);
       relocateTrace.prepare();
-      markBlockSpace.prepare(true);
+      markBlockSpace.prepare();
       return;
     }
     if (phaseId == RELOCATE_CLOSURE) {

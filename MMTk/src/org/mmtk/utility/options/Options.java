@@ -39,6 +39,7 @@ public final class Options {
   public static EagerMmapSpaces eagerMmapSpaces;
   public static FragmentationStats fragmentationStats;
   public static FullHeapSystemGC fullHeapSystemGC;
+  public static G1GCLiveThresholdPercent g1GCLiveThresholdPercent;
   public static GCspyPort gcspyPort;
   public static GCspyTileSize gcspyTileSize;
   public static GCspyWait gcspyWait;

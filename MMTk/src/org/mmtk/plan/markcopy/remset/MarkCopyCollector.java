@@ -174,9 +174,6 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     if (phaseId == MarkCopy.PREPARE_EVACUATION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy PREPARE_EVACUATION");
       if (VM.activePlan.collector().getId() == 0) {
-        //Log.write("RELOCATION SET @ ", ObjectReference.fromObject(relocationSet));
-        //Log.write(", ");
-        //Log.writeln(Space.getSpaceForObject(ObjectReference.fromObject(relocationSet)).getName());
         VM.activePlan.resetMutatorIterator();
         MarkCopyMutator m;
         while ((m = (MarkCopyMutator) VM.activePlan.getNextMutator()) != null) {
@@ -190,20 +187,24 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == MarkCopy.EVACUATION) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy EVACUATION");
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.writeln("MarkCopy EVACUATION");
+        VM.assertions._assert(relocationSet != null);
+      }
       RemSet.evacuateBlocks(relocationSet, false);
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATE_UPDATE_POINTERS) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_UPDATE_POINTERS");
-      VM.assertions._assert(Plan.gcInProgress());
-      redirectTrace.linearUpdatePointers(MarkCopyCollector.relocationSet, false);
-      if (VM.activePlan.collector().getId() == 0) {
-        // Reset card anchors & limits
-        MarkBlock.Card.clearAllCardMeta();
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.writeln("MarkCopy RELOCATE_UPDATE_POINTERS");
+        VM.assertions._assert(relocationSet != null);
       }
+      VM.assertions._assert(Plan.gcInProgress());
+      redirectTrace.linearUpdatePointers(relocationSet, false);
       rendezvous();
+      // Reset card anchors & limits
+      MarkBlock.Card.clearAllCardMeta(false);
       return;
     }
 
