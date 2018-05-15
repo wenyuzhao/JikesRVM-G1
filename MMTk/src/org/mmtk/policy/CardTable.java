@@ -1,6 +1,5 @@
 package org.mmtk.policy;
 
-import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;

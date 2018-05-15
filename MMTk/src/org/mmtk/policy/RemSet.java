@@ -1,72 +1,19 @@
 package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
-import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.plan.markcopy.remset.MarkCopy;
-import org.mmtk.policy.immix.Block;
-import org.mmtk.utility.Constants;
-import org.mmtk.utility.Conversions;
+//import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.pragma.UninterruptibleNoWarn;
 import org.vmmagic.unboxed.*;
 
 @Uninterruptible
 public class RemSet {
-
-  /** A bitmap of all cards in a block */
-  /*@Uninterruptible
-  private static class CardHashTable {
-    private static final Offset KEY_OFFSET = Offset.zero();
-    private static final Offset DATA_OFFSET = Offset.fromIntSignExtend(Constants.BYTES_IN_WORD);
-    private static final Extent entrySize = Extent.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS);
-    private static int LOG_ENTRIES_PER_REMSET;
-
-    @Inline
-    private static int computeCardHash(Address card) {
-      return card.toWord().rshl(9).toInt() % MarkBlock.ADDITIONAL_METADATA.toInt();
-    }
-
-    @Inline
-    private static Address getEntry(Address hashtbl, int index) {
-      return hashtbl.plus(Extent.fromIntZeroExtend(index * entrySize.toInt()));
-    }
-
-    @Inline
-    public static final Address getEntry(Address hashtbl, Address card, boolean create) {
-      Word mask = Word.fromIntZeroExtend((1 << LOG_ENTRIES_PER_REMSET) - 1);
-      int startIndex = computeCardHash(card);
-      int index = startIndex;
-      Address curAddress;
-      Address entry;
-      do {
-        entry = getEntry(hashtbl, index);
-        curAddress = entry.loadAddress(KEY_OFFSET);
-        index = (index + 1) & mask.toInt();
-      } while(curAddress.NE(card) &&
-        !curAddress.isZero() &&
-        index != startIndex);
-
-      if (index == startIndex) {
-        VM.assertions.fail("No room left in table!");
-      }
-
-      if (curAddress.isZero()) {
-        if (!create) return Address.zero();
-        entry.store(card, KEY_OFFSET);
-      }
-
-      return entry;
-    }
-  }*/
 
   /* RemSet of a block */
   @Inline
@@ -194,23 +141,23 @@ public class RemSet {
   }
 
   public static void evacuateBlocks(AddressArray relocationSet, boolean concurrent) {
-    if (VM.activePlan.collector().getId() == 0) {
+    /*if (VM.activePlan.collector().getId() == 0) {
       for (int i = 0; i < relocationSet.length(); i++) {
         Address block = relocationSet.get(i);
         Log.writeln("Evacuate block ", block);
         evacuateBlock(block);
       }
-    }
-    /*
+    }*/
+
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
     if (concurrent) id -= workers;
     int blocksToRelocate = ceilDiv(relocationSet.length(), workers);
 
-    Log.write("Collector ", VM.activePlan.collector().getId());
-    Log.write(" workers ", workers);
-    Log.write(" relocationSet.length() ", relocationSet.length());
-    Log.writeln(" => ", blocksToRelocate);
+    //Log.write("Collector ", VM.activePlan.collector().getId());
+    //Log.write(" workers ", workers);
+    //Log.write(" relocationSet.length() ", relocationSet.length());
+    //Log.writeln(" => ", blocksToRelocate);
 
     for (int i = 0; i < blocksToRelocate; i++) {
       int cursor = blocksToRelocate * id + i;
@@ -218,7 +165,6 @@ public class RemSet {
       Address block = relocationSet.get(cursor);
       evacuateBlock(block);
     }
-    */
   }
 
   @Uninterruptible
@@ -233,7 +179,7 @@ public class RemSet {
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
         if (!object.isNull()) {
-          if (Space.isInSpace(MarkCopy.MC, object) && !MarkBlockSpace.Header.isMarked(object)) return;
+          if (Space.getSpaceForObject(object) instanceof MarkBlockSpace && !MarkBlockSpace.Header.isMarked(object)) return;
           VM.scanning.scanObject(redirectPointerTrace, object);
         }
       }
@@ -241,7 +187,7 @@ public class RemSet {
 
     public ObjectReference updateObject(ObjectReference object) {
       if (object.isNull()) return object;
-      if (Space.isInSpace(MarkCopy.MC, object)) {
+      if (Space.getSpaceForObject(object) instanceof MarkBlockSpace) {
         if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
           if (!ForwardingWord.isForwarded(object)) VM.objectModel.dumpObject(object);
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ForwardingWord.isForwarded(object));
@@ -259,7 +205,7 @@ public class RemSet {
       return object;
     }
 
-    public void updatePointers(AddressArray relocationSet, boolean concurrent) {
+    public void updatePointers(AddressArray relocationSet, boolean concurrent, MarkBlockSpace markBlockSpace) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -271,7 +217,7 @@ public class RemSet {
         if (index >= totalCards) break;
         Address c = VM.HEAP_START.plus(index << MarkBlock.Card.LOG_BYTES_IN_CARD);
 
-        if (Space.isInSpace(MarkCopy.MC, c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
+        if (Space.isInSpace(markBlockSpace.getDescriptor(), c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
           continue;
         }
         if (!Space.isMappedAddress(c)) continue;
@@ -299,7 +245,7 @@ public class RemSet {
 
       if (id == 0) {
         //VM.finalizableProcessor.forwardReadyForFinalize(redirectPointerTrace);
-        for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
+        for (Address b = markBlockSpace.firstBlock(); !b.isZero(); b = markBlockSpace.nextBlock(b)) {
           if (!MarkBlock.relocationRequired(b)) {
             if (VM.VERIFY_ASSERTIONS) {
               Log.write("Update objects in block ", b);
@@ -314,7 +260,7 @@ public class RemSet {
   }
 
   @Inline
-  public static void clearRemsetMedaForBlock(Address targetBlock) {
+  public static void clearRemsetMetaForBlock(Address targetBlock) {
     Address targetBlockLimit = targetBlock.plus(MarkBlock.BYTES_IN_BLOCK);
     MarkBlockSpace space =  (MarkBlockSpace) Space.getSpaceForAddress(targetBlock);
     Address block = space.firstBlock();
@@ -339,7 +285,7 @@ public class RemSet {
       if (cursor >= relocationSet.length()) break;
       Address block = relocationSet.get(cursor);
       if (!block.isZero()) {
-        clearRemsetMedaForBlock(block);
+        clearRemsetMetaForBlock(block);
       }
     }
   }

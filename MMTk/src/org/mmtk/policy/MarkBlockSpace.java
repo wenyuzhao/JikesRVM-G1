@@ -15,7 +15,6 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
@@ -617,9 +616,9 @@ public final class MarkBlockSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) {
       Log.writeln("Pages avail: ", VM.activePlan.global().getPagesAvail());
       Log.write("Headroom: ");
-      Log.writeln((double) Options.defragHeadroomFraction.getValue());
+      //Log.writeln((double) Options.defragHeadroomFraction.getValue());
       Log.write("HeadroomDefault: ");
-      Log.writeln((double) Options.defragHeadroomFraction.getDefaultValue());
+      //Log.writeln((double) Options.defragHeadroomFraction.getDefaultValue());
       Log.writeln("PAGES_IN_REGION: ", EmbeddedMetaData.PAGES_IN_REGION);
       Log.writeln("BLOCKS_IN_REGION: ", MarkBlock.BLOCKS_IN_REGION);
       Log.writeln("Copy Blocks: ", availBlocks);

@@ -1,12 +1,8 @@
 package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
-import org.mmtk.plan.Simple;
-import org.mmtk.plan.markcopy.remset.MarkCopy;
 import org.mmtk.utility.Constants;
-import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.SimpleHashtable;
 import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
