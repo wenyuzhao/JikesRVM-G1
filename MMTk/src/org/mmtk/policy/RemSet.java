@@ -298,7 +298,7 @@ public class RemSet {
       }
 
       if (id == 0) {
-        VM.finalizableProcessor.forwardReadyForFinalize(redirectPointerTrace);
+        //VM.finalizableProcessor.forwardReadyForFinalize(redirectPointerTrace);
         for (Address b = MarkCopy.markBlockSpace.firstBlock(); !b.isZero(); b = MarkCopy.markBlockSpace.nextBlock(b)) {
           if (!MarkBlock.relocationRequired(b)) {
             if (VM.VERIFY_ASSERTIONS) {

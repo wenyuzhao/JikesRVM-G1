@@ -171,12 +171,6 @@ public final class FinalizableProcessor extends org.mmtk.vm.FinalizableProcessor
     }
   }
 
-  @Override
-  @UninterruptibleNoWarn
-  public void forwardReadyForFinalize(TraceLocal trace) {
-    org.mmtk.vm.VM.scanning.scanObject(trace, ObjectReference.fromObject(readyForFinalize));
-  }
-
   /**
    * {@inheritDoc} Calls ReferenceProcessor's
    * processReference method for each reference and builds a new

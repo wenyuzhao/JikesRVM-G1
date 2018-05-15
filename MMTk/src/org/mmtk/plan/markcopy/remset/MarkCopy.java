@@ -143,14 +143,6 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleComplex  (forwardPhase)
 */
-
-
-
-    //Phase.scheduleMutator  (RELOCATE_RELEASE),
-    //Phase.scheduleCollector(RELOCATE_RELEASE),
-    //Phase.scheduleGlobal   (RELOCATE_RELEASE)
-
-    //Phase.scheduleCollector(CLEANUP_BLOCKS)
   );
 
 
@@ -160,8 +152,16 @@ public class MarkCopy extends StopTheWorld {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (forwardPhase),
+      /*Phase.scheduleCollector  (SOFT_REFS),
+      Phase.scheduleGlobal     (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),
+      Phase.scheduleCollector  (WEAK_REFS),
+      Phase.scheduleGlobal     (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),
+      Phase.schedulePlaceholder(WEAK_TRACK_REFS),
+      Phase.scheduleCollector  (PHANTOM_REFS),*/
+    //Phase.scheduleComplex  (refTypeClosurePhase),
+    //Phase.scheduleComplex  (forwardPhase),
 
     //Phase.scheduleComplex  (relocationSetSelection),
 
