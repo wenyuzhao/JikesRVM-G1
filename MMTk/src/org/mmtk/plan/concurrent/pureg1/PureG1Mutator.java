@@ -92,8 +92,12 @@ public class PureG1Mutator extends StopTheWorldMutator {
     }
     VM.assertions._assert(VM.objectModel.objectStartRef(object).NE(Address.fromIntZeroExtend(0x68da4008)));
     */
+    //Log.write("Post alloc ", VM.objectModel.objectStartRef(object));
+    //Log.writeln(" ~ ", VM.objectModel.getObjectEndAddress(object));
     MarkBlock.Card.updateCardMeta(object);
     if (allocator == PureG1.ALLOC_MC) {
+      if (VM.VERIFY_ASSERTIONS)
+        VM.assertions._assert(Space.isInSpace(PureG1.MC, object) && MarkBlock.allocated(MarkBlock.of(VM.objectModel.objectStartRef(object))));
       PureG1.markBlockSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
@@ -229,7 +233,13 @@ public class PureG1Mutator extends StopTheWorldMutator {
       Log.writeln(")");
     };*/
     if (VM.VERIFY_ASSERTIONS) {
-      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
+      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !MarkBlock.allocated(MarkBlock.of(VM.objectModel.objectStartRef(value.toObjectReference())))) {
+        Log.write(src);
+        Log.write(".", slot);
+        Log.write(" = ");
+        Log.writeln(value);
+        VM.objectModel.dumpObject(src);
+        VM.objectModel.dumpObject(value.toObjectReference());
         Log.write("Use of dead object ", value);
         Log.writeln(", which is in released block ", MarkBlock.of(value));
         VM.assertions._assert(false);

@@ -16,6 +16,7 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;

@@ -13,6 +13,7 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
+import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
@@ -54,7 +55,7 @@ public class PureG1 extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("rc", VMRequest.discontiguous());
+  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("g1", VMRequest.discontiguous());
   public static final int MC = markBlockSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
@@ -65,6 +66,9 @@ public class PureG1 extends StopTheWorld {
   static {
     Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
     MarkBlock.Card.enable();
+    markBlockSpace.makeAllocAsMarked();
+    smallCodeSpace.makeAllocAsMarked();
+    nonMovingSpace.makeAllocAsMarked();
   }
 
   /**

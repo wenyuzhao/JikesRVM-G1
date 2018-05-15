@@ -17,7 +17,7 @@ public class MarkCopyRedirectTraceLocal extends TraceLocal {
   RemSet.Processor processor = new RemSet.Processor(this);
 
   public void linearUpdatePointers(AddressArray relocationSet, boolean concurrent) {
-    processor.updatePointers(relocationSet, concurrent);
+    processor.updatePointers(relocationSet, concurrent, MarkCopy.markBlockSpace);
   }
 
   public MarkCopyRedirectTraceLocal(Trace trace) {

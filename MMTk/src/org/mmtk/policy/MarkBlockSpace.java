@@ -19,7 +19,6 @@ import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
-import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
@@ -234,9 +233,9 @@ public final class MarkBlockSpace extends Space {
 
     if (!region.isZero()) {
       //int oldCount = MarkBlock.count();
-      if (MarkBlock.allocated(region)) {
-        VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
-      }
+      //if (MarkBlock.allocated(region)) {
+      //  VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
+      //}
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.allocated(region));
       MarkBlock.register(region, copy);
     }
