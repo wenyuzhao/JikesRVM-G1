@@ -13,7 +13,6 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
-import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
@@ -60,7 +59,6 @@ public class PureG1 extends StopTheWorld {
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace redirectTrace = new Trace(metaDataSpace);
-  public final Trace relocateTrace = new Trace(metaDataSpace);
   public AddressArray blocksSnapshot;
 
   static {
@@ -77,16 +75,12 @@ public class PureG1 extends StopTheWorld {
   public static final int ALLOC_MC = Plan.ALLOC_DEFAULT;
   public static final int SCAN_MARK = 0;
   public static final int SCAN_REDIRECT = 1;
-  public static final int SCAN_RELOCATE = 2;
 
   /* Phases */
   public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
   public static final short REDIRECT_CLOSURE = Phase.createSimple("redirect-closure");
   public static final short REDIRECT_RELEASE = Phase.createSimple("redirect-release");
-  public static final short RELOCATE_PREPARE = Phase.createSimple("relocate-prepare");
-  public static final short RELOCATE_CLOSURE = Phase.createSimple("relocate-closure");
   public static final short RELOCATE_UPDATE_POINTERS = Phase.createSimple("relocate-update-pointers");
-  public static final short RELOCATE_RELEASE = Phase.createSimple("relocate-release");
 
   public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
@@ -102,11 +96,6 @@ public class PureG1 extends StopTheWorld {
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
-    //Phase.scheduleComplex  (relocationSetSelection),
-    //Phase.scheduleCollector(EVACUATION),
-
-    Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
-
     Phase.scheduleGlobal   (REDIRECT_PREPARE),
     Phase.scheduleCollector(REDIRECT_PREPARE),
     Phase.scheduleMutator  (REDIRECT_PREPARE),
@@ -119,32 +108,21 @@ public class PureG1 extends StopTheWorld {
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(WEAK_REFS),
     Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleComplex  (forwardPhase),
     Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
-    Phase.scheduleGlobal   (REDIRECT_RELEASE)
+    Phase.scheduleGlobal   (REDIRECT_RELEASE),
 
-/*
-    Phase.scheduleGlobal   (RELOCATE_PREPARE),
-    Phase.scheduleCollector(RELOCATE_PREPARE),
-    Phase.scheduleMutator  (RELOCATE_PREPARE),
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-    Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    Phase.scheduleCollector(RELOCATE_CLOSURE),
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleComplex  (forwardPhase)
-*/
+    Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
+
+    Phase.scheduleComplex(Validation.validationPhase)
   );
 
 
@@ -153,37 +131,17 @@ public class PureG1 extends StopTheWorld {
   public static short _collection = Phase.createComplex("_collection", null,
     Phase.scheduleComplex  (initPhase),
     // Mark
-    Phase.scheduleComplex  (rootClosurePhase),
-      /*Phase.scheduleCollector  (SOFT_REFS),
-      Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),
-      Phase.scheduleCollector  (WEAK_REFS),
-      Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),
-      Phase.schedulePlaceholder(WEAK_TRACK_REFS),
-      Phase.scheduleCollector  (PHANTOM_REFS),*/
-    //Phase.scheduleComplex  (refTypeClosurePhase),
-    //Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex   (rootClosurePhase),
+    Phase.scheduleComplex   (refTypeClosurePhase),
+    Phase.scheduleComplex   (forwardPhase),
+    Phase.scheduleComplex   (completeClosurePhase),
 
-    //Phase.scheduleComplex  (relocationSetSelection),
+    Phase.scheduleComplex   (relocationSetSelection),
+    Phase.scheduleMutator   (PREPARE_EVACUATION),
+    Phase.scheduleCollector (PREPARE_EVACUATION),
+    //Phase.scheduleCollector (EVACUATION),
 
-    //Phase.scheduleComplex  (relocationPhase),
-
-    //Phase.scheduleGlobal   (RELOCATE_CLOSURE),
-    //Phase.scheduleCollector(RELOCATE_CLOSURE),
-    //Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
-
-    //Phase.scheduleCollector(CLEANUP_BLOCKS),
-
-    Phase.scheduleComplex  (relocationSetSelection),
-    Phase.scheduleMutator(PREPARE_EVACUATION),
-    Phase.scheduleCollector(PREPARE_EVACUATION),
-    Phase.scheduleCollector(EVACUATION),
-
-    Phase.scheduleComplex  (relocationPhase), // update pointers
-    //Phase.scheduleGlobal(RELOCATE_UPDATE_POINTERS),
-
-    Phase.scheduleComplex  (completeClosurePhase),
+    Phase.scheduleComplex   (relocationPhase),
 
     Phase.scheduleCollector(CLEANUP_BLOCKS),
 
@@ -211,7 +169,7 @@ public class PureG1 extends StopTheWorld {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepare();
-      markBlockSpace.prepare();
+      markBlockSpace.prepare(true);
       return;
     }
     if (phaseId == CLOSURE) {
@@ -230,17 +188,10 @@ public class PureG1 extends StopTheWorld {
       return;
     }
 
-    if (phaseId == RELOCATE_PREPARE) {
-      super.collectionPhase(PREPARE);
-      relocateTrace.prepare();
-      markBlockSpace.prepare();
-      return;
-    }
-
     if (phaseId == REDIRECT_PREPARE) {
-      //super.collectionPhase(PREPARE);
+      super.collectionPhase(PREPARE);
       redirectTrace.prepare();
-      //markBlockSpace.prepare(true);
+      markBlockSpace.prepare();
       return;
     }
 
@@ -249,15 +200,26 @@ public class PureG1 extends StopTheWorld {
       return;
     }
 
-    if (phaseId == RELOCATE_CLOSURE) {
-      //relocateTrace.prepare();
+    if (phaseId == REDIRECT_RELEASE) {
+      redirectTrace.release();
+      markBlockSpace.release();
+      super.collectionPhase(RELEASE);
       return;
     }
 
-    if (phaseId == REDIRECT_RELEASE) {
-      //redirectTrace.release();
-      //markBlockSpace.release();
-      //super.collectionPhase(RELEASE);
+    if (phaseId == Validation.PREPARE) {
+      super.collectionPhase(PREPARE);
+      Validation.trace.prepare();
+      markBlockSpace.prepare();
+      return;
+    }
+    if (phaseId == Validation.CLOSURE) {
+      return;
+    }
+    if (phaseId == Validation.RELEASE) {
+      Validation.trace.release();
+      markBlockSpace.release();
+      super.collectionPhase(RELEASE);
       return;
     }
 
@@ -337,7 +299,7 @@ public class PureG1 extends StopTheWorld {
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, PureG1MarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_REDIRECT, PureG1RedirectTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_RELOCATE, PureG1RelocationTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(Validation.SCAN_VALIDATE, Validation.class);
     super.registerSpecializedMethods();
   }
 

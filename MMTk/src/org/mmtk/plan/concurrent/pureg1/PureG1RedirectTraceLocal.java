@@ -3,8 +3,12 @@ package org.mmtk.plan.concurrent.pureg1;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -25,24 +29,6 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   }
 
   @Override
-  @Inline
-  public ObjectReference retainForFinalize(ObjectReference object) {
-    if (object.isNull()) return object;
-    if (Space.isInSpace(PureG1.MC, object))
-      return PureG1.markBlockSpace.traceRelocateObject(this, object, PureG1.ALLOC_MC);
-    return super.traceObject(object);
-  }
-
-  @Override
-  @Inline
-  public ObjectReference getForwardedFinalizable(ObjectReference object) {
-    if (object.isNull()) return object;
-    if (Space.isInSpace(PureG1.MC, object))
-      return PureG1.markBlockSpace.traceRelocateObject(this, object, PureG1.ALLOC_MC);
-    return super.traceObject(object);
-  }
-
-  @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(PureG1.MC, object))
@@ -53,7 +39,12 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
-    return processor.updateObject(object);
+    //return processor.updateObject(object);
+    if (object.isNull()) return object;
+    if (Space.isInSpace(PureG1.MC, object)) {
+      return PureG1.markBlockSpace.traceRelocateObject(this, object, PureG1.ALLOC_MC);
+    }
+    return super.traceObject(object);
   }
 
   @Override

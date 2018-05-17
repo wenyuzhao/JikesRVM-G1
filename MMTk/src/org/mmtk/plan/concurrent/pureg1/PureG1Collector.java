@@ -16,7 +16,6 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
@@ -60,7 +59,7 @@ public class PureG1Collector extends StopTheWorldCollector {
   protected final MarkBlockAllocator copy = new MarkBlockAllocator(PureG1.markBlockSpace, true);
   protected final PureG1MarkTraceLocal markTrace = new PureG1MarkTraceLocal(global().markTrace);
   protected final PureG1RedirectTraceLocal redirectTrace = new PureG1RedirectTraceLocal(global().redirectTrace);
-  protected final PureG1RelocationTraceLocal relocateTrace = new PureG1RelocationTraceLocal(global().relocateTrace);
+  protected final Validation validationTrace = new Validation();
   protected TraceLocal currentTrace;
   static AddressArray relocationSet;
 
@@ -205,7 +204,7 @@ public class PureG1Collector extends StopTheWorldCollector {
         VM.assertions._assert(relocationSet != null);
       }
       VM.assertions._assert(Plan.gcInProgress());
-      redirectTrace.linearUpdatePointers(relocationSet, false);
+      //redirectTrace.linearUpdatePointers(relocationSet, false);
       rendezvous();
       // Reset card anchors & limits
       MarkBlock.Card.clearAllCardMeta(false);
@@ -223,33 +222,9 @@ public class PureG1Collector extends StopTheWorldCollector {
 
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy REDIRECT_CLOSURE");
-      //redirectTrace.completeTrace();
-      redirectTrace.processRoots();
+      redirectTrace.completeTrace();
+      //redirectTrace.processRoots();
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy REDIRECT_CLOSURE Done.");
-      return;
-    }
-
-    if (phaseId == PureG1.RELOCATE_PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_PREPARE");
-      currentTrace = relocateTrace;
-      relocateTrace.prepare();
-      copy.reset();
-      super.collectionPhase(PureG1.PREPARE, primary);
-      return;
-    }
-
-    if (phaseId == PureG1.RELOCATE_CLOSURE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_CLOSURE");
-      relocateTrace.completeTrace();
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_CLOSURE Done.");
-      return;
-    }
-
-    if (phaseId == PureG1.RELOCATE_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATE_RELEASE");
-      relocateTrace.release();
-      copy.reset();
-      super.collectionPhase(PureG1.RELEASE, primary);
       return;
     }
 
@@ -269,6 +244,32 @@ public class PureG1Collector extends StopTheWorldCollector {
       RemSet.clearRemsetForRelocationSet(relocationSet, false);
       PureG1.markBlockSpace.cleanupBlocks(relocationSet, false);
       rendezvous();
+      return;
+    }
+
+
+
+    if (phaseId == Validation.PREPARE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation PREPARE");
+      currentTrace = validationTrace;
+      validationTrace.prepare();
+      copy.reset();
+      super.collectionPhase(PureG1.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Validation.CLOSURE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation CLOSURE");
+      validationTrace.completeTrace();
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation CLOSURE Done.");
+      return;
+    }
+
+    if (phaseId == Validation.RELEASE) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation RELEASE");
+      validationTrace.release();
+      copy.reset();
+      super.collectionPhase(PureG1.RELEASE, primary);
       return;
     }
 

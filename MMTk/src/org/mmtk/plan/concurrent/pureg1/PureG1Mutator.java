@@ -150,20 +150,21 @@ public class PureG1Mutator extends StopTheWorldMutator {
       return;
     }
 
-    if (phaseId == PureG1.RELOCATE_PREPARE) {
-      super.collectionPhase(PureG1.PREPARE, primary);
-      mc.reset();
-      return;
-    }
-    if (phaseId == PureG1.RELOCATE_RELEASE) {
-      super.collectionPhase(PureG1.RELEASE, primary);
-      return;
-    }
-
     if (phaseId == PureG1.REDIRECT_RELEASE) {
       super.collectionPhase(PureG1.RELEASE, primary);
       return;
     }
+
+    if (phaseId == Validation.PREPARE) {
+      super.collectionPhase(PureG1.PREPARE, primary);
+      mc.reset();
+      return;
+    }
+    if (phaseId == Validation.RELEASE) {
+      super.collectionPhase(PureG1.RELEASE, primary);
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
 

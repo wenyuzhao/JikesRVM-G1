@@ -68,12 +68,6 @@ public final class MarkBlockSpace extends Space {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return isMarked(VM.objectModel.readAvailableByte(object));
     }
-    /*
-    @Inline
-    public static boolean wasMarkedInPreviousGC(ObjectReference object) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
-      return isMarked(VM.objectModel.readAvailableByte(object));
-    }*/
     @Inline
     static boolean isMarked(byte gcByte) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
@@ -178,12 +172,21 @@ public final class MarkBlockSpace extends Space {
     }
   }
 
+  @Inline
+  public void prepare(boolean clearBlockLiveSize) {
+    Header.increaseMarkState();
+    if (clearBlockLiveSize) {
+      for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
+        MarkBlock.setUsedSize(b, 0);
+      }
+    }
+  }
   /**
    * Prepare for a new collection increment.
    */
   @Inline
   public void prepare() {
-    Header.increaseMarkState();
+    prepare(false);
   }
 
   /**
