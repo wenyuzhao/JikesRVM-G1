@@ -382,7 +382,10 @@ public class MarkBlock {
       Log.write(", ", VM.objectModel.getObjectEndAddress(ref));
       Log.writeln(")");*/
       //lock.acquire();
-
+      //lock.acquire();
+      if (VM.VERIFY_ASSERTIONS)
+        VM.assertions._assert(VM.debugging.validRef(ref));
+      //lock.release();
       // set anchor value
       final Address objectStartAddress = VM.objectModel.objectStartRef(ref);
       final Address card = Card.of(objectStartAddress);

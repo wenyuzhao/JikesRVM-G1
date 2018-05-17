@@ -145,9 +145,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         }
         if (CardTable.attemptToMarkCard(card, false)) {
           //Log.writeln("Unmark card ", card);
-          if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
-            Log.writeln("Unmark card ", card);
-          }
+          //if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
+            //Log.writeln("Unmark card ", card);
+          //}
           processCard(card);
         }
       }

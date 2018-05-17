@@ -19,7 +19,7 @@ public class G1GCLiveThresholdPercent extends org.vmutil.options.FloatOption {
   public G1GCLiveThresholdPercent() {
     super(Options.set, "Defrag Headroom Fraction",
           "Allow the defrag this fraction of the heap as headroom during defrag.",
-          0.95f);
+          0.90f);
   }
 
   /**

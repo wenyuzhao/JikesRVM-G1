@@ -22,6 +22,7 @@ import org.vmmagic.unboxed.ObjectReference;
  */
 @Uninterruptible
 public abstract class Debug {
+  public abstract boolean validRef(ObjectReference ref);
   /**
    * Global switch for debugging - if {@code false} the other methods of this
    * class are never called.
