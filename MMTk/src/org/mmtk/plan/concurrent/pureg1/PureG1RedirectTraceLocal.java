@@ -55,7 +55,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     if (Space.isInSpace(PureG1.MC, object)) {
       return PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC);
     }
-    return super.traceObject(object);
+    return object;
   }
 
   @Override
