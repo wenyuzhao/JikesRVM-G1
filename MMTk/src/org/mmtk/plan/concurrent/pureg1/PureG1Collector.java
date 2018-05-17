@@ -195,21 +195,6 @@ public class PureG1Collector extends StopTheWorldCollector {
       return;
     }
 
-    if (phaseId == PureG1.RELOCATE_UPDATE_POINTERS) {
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.writeln("G1 RELOCATE_UPDATE_POINTERS");
-        VM.assertions._assert(relocationSet != null);
-      }
-      VM.assertions._assert(Plan.gcInProgress());
-      //redirectTrace.linearUpdatePointers(relocationSet, false);
-      rendezvous();
-      // Reset card anchors & limits
-      //if (VM.VERIFY_ASSERTIONS)
-        //CardTable.assertAllCardsAreNotMarked();
-      MarkBlock.Card.clearCardMetaForUnmarkedCards(false);
-      return;
-    }
-
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_PREPARE");
       currentTrace = redirectTrace;
@@ -232,6 +217,7 @@ public class PureG1Collector extends StopTheWorldCollector {
       redirectTrace.release();
       copy.reset();
       super.collectionPhase(PureG1.RELEASE, primary);
+      MarkBlock.Card.clearCardMetaForUnmarkedCards(false);
       return;
     }
 

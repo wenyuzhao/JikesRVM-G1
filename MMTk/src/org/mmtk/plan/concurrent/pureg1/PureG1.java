@@ -80,15 +80,15 @@ public class PureG1 extends StopTheWorld {
   public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
   public static final short REDIRECT_CLOSURE = Phase.createSimple("redirect-closure");
   public static final short REDIRECT_RELEASE = Phase.createSimple("redirect-release");
-  public static final short RELOCATE_UPDATE_POINTERS = Phase.createSimple("relocate-update-pointers");
+  //public static final short RELOCATE_UPDATE_POINTERS = Phase.createSimple("relocate-update-pointers");
 
   public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
 
   public static final short relocationSetSelection = Phase.createComplex("relocationSetSelection",
-    Phase.scheduleGlobal(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleGlobal   (RELOCATION_SET_SELECTION_PREPARE),
     Phase.scheduleCollector(RELOCATION_SET_SELECTION_PREPARE),
-    Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleMutator  (RELOCATION_SET_SELECTION_PREPARE),
     Phase.scheduleCollector(RELOCATION_SET_SELECTION)
   );
   public static final short EVACUATION = Phase.createSimple("evacuation");
@@ -119,8 +119,6 @@ public class PureG1 extends StopTheWorld {
     Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
     Phase.scheduleGlobal   (REDIRECT_RELEASE),
-
-    Phase.scheduleCollector(RELOCATE_UPDATE_POINTERS),
 
     Phase.scheduleComplex(Validation.validationPhase)
   );
