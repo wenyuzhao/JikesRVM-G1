@@ -321,7 +321,7 @@ public class MarkBlock {
       int oldValue = buf[intIndex];
       // Build new int
       int newValue = oldValue & ~(0xff << ((3 - byteIndex) << 3)); // Drop the target byte
-      newValue |= (newByte << ((3 - byteIndex) << 3)); // Set new byte
+      newValue |= ((((int) newByte) & 0xFF) << ((3 - byteIndex) << 3)); // Set new byte
 
       if (VM.VERIFY_ASSERTIONS) {
         if (byteIndex == 0) VM.assertions._assert((newValue << 8) == (oldValue << 8));
@@ -509,7 +509,7 @@ public class MarkBlock {
     }
 
     @Inline
-    public static void clearAllCardMeta(boolean concurrent) {
+    public static void clearCardMetaForUnmarkedCards(boolean concurrent) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -521,6 +521,7 @@ public class MarkBlock {
         if (index >= totalCards) break;
         Address c = VM.HEAP_START.plus(index << LOG_BYTES_IN_CARD);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(c));
+        if (CardTable.cardIsMarked(c)) continue;
         clearCardMeta(c);
       }
     }

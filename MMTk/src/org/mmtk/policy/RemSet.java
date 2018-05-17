@@ -179,7 +179,7 @@ public class RemSet {
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
         if (!object.isNull()) {
-          if (Space.getSpaceForObject(object) instanceof MarkBlockSpace && !MarkBlockSpace.Header.isMarked(object)) return;
+          // if (Space.getSpaceForObject(object) instanceof MarkBlockSpace && !MarkBlockSpace.Header.isMarked(object)) return;
           VM.scanning.scanObject(redirectPointerTrace, object);
         }
       }
@@ -205,6 +205,44 @@ public class RemSet {
       return object;
     }
 
+    public void processRemSets(AddressArray relocationSet, boolean concurrent, MarkBlockSpace markBlockSpace) {
+      int workers = VM.activePlan.collector().parallelWorkerCount();
+      int id = VM.activePlan.collector().getId();
+      if (concurrent) id -= workers;
+      int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+      int cardsToProcess = ceilDiv(totalCards, workers);
+
+      for (int i = 0; i < cardsToProcess; i++) {
+        int index = cardsToProcess * id + i;
+        if (index >= totalCards) break;
+        Address c = VM.HEAP_START.plus(index << MarkBlock.Card.LOG_BYTES_IN_CARD);
+
+        if (Space.isInSpace(markBlockSpace.getDescriptor(), c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
+          continue;
+        }
+        if (!Space.isMappedAddress(c)) continue;
+        if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
+
+        for (int j = 0; j < relocationSet.length(); j++) {
+          Address block = relocationSet.get(j);
+          if (containsCard(block, c)) {
+            if (VM.VERIFY_ASSERTIONS) {
+              Log.write("Linear scan card ", c);
+              Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
+              Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
+              Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
+              Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
+              Log.write(" in space: ");
+              Log.writeln(Space.getSpaceForAddress(c).getName());
+            }
+            currentCard = c;
+            MarkBlock.Card.linearScan(cardLinearScan, c);
+            currentCard = Address.zero();
+            break;
+          }
+        }
+      }
+    }
     public void updatePointers(AddressArray relocationSet, boolean concurrent, MarkBlockSpace markBlockSpace) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();

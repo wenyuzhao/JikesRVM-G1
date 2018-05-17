@@ -401,6 +401,39 @@ public final class MarkBlockSpace extends Space {
     }
     return object;
   }
+
+  @Inline
+  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator) {
+    if (MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)))) {
+      Word priorStatusWord = ForwardingWord.attemptToForward(object);
+      if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+        ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+        if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+        if (VM.VERIFY_ASSERTIONS) {
+          Log.write(object);
+          Log.writeln(" ~> ", newObject);
+        }
+        return newObject;
+      } else {
+        ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(ForwardingWord.isForwarded(object));
+          VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(newObject));
+          if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+        }
+        if (VM.VERIFY_ASSERTIONS) {
+          Log.write("Forward ", object);
+          Log.writeln(" => ", newObject);
+        }
+        //Header.writeMarkState(newObject);
+        trace.processNode(newObject);
+        return newObject;
+      }
+    } else {
+      return object;
+    }
+  }
+
   /**
    * Trace an object under a copying collection policy.
    * If the object is already copied, the copy is returned.

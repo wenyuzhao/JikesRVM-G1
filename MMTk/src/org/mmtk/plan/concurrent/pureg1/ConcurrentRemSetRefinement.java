@@ -107,6 +107,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       Address ptr = slot.loadAddress();
       if (!ptr.isZero() && Space.isInSpace(PureG1.MC, ptr) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
         Address foreignBlock = MarkBlock.of(ptr);
+        //Log.write("Add card ", card);
+        //Log.writeln(" to remset of block ", foreignBlock);
         RemSet.addCard(foreignBlock, card);
       }
     }
@@ -140,14 +142,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     for (int i = 0; i < buffer.length(); i++) {
       Address card = buffer.get(i);
       if (!card.isZero()) {
-        if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
-          Log.writeln("Attempt to unmark card ", card);
-        }
         if (CardTable.attemptToMarkCard(card, false)) {
           //Log.writeln("Unmark card ", card);
-          if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
-            Log.writeln("Unmark card ", card);
-          }
           processCard(card);
         }
       }

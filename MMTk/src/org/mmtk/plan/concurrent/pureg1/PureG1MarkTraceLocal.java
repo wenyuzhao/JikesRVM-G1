@@ -45,10 +45,6 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   }
 
   @Override
-  public void prepare() {
-  }
-
-  @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;

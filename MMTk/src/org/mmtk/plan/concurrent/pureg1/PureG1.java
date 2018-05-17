@@ -132,8 +132,8 @@ public class PureG1 extends StopTheWorld {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex   (rootClosurePhase),
-    Phase.scheduleComplex   (refTypeClosurePhase),
-    Phase.scheduleComplex   (forwardPhase),
+    //Phase.scheduleComplex   (refTypeClosurePhase),
+    //Phase.scheduleComplex   (forwardPhase),
     Phase.scheduleComplex   (completeClosurePhase),
 
     Phase.scheduleComplex   (relocationSetSelection),
@@ -189,9 +189,9 @@ public class PureG1 extends StopTheWorld {
     }
 
     if (phaseId == REDIRECT_PREPARE) {
-      super.collectionPhase(PREPARE);
+      //super.collectionPhase(PREPARE);
       redirectTrace.prepare();
-      markBlockSpace.prepare();
+      //markBlockSpace.prepare();
       return;
     }
 
@@ -202,8 +202,8 @@ public class PureG1 extends StopTheWorld {
 
     if (phaseId == REDIRECT_RELEASE) {
       redirectTrace.release();
-      markBlockSpace.release();
-      super.collectionPhase(RELEASE);
+      //markBlockSpace.release();
+      //super.collectionPhase(RELEASE);
       return;
     }
 

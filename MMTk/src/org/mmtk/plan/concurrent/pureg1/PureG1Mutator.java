@@ -214,34 +214,17 @@ public class PureG1Mutator extends StopTheWorldMutator {
   }
 
   @Inline
-  private void checkCrossRegionPointer(ObjectReference src, Address slot, Address value) {
-    //if (VM.activePlan.global().in)
-    // if (Plan.gcInProgress()) return;
-    /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x68da4014))) {
-      Log.writeln(Plan.gcInProgress() ? "IN GC" : "NOT IN GC");
-    }
-    0x68da4014)));
-    VM.assertions._assert(VM.objectModel.objectStartRef(src).NE(Address.fromIntZeroExtend(0x68da4008)));*/
-    /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x680a54cc))) {
-      Log.write("(", src);
-      Log.write(" ");
-      Log.write(src.isNull() ? "?" : Space.getSpaceForObject(src).getName());
-      Log.write(").", slot);
-      Log.write(" = ");
-      Log.write("(", value);
-      Log.write(" ");
-      Log.write(value.isZero() ? "?" : Space.getSpaceForAddress(value).getName());
-      Log.writeln(")");
-    };*/
+  private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
+    Address value = VM.objectModel.objectStartRef(ref);
     if (VM.VERIFY_ASSERTIONS) {
-      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !MarkBlock.allocated(MarkBlock.of(VM.objectModel.objectStartRef(value.toObjectReference())))) {
+      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
         Log.write(src);
         Log.write(".", slot);
         Log.write(" = ");
         Log.writeln(value);
         VM.objectModel.dumpObject(src);
-        VM.objectModel.dumpObject(value.toObjectReference());
-        Log.write("Use of dead object ", value);
+        VM.objectModel.dumpObject(ref);
+        Log.write("Use of dead object ", ref);
         Log.writeln(", which is in released block ", MarkBlock.of(value));
         VM.assertions._assert(false);
       }
@@ -252,9 +235,6 @@ public class PureG1Mutator extends StopTheWorldMutator {
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isInSpace(PureG1.MC, value)) {
-        /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x680a54cc))) {
-          Log.writeln("Add card ", MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
-        }*/
         MarkBlock.Card.updateCardMeta(src);
         markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
       }
@@ -264,7 +244,7 @@ public class PureG1Mutator extends StopTheWorldMutator {
   @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
-    checkCrossRegionPointer(src, slot, value.toAddress());
+    checkCrossRegionPointer(src, slot, value);
     VM.barriers.objectReferenceWrite(src, value, metaDataA, metaDataB, mode);
   }
 
@@ -272,7 +252,7 @@ public class PureG1Mutator extends StopTheWorldMutator {
   @Override
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
     boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, value, metaDataA, metaDataB, mode);
-    checkCrossRegionPointer(src, slot, value.toAddress());
+    checkCrossRegionPointer(src, slot, value);
     return result;
   }
 
@@ -296,7 +276,8 @@ public class PureG1Mutator extends StopTheWorldMutator {
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
     while (cursor.LT(limit)) {
-      checkCrossRegionPointer(dst, cursor, srcCursor.loadAddress());
+      ObjectReference element = srcCursor.loadObjectReference();
+      checkCrossRegionPointer(dst, cursor, element);
       cursor = cursor.plus(BYTES_IN_ADDRESS);
       srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
     }

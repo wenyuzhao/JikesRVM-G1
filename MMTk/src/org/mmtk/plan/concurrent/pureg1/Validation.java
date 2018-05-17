@@ -106,6 +106,7 @@ public class Validation extends TraceLocal {
 
       Address block = MarkBlock.of(VM.objectModel.objectStartRef(object));
       if (MarkBlock.relocationRequired(block)) {
+        VM.objectModel.dumpObject(source);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", VM.objectModel.objectStartRef(source));
         Log.write("  ", source);

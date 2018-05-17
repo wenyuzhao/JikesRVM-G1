@@ -204,7 +204,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       redirectTrace.linearUpdatePointers(relocationSet, false);
       rendezvous();
       // Reset card anchors & limits
-      MarkBlock.Card.clearAllCardMeta(false);
+      MarkBlock.Card.clearCardMetaForUnmarkedCards(false);
       return;
     }
 
