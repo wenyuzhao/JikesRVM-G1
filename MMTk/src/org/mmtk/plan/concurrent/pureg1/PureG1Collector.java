@@ -13,6 +13,7 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
+import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
@@ -23,6 +24,7 @@ import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
@@ -44,7 +46,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see CollectorContext
  */
 @Uninterruptible
-public class PureG1Collector extends StopTheWorldCollector {
+public class PureG1Collector extends ConcurrentCollector {
 
   /****************************************************************************
    * Instance fields
@@ -259,6 +261,59 @@ public class PureG1Collector extends StopTheWorldCollector {
     }
 
     super.collectionPhase(phaseId, primary);
+  }
+
+  @Override
+  protected boolean concurrentTraceComplete() {
+    if (!global().markTrace.hasWork()) {
+      return true;
+    }
+    return false;
+  }
+
+  @Override
+  @Unpreemptible
+  public void concurrentCollectionPhase(short phaseId) {
+    if (phaseId == PureG1.CONCURRENT_CLOSURE) {
+      currentTrace = markTrace;
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 CONCURRENT_CLOSURE");
+      super.concurrentCollectionPhase(phaseId);
+      return;
+    }
+    /*
+    if (phaseId == PureG1.CONCURRENT_RELOCATION_SET_SELECTION) {
+      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATION_SET_SELECTION");
+      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, true);
+      if (relocationSet != null) {
+        MarkCopyCollector.relocationSet = relocationSet;
+      }
+      if (rendezvous() == 0) {
+        if (!group.isAborted()) {
+          VM.collection.requestMutatorFlush();
+          continueCollecting = Phase.notifyConcurrentPhaseComplete();
+        }
+      }
+      rendezvous();
+      return;
+    }
+    if (phaseId == MarkCopy.CONCURRENT_CLEANUP_BLOCKS) {
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.write("MarkCopy CONCURRENT_CLEANUP_BLOCKS #", VM.activePlan.collector().getId());
+        Log.writeln("/", VM.activePlan.collector().parallelWorkerCount());
+        VM.assertions._assert(relocationSet != null);
+      }
+      MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, true);
+      if (rendezvous() == 0) {
+        if (!group.isAborted()) {
+          VM.collection.requestMutatorFlush();
+          continueCollecting = Phase.notifyConcurrentPhaseComplete();
+        }
+      }
+      rendezvous();
+      return;
+    }
+    */
+    super.concurrentCollectionPhase(phaseId);
   }
 
   /****************************************************************************

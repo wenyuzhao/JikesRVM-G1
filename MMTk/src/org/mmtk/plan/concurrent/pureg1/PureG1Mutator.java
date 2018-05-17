@@ -13,7 +13,10 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.MutatorContext;
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.plan.TraceWriteBuffer;
+import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
@@ -44,7 +47,7 @@ import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
  * @see MutatorContext
  */
 @Uninterruptible
-public class PureG1Mutator extends StopTheWorldMutator {
+public class PureG1Mutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
@@ -52,6 +55,8 @@ public class PureG1Mutator extends StopTheWorldMutator {
   private static final int REMSET_LOG_BUFFER_SIZE = 256;
   private AddressArray remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
   private int remSetLogBufferCursor = 0;
+  private final TraceWriteBuffer markRemset, relocateRemset;
+  private TraceWriteBuffer currentRemset;
 
   /****************************************************************************
    *
@@ -63,6 +68,9 @@ public class PureG1Mutator extends StopTheWorldMutator {
    */
   public PureG1Mutator() {
     mc = new MarkBlockAllocator(PureG1.markBlockSpace, false);
+    markRemset = new TraceWriteBuffer(global().markTrace);
+    relocateRemset = new TraceWriteBuffer(global().redirectTrace);
+    currentRemset = markRemset;
   }
 
   /****************************************************************************
@@ -170,6 +178,7 @@ public class PureG1Mutator extends StopTheWorldMutator {
 
   @Override
   public void flushRememberedSets() {
+    currentRemset.flush();
     mc.reset();
   }
 
@@ -241,19 +250,43 @@ public class PureG1Mutator extends StopTheWorldMutator {
     }
   }
 
+  @Override
+  protected void checkAndEnqueueReference(ObjectReference ref) {
+    if (ref.isNull()) return;
+    //if (barrierActive) {
+
+    if (Space.isInSpace(PureG1.MC, ref)) PureG1.markBlockSpace.traceMarkObject(currentRemset, ref);
+    else if (Space.isInSpace(PureG1.IMMORTAL, ref)) PureG1.immortalSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(PureG1.LOS, ref)) PureG1.loSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(PureG1.NON_MOVING, ref)) PureG1.nonMovingSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(PureG1.SMALL_CODE, ref)) PureG1.smallCodeSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(PureG1.LARGE_CODE, ref)) PureG1.largeCodeSpace.traceObject(currentRemset, ref);
+    //}
+
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!ref.isNull() && !Plan.gcInProgress()) {
+        if (Space.isInSpace(PureG1.MC, ref)) VM.assertions._assert(PureG1.markBlockSpace.isLive(ref));
+        else if (Space.isInSpace(PureG1.IMMORTAL, ref)) VM.assertions._assert(PureG1.immortalSpace.isLive(ref));
+        else if (Space.isInSpace(PureG1.LOS, ref)) VM.assertions._assert(PureG1.loSpace.isLive(ref));
+        else if (Space.isInSpace(PureG1.NON_MOVING, ref)) VM.assertions._assert(PureG1.nonMovingSpace.isLive(ref));
+        else if (Space.isInSpace(PureG1.SMALL_CODE, ref)) VM.assertions._assert(PureG1.smallCodeSpace.isLive(ref));
+        else if (Space.isInSpace(PureG1.LARGE_CODE, ref)) VM.assertions._assert(PureG1.largeCodeSpace.isLive(ref));
+      }
+    }
+  }
+
   @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
     checkCrossRegionPointer(src, slot, value);
-    VM.barriers.objectReferenceWrite(src, value, metaDataA, metaDataB, mode);
+    super.objectReferenceWrite(src, slot, value, metaDataA, metaDataB, mode);
   }
 
   @Inline
   @Override
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
-    boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, value, metaDataA, metaDataB, mode);
     checkCrossRegionPointer(src, slot, value);
-    return result;
+    return super.objectReferenceTryCompareAndSwap(src, slot, old, value, metaDataA, metaDataB, mode);
   }
 
   /**
@@ -281,7 +314,7 @@ public class PureG1Mutator extends StopTheWorldMutator {
       cursor = cursor.plus(BYTES_IN_ADDRESS);
       srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
     }
-    return false;
+    return super.objectReferenceBulkCopy(src, srcOffset, dst, dstOffset, bytes);
   }
 
   @Inline

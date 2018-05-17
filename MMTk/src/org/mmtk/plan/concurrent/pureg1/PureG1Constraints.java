@@ -13,6 +13,7 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.StopTheWorldConstraints;
+import org.mmtk.plan.concurrent.ConcurrentConstraints;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.vmmagic.pragma.Uninterruptible;
@@ -21,7 +22,7 @@ import org.vmmagic.pragma.Uninterruptible;
  * SemiSpace common constants.
  */
 @Uninterruptible
-public class PureG1Constraints extends StopTheWorldConstraints {
+public class PureG1Constraints extends ConcurrentConstraints {
   @Override
   public boolean movesObjects() {
     return true;

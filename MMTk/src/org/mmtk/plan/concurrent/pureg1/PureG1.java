@@ -13,6 +13,7 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
+import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
@@ -46,7 +47,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * performance properties of this plan.
  */
 @Uninterruptible
-public class PureG1 extends StopTheWorld {
+public class PureG1 extends Concurrent {
 
   /****************************************************************************
    *
@@ -166,7 +167,7 @@ public class PureG1 extends StopTheWorld {
   public void collectionPhase(short phaseId) {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
-      markTrace.prepare();
+      markTrace.prepareNonBlocking();
       markBlockSpace.prepare(true);
       return;
     }
