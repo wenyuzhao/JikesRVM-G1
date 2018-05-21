@@ -74,6 +74,12 @@ public final class MarkBlockSpace extends Space {
       return ((byte) (gcByte & MARK_MASK)) == markState;
     }
     @Inline
+    public static boolean isPreviouslyMarked(ObjectReference object) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
+      byte gcByte = VM.objectModel.readAvailableByte(object);
+      return ((byte) (gcByte & MARK_MASK)) == decreasedMarkState();
+    }
+    @Inline
     static boolean testAndMark(ObjectReference object) {
       byte oldValue, newValue, oldMarkState;
 
@@ -86,6 +92,16 @@ public final class MarkBlockSpace extends Space {
         VM.objectModel.writeAvailableByte(object, newValue);
       }
       return oldMarkState != markState;
+    }
+    @Inline
+    static byte decreasedMarkState() {
+      byte rtn = markState;
+      do {
+        rtn = (byte) (rtn - MARK_INCREMENT);
+        rtn &= MARK_MASK;
+      } while (rtn < MARK_BASE_VALUE);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
+      return rtn;
     }
     @Inline
     static void increaseMarkState() {
@@ -175,6 +191,7 @@ public final class MarkBlockSpace extends Space {
   @Inline
   public void prepare(boolean clearBlockLiveSize) {
     Header.increaseMarkState();
+    Log.writeln("MarkState ", Header.markState);
     if (clearBlockLiveSize) {
       for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
         MarkBlock.setUsedSize(b, 0);
@@ -344,7 +361,7 @@ public final class MarkBlockSpace extends Space {
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
     if (VM.VERIFY_ASSERTIONS) {
       Address objEnd = VM.objectModel.getObjectEndAddress(object);
-      Address block = MarkBlock.of(object.toAddress());
+      Address block = MarkBlock.of(object);
       Address limit = MarkBlock.getCursor(block);
       /*if (objEnd.GT(limit)) {
         Log.write("object ", object);
@@ -372,7 +389,8 @@ public final class MarkBlockSpace extends Space {
     }
 
     if (Header.testAndMark(rtn)) {
-      Address region = MarkBlock.of(VM.objectModel.objectStartRef(rtn));
+      //Log.writeln("Mark ", rtn);
+      Address region = MarkBlock.of(rtn);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
       /*_lock.acquire();
       MarkBlock.setUsedSize(region, MarkBlock.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
@@ -404,15 +422,16 @@ public final class MarkBlockSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator) {
-    if (MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)))) {
+    if (MarkBlock.relocationRequired(MarkBlock.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
         if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
         if (VM.VERIFY_ASSERTIONS) {
-          Log.write(object);
-          Log.writeln(" ~> ", newObject);
+          //Log.write(object);
+          //Log.writeln(" ~> ", newObject);
         }
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         return newObject;
       } else {
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
@@ -422,14 +441,22 @@ public final class MarkBlockSpace extends Space {
           if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
         }
         if (VM.VERIFY_ASSERTIONS) {
-          Log.write("Forward ", object);
-          Log.writeln(" => ", newObject);
+          //Log.write("Forward ", object);
+          //Log.writeln(" => ", newObject);
         }
-        //Header.writeMarkState(newObject);
+        Header.writeMarkState(newObject);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         trace.processNode(newObject);
         return newObject;
       }
+    } else if (ForwardingWord.isForwarded(object)) {
+      return MarkBlockSpace.getForwardingPointer(object);
     } else {
+      if (Header.testAndMark(object)) {
+        //Log.writeln("EvaMark ", object);
+        trace.processNode(object);
+      }
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;
     }
   }
@@ -469,7 +496,7 @@ public final class MarkBlockSpace extends Space {
       } else {
         /* we are the first to reach the object; either mark in place or forward it */
         ObjectReference rtn = object;
-        if (MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)))) {
+        if (MarkBlock.relocationRequired(MarkBlock.of(object))) {
           /* forward */
           rtn = ForwardingWord.forwardObject(object, allocator);
           if (VM.VERIFY_ASSERTIONS) {
@@ -670,7 +697,7 @@ public final class MarkBlockSpace extends Space {
         Log.write(": ", MarkBlock.usedSize(block));
         Log.write("/", MarkBlock.BYTES_IN_BLOCK);
       }
-      if (currentSize + size > usableBytesForCopying || size * 2 > MarkBlock.BYTES_IN_BLOCK) {
+      if (currentSize + size > usableBytesForCopying || size > MarkBlock.BYTES_IN_BLOCK * 0.65) {
         if (VM.VERIFY_ASSERTIONS) Log.writeln();
         break;
       }

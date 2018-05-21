@@ -136,8 +136,10 @@ public class PureG1Collector extends ConcurrentCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
+    Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 PREPARE");
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!global().markTrace.hasWork());
       currentTrace = markTrace;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
@@ -152,6 +154,7 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.RELEASE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 RELEASE");
+      markTrace.completeTrace();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
@@ -193,21 +196,32 @@ public class PureG1Collector extends ConcurrentCollector {
         Log.writeln("G1 EVACUATION");
         VM.assertions._assert(relocationSet != null);
       }
-      RemSet.evacuateBlocks(relocationSet, false);
+      //RemSet.evacuateBlocks(relocationSet, false);
       return;
     }
 
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_PREPARE");
       currentTrace = redirectTrace;
+      //redirectTrace.log = true;
       redirectTrace.prepare();
       copy.reset();
-      super.collectionPhase(PureG1.PREPARE, primary);
+      //super.collectionPhase(PureG1.PREPARE, primary);
       return;
     }
 
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_CLOSURE");
+      VM.activePlan.resetMutatorIterator();
+      PureG1Mutator m;
+      while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+        m.enqueueCurrentRSBuffer();
+      }
+      ConcurrentRemSetRefinement.refineAll();
+      CardTable.assertAllCardsAreNotMarked();
+      //redirectTrace.processRoots();
+      //redirectTrace.log = false;
+      rendezvous();
       redirectTrace.completeTrace();
       //redirectTrace.processRoots();
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_CLOSURE Done.");
@@ -218,7 +232,7 @@ public class PureG1Collector extends ConcurrentCollector {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_RELEASE");
       redirectTrace.release();
       copy.reset();
-      super.collectionPhase(PureG1.RELEASE, primary);
+      //super.collectionPhase(PureG1.RELEASE, primary);
       MarkBlock.Card.clearCardMetaForUnmarkedCards(false);
       return;
     }

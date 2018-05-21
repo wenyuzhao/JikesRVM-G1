@@ -21,6 +21,7 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
@@ -30,6 +31,7 @@ import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Word;
 
 /**
  * This class implements <i>per-collector thread</i> behavior
@@ -51,6 +53,7 @@ import org.vmmagic.unboxed.ObjectReference;
 public class ConcurrentRemSetRefinement extends CollectorContext {
   private static final AddressArray[] filledRSBuffers = new AddressArray[16];
   private static int filledRSBuffersCursor = 0;
+  private static int dirtyCardSize = 0;
   private static final Lock filledRSBuffersLock = VM.newLock("filledRSBuffersLock ");
 
   private static Monitor lock;
@@ -103,32 +106,62 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   static TransitiveClosure scanPointers = new TransitiveClosure() {
     @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      Address card = MarkBlock.Card.of(VM.objectModel.objectStartRef(source));
-      Address ptr = slot.loadAddress();
-      if (!ptr.isZero() && Space.isInSpace(PureG1.MC, ptr) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
-        Address foreignBlock = MarkBlock.of(ptr);
+      Address card = MarkBlock.Card.of(source);
+      ObjectReference ref = slot.loadObjectReference();
+      Address value = VM.objectModel.objectStartRef(ref);
+      /*Log.write("processCard scanPointers ", source);
+      Log.write(".", slot);
+      Log.writeln(": ", VM.activePlan.global().loadObjectReference(slot));*/
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!source.isNull() && !slot.isZero() && !value.isZero());
+      Word tmp = slot.toWord().xor(value.toWord());
+      tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
+      tmp = value.isZero() ? Word.zero() : tmp;
+      if (tmp.isZero()) return;
+      if (Space.isInSpace(PureG1.MC, value)) {
+        Address foreignBlock = MarkBlock.of(value);
         //Log.write("Add card ", card);
         //Log.writeln(" to remset of block ", foreignBlock);
         RemSet.addCard(foreignBlock, card);
       }
+      /*
+      Address ptr = slot.loadAddress();
+      if (!ptr.isZero() && Space.isInSpace(PureG1.MC, ptr) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
+        Address foreignBlock = MarkBlock.of(ptr);
+        Log.write("Add card ", card);
+        Log.writeln(" to remset of block ", foreignBlock);
+        RemSet.addCard(foreignBlock, card);
+      }
+      */
     }
   };
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Uninterruptible public void scan(ObjectReference object) {
+      //Log.writeln("processCard Scan ", object);
+      //if (!object.isNull() && isLive(object))
+      /*Space space = Space.getSpaceForObject(object);
+      if (Plan.gcInProgress()) {
+
+      } else if (PureG1.concurrentMarkingInProgress) {
+
+      } else {
+        if (!space.isLive(object)) {
+          VM.objectModel.writeAvailableBitsWord(object, Word.zero());
+        }
+      }*/
       VM.scanning.scanObject(scanPointers, object);
     }
   };
 
   public static void processCard(Address card) {
-    /*Log.write("Linear scan card ", card);
+    /*Log.write("Process card ", card);
     Log.write(", range ", MarkBlock.Card.getCardAnchor(card));
     Log.write(" ..< ", MarkBlock.Card.getCardLimit(card));
     Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(card)));
     Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(card)));
     Log.write(" in space: ");
-    Log.writeln(Space.getSpaceForAddress(card).getName());
-*/
+    Log.writeln(Space.getSpaceForAddress(card).getName());*/
+
     if (!Space.isInSpace(Plan.VM_SPACE, card)) {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());

@@ -67,7 +67,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
+      return !MarkBlock.relocationRequired(MarkBlock.of(object));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

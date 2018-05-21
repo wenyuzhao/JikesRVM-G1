@@ -2,6 +2,7 @@ package org.mmtk.policy;
 
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -11,6 +12,8 @@ import org.vmmagic.unboxed.Offset;
 @Uninterruptible
 public class CardTable {
   static final int[] cardTable;
+  static int dirtyCards = 0;
+  static final Lock dirtyCardsLock = VM.newLock("dirtyCardsLock");
 
   static {
     int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
@@ -18,6 +21,11 @@ public class CardTable {
     cardTable = new int[totalCards >> Constants.LOG_BITS_IN_INT];
   }
 
+
+  @Inline
+  public static int dirtyCardSize() {
+    return dirtyCards;
+  }
 
   @Inline
   private static int hash(Address card) {
@@ -40,10 +48,14 @@ public class CardTable {
   public static boolean attemptToMarkCard(Address card, boolean mark) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(MarkBlock.Card.of(card)));
     int cardIndex = hash(card);
-    //boolean oldValue = getBit(cardTable, cardIndex);
-    //boolean newValue = mark;
-    //if (oldValue == newValue) return false; // card is already marked by other threads
-    return attemptBitInBuffer(cardTable, cardIndex, mark);
+    boolean success = attemptBitInBuffer(cardTable, cardIndex, mark);
+    if (success) {
+      dirtyCardsLock.acquire();
+      dirtyCards += mark ? 1 : -1;
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length);
+      dirtyCardsLock.release();
+    }
+    return success;
   }
 
   @Inline
@@ -81,7 +93,7 @@ public class CardTable {
   }
 
   @Inline
-  public static boolean getBit(int[] buf, int index) {
+  private static boolean getBit(int[] buf, int index) {
     int intIndex = index >> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
     int entry = buf[intIndex];

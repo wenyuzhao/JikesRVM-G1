@@ -16,6 +16,8 @@ import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -48,6 +50,7 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     MarkBlock.Card.updateCardMeta(object);
     if (Space.isInSpace(PureG1.MC, object)) {
       //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));

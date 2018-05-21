@@ -20,6 +20,7 @@ import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.G1GCLiveThresholdPercent;
+import org.mmtk.utility.options.G1ReservePercent;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.sanitychecker.SanityChecker;
 import org.mmtk.vm.Lock;
@@ -65,7 +66,7 @@ public class MarkCopy extends StopTheWorld {
   public AddressArray blocksSnapshot;
 
   static {
-    Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
+    Options.g1ReservePercent = new G1ReservePercent();
     MarkBlock.Card.enable();
   }
 
@@ -269,7 +270,7 @@ public class MarkCopy extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    if (getPagesUsed() >= (int) (getTotalPages() * Options.g1GCLiveThresholdPercent.getValue())) {
+    if (getPagesAvail() * 100 <= (int) (getTotalPages() * Options.g1ReservePercent.getValue())) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);

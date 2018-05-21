@@ -12,14 +12,14 @@
  */
 package org.mmtk.utility.options;
 
-public class G1GCLiveThresholdPercent extends org.vmutil.options.FloatOption {
+public class G1ReservePercent extends org.vmutil.options.FloatOption {
   /**
    * Create the option.
    */
-  public G1GCLiveThresholdPercent() {
-    super(Options.set, "G1 GC Live Threshold Percent",
-          "Sets the occupancy threshold for an region to be included in a G1 garbage collection cycle. The default occupancy is 65 percent.",
-          65f);
+  public G1ReservePercent() {
+    super(Options.set, "G1 Reserve Percent",
+          "Sets the percentage of reserve memory to keep free so as to reduce the risk of to-space overflows. The default is 10 percent.",
+          10f);
   }
 
   /**

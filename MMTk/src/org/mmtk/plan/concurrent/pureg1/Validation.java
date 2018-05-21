@@ -15,6 +15,7 @@ package org.mmtk.plan.concurrent.pureg1;
 import org.mmtk.plan.*;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
@@ -31,6 +32,8 @@ import org.vmmagic.unboxed.ObjectReference;
  */
 @Uninterruptible
 public class Validation extends TraceLocal {
+
+  RemSet.Processor processor = new RemSet.Processor(this);
 
   public static final int SCAN_VALIDATE = 2;
 
@@ -124,9 +127,17 @@ public class Validation extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
+    VM.debugging.validRef(object);
     if (Space.isInSpace(PureG1.MC, object)) {
+      /*if (!isLive(object) && !MarkBlockSpace.Header.isPreviouslyMarked(object)) {
+        VM.objectModel.dumpObject(object);
+        Log.write("Object ", object);
+        Log.writeln(" was not marked in previous cycle");
+        VM.assertions._assert(false);
+      }*/
       Address block = MarkBlock.of(VM.objectModel.objectStartRef(object));
       if (MarkBlock.relocationRequired(block)) {
+        VM.objectModel.dumpObject(object);
         Log.write("Object ", object);
         Log.writeln(" is in released block");
         VM.assertions._assert(false);
@@ -149,5 +160,14 @@ public class Validation extends TraceLocal {
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }
+  }
+
+  @Override
+  @Inline
+  protected void processRememberedSets() {
+    //if (!remSetsProcessed) {
+    processor.processRemSets(PureG1Collector.relocationSet, false, PureG1.markBlockSpace);
+    //remSetsProcessed = true;
+    //}
   }
 }

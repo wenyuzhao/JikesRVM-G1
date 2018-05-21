@@ -113,7 +113,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
     MarkCopy.markBlockSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(!MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))));
+      VM.assertions._assert(!MarkBlock.relocationRequired(MarkBlock.of(object)));
       VM.assertions._assert(getCurrentTrace().isLive(object));
     }
   }

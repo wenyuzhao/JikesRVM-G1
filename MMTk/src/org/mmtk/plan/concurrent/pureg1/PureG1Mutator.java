@@ -19,6 +19,7 @@ import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
@@ -107,6 +108,9 @@ public class PureG1Mutator extends ConcurrentMutator {
       if (VM.VERIFY_ASSERTIONS)
         VM.assertions._assert(Space.isInSpace(PureG1.MC, object) && MarkBlock.allocated(MarkBlock.of(VM.objectModel.objectStartRef(object))));
       PureG1.markBlockSpace.postAlloc(object, bytes);
+      //if (barrierActive) Log.writeln("Alloc(Conc Mark) ", object);
+      //else if (Plan.gcInProgress()) Log.writeln("Alloc(STW) ", object);
+      //else Log.writeln("Alloc ", object);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -130,6 +134,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == PureG1.PREPARE) {
+      //flushRememberedSets();
       super.collectionPhase(phaseId, primary);
       mc.reset();
       return;
@@ -153,6 +158,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == PureG1.REDIRECT_PREPARE) {
+      //flushRememberedSets();
       super.collectionPhase(PureG1.PREPARE, primary);
       mc.reset();
       return;
@@ -178,17 +184,21 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
+    enqueueCurrentRSBuffer();
     currentRemset.flush();
     mc.reset();
+    assertRemsetsFlushed();
   }
 
   @Override
   public void deinitMutator() {
     enqueueCurrentRSBuffer();
+    super.deinitMutator();
   }
 
   @Inline
   public void enqueueCurrentRSBuffer() {
+    if (remSetLogBufferCursor == 0) return;
     ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer);
     remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
     remSetLogBufferCursor = 0;
@@ -200,10 +210,10 @@ public class PureG1Mutator extends ConcurrentMutator {
   private void markAndEnqueueCard(Address card) {
     //lock.lock();
     if (CardTable.attemptToMarkCard(card, true)) {
-      if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
-        Log.write("Mark card ", card);
-        Log.writeln(" ", getId());
-      }
+      //if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
+        //Log.writeln("Mark card ", card);
+        //Log.writeln(" ", getId());
+      //}
       //VM.assertions._assert(!(Plan.gcInProgress() && card.NE(Address.fromIntZeroExtend(0x68019400))));
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < remSetLogBuffer.length());
       remSetLogBuffer.set(remSetLogBufferCursor, card);
@@ -238,14 +248,19 @@ public class PureG1Mutator extends ConcurrentMutator {
         VM.assertions._assert(false);
       }
     }
+    //Log.write(src);
+    //Log.write(".", slot);
+    //Log.write(" = ");
+    //Log.writeln(ref);
     if (!src.isNull() && !slot.isZero() && !value.isZero()) {
       Word tmp = slot.toWord().xor(value.toWord());
       tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isInSpace(PureG1.MC, value)) {
+        //RemSet.addCard(MarkBlock.of(VM.objectModel.objectStartRef(ref)), MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
         MarkBlock.Card.updateCardMeta(src);
-        markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
+        markAndEnqueueCard(MarkBlock.Card.of(src));
       }
     }
   }
@@ -278,15 +293,16 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
-    checkCrossRegionPointer(src, slot, value);
     super.objectReferenceWrite(src, slot, value, metaDataA, metaDataB, mode);
+    checkCrossRegionPointer(src, slot, value);
   }
 
   @Inline
   @Override
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference value, Word metaDataA, Word metaDataB, int mode) {
+    boolean result = super.objectReferenceTryCompareAndSwap(src, slot, old, value, metaDataA, metaDataB, mode);
     checkCrossRegionPointer(src, slot, value);
-    return super.objectReferenceTryCompareAndSwap(src, slot, old, value, metaDataA, metaDataB, mode);
+    return result;
   }
 
   /**
@@ -305,16 +321,26 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Inline
   @Override
   public boolean objectReferenceBulkCopy(ObjectReference src, Offset srcOffset, ObjectReference dst, Offset dstOffset, int bytes) {
+    super.objectReferenceBulkCopy(src, srcOffset, dst, dstOffset, bytes);
     Address srcCursor = src.toAddress().plus(srcOffset);
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
     while (cursor.LT(limit)) {
       ObjectReference element = srcCursor.loadObjectReference();
+      cursor.store(element);
       checkCrossRegionPointer(dst, cursor, element);
       cursor = cursor.plus(BYTES_IN_ADDRESS);
       srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
     }
-    return super.objectReferenceBulkCopy(src, srcOffset, dst, dstOffset, bytes);
+    return true;
+  }
+
+  @Override
+  public final void assertRemsetsFlushed() {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(currentRemset.isFlushed());
+      //VM.assertions._assert(remSetLogBufferCursor == 0);
+    }
   }
 
   @Inline

@@ -12,14 +12,14 @@
  */
 package org.mmtk.utility.options;
 
-public class G1GCLiveThresholdPercent extends org.vmutil.options.FloatOption {
+public class G1InitiatingHeapOccupancyPercent extends org.vmutil.options.FloatOption {
   /**
    * Create the option.
    */
-  public G1GCLiveThresholdPercent() {
-    super(Options.set, "G1 GC Live Threshold Percent",
-          "Sets the occupancy threshold for an region to be included in a G1 garbage collection cycle. The default occupancy is 65 percent.",
-          65f);
+  public G1InitiatingHeapOccupancyPercent() {
+    super(Options.set, "G1 Initiating Heap Occupancy Percent",
+          "Sets the Java heap occupancy threshold that triggers a marking cycle. The default occupancy is 45 percent of the entire Java heap.",
+          30f);
   }
 
   /**

@@ -3,7 +3,9 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 //import org.mmtk.plan.markcopy.remset.MarkCopy;
+import org.mmtk.plan.concurrent.pureg1.PureG1RedirectTraceLocal;
 import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
@@ -39,11 +41,10 @@ public class RemSet {
       VM.assertions._assert(MarkBlock.Card.isAligned(card));
       int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
       int totalCards = memorySize >> MarkBlock.Card.LOG_BYTES_IN_CARD;
-      /*Log.writeln("HEAP_START=", VM.HEAP_START);
-      Log.writeln("HEAP_END=", VM.HEAP_END);
-      Log.writeln("totalCards=", totalCards);
-      Log.writeln("REMSET_EXTENT=", REMSET_EXTENT);*/
       VM.assertions._assert(REMSET_EXTENT.GE(Extent.fromIntZeroExtend(totalCards / 8)));
+    }
+    if (!containsCard(block, card)) {
+      MarkBlock.setRemSetSize(block, MarkBlock.remSetSize(block) + 1);
     }
     Address cardTable = RemSet.of(block);
     int index = hash(card);
@@ -179,8 +180,29 @@ public class RemSet {
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
         if (!object.isNull()) {
-          // if (Space.getSpaceForObject(object) instanceof MarkBlockSpace && !MarkBlockSpace.Header.isMarked(object)) return;
+          if (!redirectPointerTrace.isLive(object)) {
+            //Log.writeln("Skip dead object ", object);
+            return;
+          } else {
+            //Log.writeln("Scan ", object);
+          }
+
+          //Log.write("Scan ", object);
+          //Log.write(" header ");
+          //Log.write(VM.objectModel.readAvailableBitsWord(object));
+          //Log.writeln(" markState ", MarkBlockSpace.Header.markState);
+          //redirectPointerTrace.traceObject(object);
+          //redirectPointerTrace.scanObject(object);
           VM.scanning.scanObject(redirectPointerTrace, object);
+        }
+      }
+    };
+
+    protected LinearScan clearDeadMarkLinearScan = new LinearScan() {
+      @Override @Uninterruptible public void scan(ObjectReference object) {
+        Space space = Space.getSpaceForObject(object);
+        if (space instanceof MarkBlockSpace && !space.isLive(object) && !MarkBlock.relocationRequired(MarkBlock.of(object))) {
+          VM.objectModel.writeAvailableByte(object, (byte) 0);
         }
       }
     };
@@ -197,7 +219,7 @@ public class RemSet {
               Log.writeln(" ~> ", newObj);
           }
           if (!currentCard.isZero())
-            RemSet.addCard(MarkBlock.of(newObj.toAddress()), currentCard);
+            RemSet.addCard(MarkBlock.of(newObj), currentCard);
           return newObj;
         }
         return object;
@@ -217,23 +239,24 @@ public class RemSet {
         if (index >= totalCards) break;
         Address c = VM.HEAP_START.plus(index << MarkBlock.Card.LOG_BYTES_IN_CARD);
 
+        if (!Space.isMappedAddress(c)) continue;
         if (Space.isInSpace(markBlockSpace.getDescriptor(), c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
           continue;
         }
-        if (!Space.isMappedAddress(c)) continue;
         if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
+        //if (Space.isInSpace(markBlockSpace.getDescriptor(), c)) MarkBlock.Card.linearScan(clearDeadMarkLinearScan, c);
 
         for (int j = 0; j < relocationSet.length(); j++) {
           Address block = relocationSet.get(j);
           if (containsCard(block, c)) {
             if (VM.VERIFY_ASSERTIONS) {
-              Log.write("Linear scan card ", c);
+              /*Log.write("Linear scan card ", c);
               Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
               Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
               Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
               Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
               Log.write(" in space: ");
-              Log.writeln(Space.getSpaceForAddress(c).getName());
+              Log.writeln(Space.getSpaceForAddress(c).getName());*/
             }
             currentCard = c;
             MarkBlock.Card.linearScan(cardLinearScan, c);
@@ -290,7 +313,7 @@ public class RemSet {
               Log.writeln(" ~ ", MarkBlock.getCursor(b));
             }
             MarkBlock.linearScan(cardLinearScan, b);
-            MarkBlock.mark(b, true);
+            //MarkBlock.mark(b, true);
           }
         }
       }

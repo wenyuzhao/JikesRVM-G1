@@ -2,9 +2,8 @@ package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.RemSet;
-import org.mmtk.policy.Space;
+import org.mmtk.policy.*;
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -14,7 +13,7 @@ import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
 public class PureG1RedirectTraceLocal extends TraceLocal {
-
+  boolean log = false;
   RemSet.Processor processor = new RemSet.Processor(this);
 
   public void linearUpdatePointers(AddressArray relocationSet, boolean concurrent) {
@@ -36,15 +35,49 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
+    ObjectReference oldRef = slot.loadObjectReference();
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!oldRef.isNull()) VM.debugging.validRef(oldRef);
+    }
+    /*Log.write("START processEdge ", source);
+    Log.write(".", slot);
+    Log.write(": ");
+    Log.write(oldRef);
+    Log.write(" ");
+    Log.write(oldRef.isNull() ? "null" : Space.getSpaceForObject(oldRef).getName());
+    Log.writeln(isLive(oldRef) ? " live" : " dead");*/
     super.processEdge(source, slot);
+
     ObjectReference ref = slot.loadObjectReference();
-    if (!ref.isNull() && Space.isInSpace(PureG1.MC, ref)) {
+    /*Log.write("END processEdge ", source);
+    Log.write(".", slot);
+    Log.write(": ");
+    Log.write(ref);
+    Log.write(" ");
+    Log.write(ref.isNull() ? "null" : Space.getSpaceForObject(ref).getName());
+    Log.writeln(ref.isNull() ? " null" : isLive(ref) ? " live" : " dead");*/
+    /*if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(ref.isNull() || isLive(ref));
+      if (!ref.isNull()) VM.debugging.validRef(ref);
+    }*/
+    if (!ref.isNull() && Space.isMappedObject(ref) && isLive(ref) && Space.isInSpace(PureG1.MC, ref)) {
       Address block = MarkBlock.of(VM.objectModel.objectStartRef(ref));
       if (block.NE(MarkBlock.of(VM.objectModel.objectStartRef(source)))) {
-        Address card = MarkBlock.Card.of(VM.objectModel.objectStartRef(source));
+        MarkBlock.Card.updateCardMeta(source);
+        Address card = MarkBlock.Card.of(source);
         RemSet.addCard(block, card);
       }
     }
+  }
+
+  @Inline
+  @Override
+  public void scanObject(ObjectReference object) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(VM.debugging.validRef(object));
+      VM.assertions._assert(isLive(object));
+    }
+    super.scanObject(object);
   }
 
   @Override
@@ -52,10 +85,34 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     //return processor.updateObject(object);
     if (object.isNull()) return object;
-    if (Space.isInSpace(PureG1.MC, object)) {
-      return PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC);
+    if (remSetsProcessing) {
+      if (!Space.isMappedObject(object) || !isLive(object)) return object;
     }
-    return object;
+    // Skip dead object
+    //if (!Space.isMappedObject(object)) return ObjectReference.nullReference();
+    //Space space = Space.getSpaceForObject(object);
+    //if (!space.isLive(object))
+
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!VM.debugging.validRef(object)) {
+        Log.writeln(isLive(object) ? " live" : " dead");
+      }
+      VM.assertions._assert(VM.debugging.validRef(object));
+    }
+    MarkBlock.Card.updateCardMeta(object);
+    if (Space.isInSpace(PureG1.MC, object)) {
+      ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC);
+      if (newObject.toAddress().NE(object.toAddress())) {
+        //Log.write("  ", object);
+        //Log.writeln(" => ", newObject);
+      }
+      MarkBlock.Card.updateCardMeta(newObject);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
+      return newObject;
+    }
+    ObjectReference ref = super.traceObject(object);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(ref));
+    return ref;
   }
 
   @Override
@@ -67,9 +124,24 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     }
   }
 
+  boolean remSetsProcessing = false;
+  boolean remSetsProcessed = false;
+
+  @Inline
+  public void completeTrace() {
+    remSetsProcessed = false;
+    super.completeTrace();
+    remSetsProcessed = false;
+  }
+
   @Override
   @Inline
   protected void processRememberedSets() {
-    processor.processRemSets(PureG1Collector.relocationSet, false, PureG1.markBlockSpace);
+    //if (!remSetsProcessed) {
+    remSetsProcessing = true;
+      processor.processRemSets(PureG1Collector.relocationSet, false, PureG1.markBlockSpace);
+    remSetsProcessing = false;
+      //remSetsProcessed = true;
+    //}
   }
 }

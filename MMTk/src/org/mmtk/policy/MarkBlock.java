@@ -28,7 +28,7 @@ public class MarkBlock {
   private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_BYTE;
   public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_BYTE;
-  //public static final int METADATA_MARK_OFFSET = METADATA_CURSOR_OFFSET + BYTES_IN_ADDRESS;
+  public static final int METADATA_REMSET_SIZE_OFFSET = METADATA_CURSOR_OFFSET + BYTES_IN_ADDRESS;
   public static final int METADATA_BYTES = 16;
   // Derived constants
   public static int METADATA_OFFSET_IN_REGION; // 0
@@ -126,6 +126,11 @@ public class MarkBlock {
   }
 
   @Inline
+  public static Address of(final ObjectReference ref) {
+    return of(VM.objectModel.objectStartRef(ref));
+  }
+
+  @Inline
   public static boolean isAligned(final Address address) {
     return address.EQ(align(address));
   }
@@ -163,6 +168,15 @@ public class MarkBlock {
     return metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET).loadInt();
   }
 
+  @Inline
+  public static void setRemSetSize(Address block, int size) {
+    set(metaDataOf(block, METADATA_REMSET_SIZE_OFFSET), size);
+  }
+  @Inline
+  public static int remSetSize(Address block) {
+    return metaDataOf(block, METADATA_RELOCATE_OFFSET).loadInt();
+  }
+
   static Lock blocksCountLock = VM.newLock("blocksCountLock");
   @Inline
   public static void register(Address block, boolean copy) {
@@ -174,7 +188,7 @@ public class MarkBlock {
     clearState(block);
     setAllocated(block, true);
     if (!copy) {
-      mark(block, true);
+      //mark(block, true);
     }
   }
 
@@ -224,7 +238,7 @@ public class MarkBlock {
   public static Address getCursor(Address block) {
     return metaDataOf(block, METADATA_CURSOR_OFFSET).loadAddress();
   }
-
+/*
   @Inline
   public static void mark(Address block, boolean state) {
     //metaDataOf(block, METADATA_MARK_OFFSET).store((byte) (state ? 1 : 0));
@@ -235,7 +249,7 @@ public class MarkBlock {
     return false;
     //return metaDataOf(block, METADATA_MARK_OFFSET).loadByte() != 0;
   }
-
+*/
 
   @Inline
   private static void clearState(Address block) {
@@ -243,7 +257,7 @@ public class MarkBlock {
     setRelocationState(block, false);
     setUsedSize(block, 0);
     setCursor(block, Address.zero());
-    mark(block, false);
+    setRemSetSize(block, 0);
   }
 
   @Inline
@@ -356,6 +370,11 @@ public class MarkBlock {
     @Inline
     public static Address of(Address address) {
       return address.toWord().and(CARD_MASK.not()).toAddress();
+    }
+
+    @Inline
+    public static Address of(ObjectReference ref) {
+      return of(VM.objectModel.objectStartRef(ref));
     }
 
     @Inline
@@ -548,7 +567,7 @@ public class MarkBlock {
         Log.writeln(Space.getSpaceForAddress(card).getName());
       }
       do {
-        if (ref.isNull()) break;
+        //if (ref.isNull()) break;
 
         if (log) {
           VM.objectModel.dumpObject(ref);
@@ -600,6 +619,7 @@ public class MarkBlock {
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
         }
 
+        //if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(ref);
         scan.scan(ref);
 
         if (currentObjectEnd.GE(end)) {

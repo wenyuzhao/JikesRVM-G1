@@ -40,6 +40,8 @@ public final class Options {
   public static FragmentationStats fragmentationStats;
   public static FullHeapSystemGC fullHeapSystemGC;
   public static G1GCLiveThresholdPercent g1GCLiveThresholdPercent;
+  public static G1InitiatingHeapOccupancyPercent g1InitiatingHeapOccupancyPercent;
+  public static G1ReservePercent g1ReservePercent;
   public static GCspyPort gcspyPort;
   public static GCspyTileSize gcspyTileSize;
   public static GCspyWait gcspyWait;
