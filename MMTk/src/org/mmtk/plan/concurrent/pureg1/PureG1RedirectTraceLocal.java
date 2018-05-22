@@ -86,20 +86,21 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     //return processor.updateObject(object);
     if (object.isNull()) return object;
     if (remSetsProcessing) {
-      if (!Space.isMappedObject(object) || !isLive(object)) return object;
-    }
-    // Skip dead object
-    //if (!Space.isMappedObject(object)) return ObjectReference.nullReference();
-    //Space space = Space.getSpaceForObject(object);
-    //if (!space.isLive(object))
+      //if (!Space.isMappedObject(object)) return object;
+    } else {
+      // Skip dead object
+      //if (!Space.isMappedObject(object)) return ObjectReference.nullReference();
+      //Space space = Space.getSpaceForObject(object);
+      //if (!space.isLive(object))
 
-    if (VM.VERIFY_ASSERTIONS) {
-      if (!VM.debugging.validRef(object)) {
-        Log.writeln(isLive(object) ? " live" : " dead");
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!VM.debugging.validRef(object)) {
+          Log.writeln(isLive(object) ? " live" : " dead");
+        }
+        VM.assertions._assert(VM.debugging.validRef(object));
       }
-      VM.assertions._assert(VM.debugging.validRef(object));
     }
-    MarkBlock.Card.updateCardMeta(object);
+
     if (Space.isInSpace(PureG1.MC, object)) {
       ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC);
       if (newObject.toAddress().NE(object.toAddress())) {
@@ -109,6 +110,8 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       MarkBlock.Card.updateCardMeta(newObject);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
       return newObject;
+    } else {
+      if (remSetsProcessing) return object;
     }
     ObjectReference ref = super.traceObject(object);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(ref));

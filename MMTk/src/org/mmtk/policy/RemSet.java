@@ -180,12 +180,12 @@ public class RemSet {
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
         if (!object.isNull()) {
-          if (!redirectPointerTrace.isLive(object)) {
+          /*if (!redirectPointerTrace.isLive(object)) {
             //Log.writeln("Skip dead object ", object);
             return;
           } else {
             //Log.writeln("Scan ", object);
-          }
+          }*/
 
           //Log.write("Scan ", object);
           //Log.write(" header ");
