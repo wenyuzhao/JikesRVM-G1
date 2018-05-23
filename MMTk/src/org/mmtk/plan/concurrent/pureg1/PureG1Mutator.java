@@ -144,20 +144,20 @@ public class PureG1Mutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == PureG1.RELEASE) {
+    if (phaseId == PureG1.MARK_RELEASE) {
       mc.reset();
-      super.collectionPhase(phaseId, primary);
+      super.collectionPhase(PureG1.RELEASE, primary);
+      return;
+    }
+
+    if (phaseId == PureG1.RELEASE) {
+      //mc.reset();
+      //super.collectionPhase(phaseId, primary);
       return;
     }
 
     if (phaseId == PureG1.RELOCATION_SET_SELECTION_PREPARE) {
       mc.reset();
-      return;
-    }
-
-    if (phaseId == PureG1.PREPARE_EVACUATION) {
-      //Log.writeln("Mutator #", getId());
-      //enqueueCurrentRSBuffer();
       return;
     }
 
@@ -244,8 +244,10 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
+
     Address value = VM.objectModel.objectStartRef(ref);
     if (VM.VERIFY_ASSERTIONS) {
+      //VM.assertions._assert(!Plan.gcInProgress());
       if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
         Log.write(src);
         Log.write(".", slot);

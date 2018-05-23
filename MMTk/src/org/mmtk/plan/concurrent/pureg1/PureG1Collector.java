@@ -152,9 +152,13 @@ public class PureG1Collector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == PureG1.RELEASE) {
+    if (phaseId == PureG1.MARK_RELEASE) {
       markTrace.completeTrace();
       markTrace.release();
+      return;
+    }
+
+    if (phaseId == PureG1.RELEASE) {
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -172,7 +176,7 @@ public class PureG1Collector extends ConcurrentCollector {
       }
       return;
     }
-
+/*
     if (phaseId == PureG1.PREPARE_EVACUATION) {
       if (VM.activePlan.collector().getId() == 0) {
         VM.activePlan.resetMutatorIterator();
@@ -186,6 +190,7 @@ public class PureG1Collector extends ConcurrentCollector {
       rendezvous();
       return;
     }
+*/
 /*
     if (phaseId == PureG1.EVACUATION) {
       if (VM.VERIFY_ASSERTIONS) {

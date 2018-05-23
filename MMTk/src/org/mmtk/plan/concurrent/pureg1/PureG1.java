@@ -97,9 +97,10 @@ public class PureG1 extends Concurrent {
     Phase.scheduleCollector(RELOCATION_SET_SELECTION)
   );
   //public static final short EVACUATION = Phase.createSimple("evacuation");
-  public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
+  //public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
+  public static final short MARK_RELEASE = Phase.createSimple("mark-release");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleMutator  (REDIRECT_PREPARE),
@@ -112,19 +113,19 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (ROOTS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
-      Phase.scheduleMutator  (REMEMBERED_SETS),
+      /*Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
-      Phase.scheduleMutator  (REMEMBERED_SETS),
+      /*Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
     Phase.scheduleCollector(WEAK_REFS),
     Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
@@ -155,9 +156,14 @@ public class PureG1 extends Concurrent {
     //Phase.scheduleComplex   (refTypeClosurePhase),
     //Phase.scheduleComplex   (forwardPhase),
 
+
+      Phase.scheduleMutator  (MARK_RELEASE),
+      Phase.scheduleCollector(MARK_RELEASE),
+      Phase.scheduleGlobal   (MARK_RELEASE),
+
     Phase.scheduleComplex   (relocationSetSelection),
-    Phase.scheduleMutator   (PREPARE_EVACUATION),
-    Phase.scheduleCollector (PREPARE_EVACUATION),
+    //Phase.scheduleMutator   (PREPARE_EVACUATION),
+    //Phase.scheduleCollector (PREPARE_EVACUATION),
 
     Phase.scheduleComplex   (relocationPhase),
 
@@ -196,9 +202,14 @@ public class PureG1 extends Concurrent {
       //markTrace.prepare();
       return;
     }
-    if (phaseId == RELEASE) {
+
+    if (phaseId == MARK_RELEASE) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       markTrace.release();
+      return;
+    }
+
+    if (phaseId == RELEASE) {
       markBlockSpace.release();
       super.collectionPhase(phaseId);
       return;
@@ -210,6 +221,14 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_PREPARE) {
+      stacksPrepared = false;
+      VM.activePlan.resetMutatorIterator();
+      PureG1Mutator m;
+      while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+        m.enqueueCurrentRSBuffer();
+      }
+      ConcurrentRemSetRefinement.refineAll();
+      CardTable.assertAllCardsAreNotMarked();
       //super.collectionPhase(PREPARE);
       //ConcurrentRemSetRefinement.refineAll();
       //CardTable.assertAllCardsAreNotMarked();
