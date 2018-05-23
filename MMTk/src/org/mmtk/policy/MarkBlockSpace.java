@@ -361,9 +361,9 @@ public final class MarkBlockSpace extends Space {
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
     ObjectReference rtn = object;
 
-    if (ForwardingWord.isForwarded(object)) {
+    /*if (ForwardingWord.isForwarded(object)) {
       rtn = getForwardingPointer(object);
-    }
+    }*/
     if (VM.VERIFY_ASSERTIONS) {
       if (ForwardingWord.isForwardedOrBeingForwarded(rtn)) {
         Log.write(rtn);
