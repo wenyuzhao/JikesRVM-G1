@@ -138,7 +138,7 @@ public class PureG1Collector extends ConcurrentCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    Log.writeln(Phase.getName(phaseId));
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!global().markTrace.hasWork());
       currentTrace = markTrace;
@@ -228,7 +228,6 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       redirectTrace.completeTrace();
-      rendezvous();
       redirectTrace.remSetsProcessing = false;
       //redirectTrace.processRoots();
       return;
@@ -293,9 +292,9 @@ public class PureG1Collector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 CONCURRENT_CLOSURE");
       super.concurrentCollectionPhase(phaseId);
       return;
     }

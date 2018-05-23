@@ -1,5 +1,6 @@
 package org.mmtk.plan.concurrent.pureg1;
 
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.*;
@@ -90,27 +91,35 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
-    //return processor.updateObject(object);
     if (object.isNull()) return object;
+
+    if (remSetsProcessing) {
+      if (Space.isInSpace(PureG1.MC, object)) {
+        ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+        return newObject;
+      }
+      return object;
+    } else {
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
+        VM.assertions._assert(VM.debugging.validRef(object));
+      }
+      if (Space.isInSpace(PureG1.MC, object)) {
+        ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+        MarkBlock.Card.updateCardMeta(newObject);
+        VM.assertions._assert(isLive(newObject));
+        return newObject;
+      }
+      ObjectReference ref = super.traceObject(object);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(ref));
+      return ref;
+    }
+/*
     if (remSetsProcessing) {
       if (!Space.isMappedObject(object)) {
         return object;//ObjectReference.nullReference();
       }
-      //if (!isLive(object)) return object;
-      if (Space.isInSpace(PureG1.MC, object)) {
-        /*if (!(ForwardingWord.isForwardedOrBeingForwarded(object) || isLive(object))) {
-          VM.objectModel.dumpObject(object);
-          Log.writeln(isLive(object) ? "live" : "dead");
-          Log.writeln(ForwardingWord.isForwardedOrBeingForwarded(object) ? "isForwardedOrBeingForwarded" : "NOT isForwardedOrBeingForwarded");
-        }
-        VM.assertions._assert(ForwardingWord.isForwardedOrBeingForwarded(object) || isLive(object));*/
-      }
     } else {
-      // Skip dead object
-      //if (!Space.isMappedObject(object)) return ObjectReference.nullReference();
-      //Space space = Space.getSpaceForObject(object);
-      //if (!space.isLive(object))
-
       if (VM.VERIFY_ASSERTIONS) {
         if (!VM.debugging.validRef(object)) {
           Log.writeln(isLive(object) ? " live" : " dead");
@@ -120,28 +129,20 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     }
 
     if (!remSetsProcessing) {
-      //Log.write("  ", object);
-      //Log.writeln(" => ", newObject);
       MarkBlock.Card.updateCardMeta(object);
     }
     if (Space.isInSpace(PureG1.MC, object)) {
-      //if (remSetsProcessing) Log.writeln(">>>");
-      //if (remSetsProcessing && !isLive(object)) return object;
       ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, !remSetsProcessing);
       if (!remSetsProcessing) {
-        //Log.write("  ", object);
-        //Log.writeln(" => ", newObject);
         MarkBlock.Card.updateCardMeta(newObject);
       }
-      //if (remSetsProcessing) Log.writeln("<<<");
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
       return newObject;
     } else {
       if (remSetsProcessing) return object;
     }
     ObjectReference ref = super.traceObject(object);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(ref));
-    return ref;
+    return ref;*/
   }
 
   @Override

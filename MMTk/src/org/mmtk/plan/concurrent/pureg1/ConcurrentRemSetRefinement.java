@@ -53,7 +53,6 @@ import org.vmmagic.unboxed.Word;
 public class ConcurrentRemSetRefinement extends CollectorContext {
   private static final AddressArray[] filledRSBuffers = new AddressArray[16];
   private static int filledRSBuffersCursor = 0;
-  private static int dirtyCardSize = 0;
   private static final Lock filledRSBuffersLock = VM.newLock("filledRSBuffersLock ");
 
   private static Monitor lock;
@@ -78,12 +77,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   @UninterruptibleNoWarn
   @Inline
   public static void enqueueFilledRSBuffer(AddressArray buf) {
-    //Log.write("enqueueFilledRSBuffer {");
-    //Log.flush();
-
     filledRSBuffersLock.acquire();
     if (filledRSBuffersCursor < filledRSBuffers.length) {
-      //VM.barriers.objectArrayStoreNoGCBarrier(filledRSBuffers, filledRSBuffersCursor++, buf);
       filledRSBuffers[filledRSBuffersCursor++] = buf;
       if (filledRSBuffersCursor >= filledRSBuffers.length) {
         ConcurrentRemSetRefinement.trigger();
@@ -93,11 +88,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       filledRSBuffersLock.release();
       refineSingleBuffer(buf);
     }
-
-    //refineSingleBuffer(buf);
-
-    //Log.writeln("}");
-    //Log.flush();
   }
 
   public static void trigger() {

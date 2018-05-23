@@ -105,6 +105,7 @@ public class PureG1 extends Concurrent {
     Phase.scheduleMutator  (REDIRECT_PREPARE),
     Phase.scheduleGlobal   (REDIRECT_PREPARE),
     Phase.scheduleCollector(REDIRECT_PREPARE),
+    Phase.scheduleComplex  (prepareStacks),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
@@ -119,18 +120,27 @@ public class PureG1 extends Concurrent {
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(WEAK_REFS),
     Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleComplex  (forwardPhase),
     Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
-    Phase.scheduleGlobal   (REDIRECT_RELEASE),
+    Phase.scheduleGlobal   (REDIRECT_RELEASE)
 
 
-    Phase.scheduleComplex  (completeClosurePhase)
 
     //Phase.scheduleComplex(Validation.validationPhase)
   );
@@ -142,16 +152,16 @@ public class PureG1 extends Concurrent {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex   (rootClosurePhase),
-
     //Phase.scheduleComplex   (refTypeClosurePhase),
     //Phase.scheduleComplex   (forwardPhase),
 
     Phase.scheduleComplex   (relocationSetSelection),
     Phase.scheduleMutator   (PREPARE_EVACUATION),
     Phase.scheduleCollector (PREPARE_EVACUATION),
-    //Phase.scheduleCollector (EVACUATION),
 
     Phase.scheduleComplex   (relocationPhase),
+
+    Phase.scheduleComplex  (completeClosurePhase),
 
     Phase.scheduleCollector(CLEANUP_BLOCKS),
 
@@ -183,7 +193,7 @@ public class PureG1 extends Concurrent {
     }
     if (phaseId == CLOSURE) {
       concurrentMarkingInProgress = false;
-      markTrace.prepare();
+      //markTrace.prepare();
       return;
     }
     if (phaseId == RELEASE) {
@@ -217,7 +227,7 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_CLOSURE) {
-      redirectTrace.prepare();
+      //redirectTrace.prepare();
       return;
     }
 

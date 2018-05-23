@@ -142,7 +142,7 @@ public class Validation extends TraceLocal {
         Log.writeln(" is in released block");
         VM.assertions._assert(false);
       }
-      return PureG1.markBlockSpace.traceRedirectObject(this, object);
+      return PureG1.markBlockSpace.traceMarkObject(this, object);
     }
     return super.traceObject(object);
   }

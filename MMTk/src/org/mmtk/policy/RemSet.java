@@ -244,18 +244,7 @@ public class RemSet {
         for (int j = 0; j < relocationSet.length(); j++) {
           Address block = relocationSet.get(j);
           if (containsCard(block, c)) {
-            /*if (VM.VERIFY_ASSERTIONS) {
-              Log.write("Linear scan card ", c);
-              Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
-              Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
-              Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
-              Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
-              Log.write(" in space: ");
-              Log.writeln(Space.getSpaceForAddress(c).getName());
-            }*/
-            currentCard = c;
             MarkBlock.Card.linearScan(cardLinearScan, c);
-            currentCard = Address.zero();
             break;
           }
         }
