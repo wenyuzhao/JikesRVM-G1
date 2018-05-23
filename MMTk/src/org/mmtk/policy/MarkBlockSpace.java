@@ -359,19 +359,6 @@ public final class MarkBlockSpace extends Space {
    */
   @Inline
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
-    if (VM.VERIFY_ASSERTIONS) {
-      Address objEnd = VM.objectModel.getObjectEndAddress(object);
-      Address block = MarkBlock.of(object);
-      Address limit = MarkBlock.getCursor(block);
-      /*if (objEnd.GT(limit)) {
-        Log.write("object ", object);
-        Log.write(" ", VM.objectModel.objectStartRef(object));
-        Log.write("..<", objEnd);
-        Log.write(" GT ", limit);
-        Log.writeln(" in block ", block);
-      }
-      VM.assertions._assert(objEnd.LE(limit));*/
-    }
     ObjectReference rtn = object;
 
     if (ForwardingWord.isForwarded(object)) {
@@ -421,16 +408,11 @@ public final class MarkBlockSpace extends Space {
   }
 
   @Inline
-  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator) {
+  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean mark) {
     if (MarkBlock.relocationRequired(MarkBlock.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-        if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
-        if (VM.VERIFY_ASSERTIONS) {
-          //Log.write(object);
-          //Log.writeln(" ~> ", newObject);
-        }
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         return newObject;
       } else {
@@ -449,14 +431,13 @@ public final class MarkBlockSpace extends Space {
         trace.processNode(newObject);
         return newObject;
       }
-    } else if (ForwardingWord.isForwarded(object)) {
-      return MarkBlockSpace.getForwardingPointer(object);
     } else {
+      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       if (Header.testAndMark(object)) {
         //Log.writeln("EvaMark ", object);
-        trace.processNode(object);
+        if (mark) trace.processNode(object);
       }
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;
     }
   }

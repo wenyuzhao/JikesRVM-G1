@@ -19,7 +19,6 @@ import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
-import org.mmtk.utility.options.G1GCLiveThresholdPercent;
 import org.mmtk.utility.options.G1InitiatingHeapOccupancyPercent;
 import org.mmtk.utility.options.G1ReservePercent;
 import org.mmtk.utility.options.Options;
@@ -74,7 +73,7 @@ public class PureG1 extends Concurrent {
     smallCodeSpace.makeAllocAsMarked();
     nonMovingSpace.makeAllocAsMarked();
   }
-
+  static boolean log = false;
   /**
    *
    */
@@ -97,22 +96,26 @@ public class PureG1 extends Concurrent {
     Phase.scheduleMutator  (RELOCATION_SET_SELECTION_PREPARE),
     Phase.scheduleCollector(RELOCATION_SET_SELECTION)
   );
-  public static final short EVACUATION = Phase.createSimple("evacuation");
+  //public static final short EVACUATION = Phase.createSimple("evacuation");
   public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+  public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleMutator  (REDIRECT_PREPARE),
     Phase.scheduleGlobal   (REDIRECT_PREPARE),
     Phase.scheduleCollector(REDIRECT_PREPARE),
-    //Phase.scheduleMutator  (PREPARE_STACKS),
-    //Phase.scheduleGlobal   (PREPARE_STACKS),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
@@ -198,15 +201,23 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REDIRECT_PREPARE) {
       //super.collectionPhase(PREPARE);
-      ConcurrentRemSetRefinement.refineAll();
-      CardTable.assertAllCardsAreNotMarked();
+      //ConcurrentRemSetRefinement.refineAll();
+      //CardTable.assertAllCardsAreNotMarked();
       redirectTrace.prepare();
       //markBlockSpace.prepare();
       return;
     }
 
+    if (phaseId == REMEMBERED_SETS) {
+      //super.collectionPhase(PREPARE);
+      ConcurrentRemSetRefinement.refineAll();
+      if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
+      //markBlockSpace.prepare();
+      return;
+    }
+
     if (phaseId == REDIRECT_CLOSURE) {
-      //relocateTrace.prepare();
+      redirectTrace.prepare();
       return;
     }
 

@@ -3,10 +3,13 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 //import org.mmtk.plan.markcopy.remset.MarkCopy;
+import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.concurrent.pureg1.PureG1;
 import org.mmtk.plan.concurrent.pureg1.PureG1RedirectTraceLocal;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
@@ -193,16 +196,8 @@ public class RemSet {
           //Log.writeln(" markState ", MarkBlockSpace.Header.markState);
           //redirectPointerTrace.traceObject(object);
           //redirectPointerTrace.scanObject(object);
-          VM.scanning.scanObject(redirectPointerTrace, object);
-        }
-      }
-    };
-
-    protected LinearScan clearDeadMarkLinearScan = new LinearScan() {
-      @Override @Uninterruptible public void scan(ObjectReference object) {
-        Space space = Space.getSpaceForObject(object);
-        if (space instanceof MarkBlockSpace && !space.isLive(object) && !MarkBlock.relocationRequired(MarkBlock.of(object))) {
-          VM.objectModel.writeAvailableByte(object, (byte) 0);
+          //if (redirectPointerTrace.isLive(object))
+            VM.scanning.scanObject(redirectPointerTrace, object);
         }
       }
     };
@@ -249,15 +244,15 @@ public class RemSet {
         for (int j = 0; j < relocationSet.length(); j++) {
           Address block = relocationSet.get(j);
           if (containsCard(block, c)) {
-            if (VM.VERIFY_ASSERTIONS) {
-              /*Log.write("Linear scan card ", c);
+            /*if (VM.VERIFY_ASSERTIONS) {
+              Log.write("Linear scan card ", c);
               Log.write(", range ", MarkBlock.Card.getCardAnchor(c));
               Log.write(" ..< ", MarkBlock.Card.getCardLimit(c));
               Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(c)));
               Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(c)));
               Log.write(" in space: ");
-              Log.writeln(Space.getSpaceForAddress(c).getName());*/
-            }
+              Log.writeln(Space.getSpaceForAddress(c).getName());
+            }*/
             currentCard = c;
             MarkBlock.Card.linearScan(cardLinearScan, c);
             currentCard = Address.zero();
@@ -348,6 +343,101 @@ public class RemSet {
       if (!block.isZero()) {
         clearRemsetMetaForBlock(block);
       }
+    }
+  }
+
+  private static int DESC = 0;
+
+  protected static LinearScan assertNoPointersToCSetLinearScan = new LinearScan() {
+    TransitiveClosure transitiveClosure = new TransitiveClosure() {
+      @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
+        ObjectReference ref = slot.loadObjectReference();
+        if (ref.isNull() || !Space.isMappedObject(ref) || !Space.isInSpace(DESC, ref)) return;
+        //if (!PureG1.markBlockSpace.isLive(source)) return;
+
+        Address block = MarkBlock.of(ref);
+        if (block.EQ(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(ref)))) return;
+        if (MarkBlock.relocationRequired(block) || !MarkBlock.allocated(block)) {
+          VM.objectModel.dumpObject(source);
+          VM.objectModel.dumpObject(ref);
+          Log.write("Invalid reference ", source);
+          Log.write(PureG1.markBlockSpace.isLive(source) ? "(live)" : "(dead)");
+          Log.write(".", slot);
+          Log.write(" = ", ref);
+          Log.writeln(PureG1.markBlockSpace.isLive(ref) ? "(live)" : "(dead)");
+          Log.write("Card ", MarkBlock.Card.of(source));
+          if (RemSet.containsCard(block, MarkBlock.Card.of(source))) {
+            Log.writeln(" is in the remset of block ", block);
+          } else {
+            Log.writeln(" is not in the remset of block ", block);
+          }
+        }
+        VM.assertions._assert(!(MarkBlock.relocationRequired(block) || !MarkBlock.allocated(block)));
+      }
+    };
+    @Override @Uninterruptible public void scan(ObjectReference object) {
+      VM.scanning.scanObject(transitiveClosure, object);
+    }
+  };
+
+  public static void assertNoPointersToCSet(MarkBlockSpace space, AddressArray cset) {
+    DESC = space.getDescriptor();
+    int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+    for (int i = 0; i < totalCards; i++) {
+      Address c = VM.HEAP_START.plus(i << MarkBlock.Card.LOG_BYTES_IN_CARD);
+
+      if (!Space.isMappedAddress(c)) continue;
+      if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
+
+      if (Space.isInSpace(DESC, c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
+        continue;
+      }
+
+      MarkBlock.Card.linearScan(assertNoPointersToCSetLinearScan, c);
+    }
+  }
+
+  protected static LinearScan assertPointersToCSetAreAllInRSetLinearScan = new LinearScan() {
+    TransitiveClosure transitiveClosure = new TransitiveClosure() {
+      @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
+        ObjectReference ref = slot.loadObjectReference();
+        if (ref.isNull() || !Space.isMappedObject(ref) || !Space.isInSpace(DESC, ref)) return;
+        Address block = MarkBlock.of(ref);
+        Address sourceBlock = MarkBlock.of(source);
+        if (sourceBlock.EQ(block)) return;
+        if (MarkBlock.relocationRequired(block)) {
+          if (!RemSet.containsCard(block, MarkBlock.Card.of(source))) {
+            Log.write("Invalid reference ", source);
+            Log.write(PureG1.markBlockSpace.isLive(source) ? "(live)" : "(dead)");
+            Log.write(".", slot);
+            Log.write(" = ", ref);
+            Log.writeln(PureG1.markBlockSpace.isLive(ref) ? "(live)" : "(dead)");
+            Log.write("Card ", MarkBlock.Card.of(source));
+            Log.writeln(" is not in the remset of block ", block);
+          }
+          VM.assertions._assert(RemSet.containsCard(block, MarkBlock.Card.of(source)));
+        }
+      }
+    };
+    @Override @Uninterruptible public void scan(ObjectReference object) {
+      VM.scanning.scanObject(transitiveClosure, object);
+    }
+  };
+
+  public static void assertPointersToCSetAreAllInRSet(MarkBlockSpace space, AddressArray cset) {
+    DESC = space.getDescriptor();
+    int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+    for (int i = 0; i < totalCards; i++) {
+      Address c = VM.HEAP_START.plus(i << MarkBlock.Card.LOG_BYTES_IN_CARD);
+
+      if (!Space.isMappedAddress(c)) continue;
+      if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
+
+      if (Space.isInSpace(DESC, c) && MarkBlock.relocationRequired(MarkBlock.of(c))) {
+        continue;
+      }
+
+      MarkBlock.Card.linearScan(assertPointersToCSetAreAllInRSetLinearScan, c);
     }
   }
 

@@ -23,9 +23,11 @@ import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.Pure;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
@@ -105,8 +107,10 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.writeln(" ~ ", VM.objectModel.getObjectEndAddress(object));
     MarkBlock.Card.updateCardMeta(object);
     if (allocator == PureG1.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS)
+      if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(Space.isInSpace(PureG1.MC, object) && MarkBlock.allocated(MarkBlock.of(VM.objectModel.objectStartRef(object))));
+        VM.assertions._assert(MarkBlock.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
+      }
       PureG1.markBlockSpace.postAlloc(object, bytes);
       //if (barrierActive) Log.writeln("Alloc(Conc Mark) ", object);
       //else if (Plan.gcInProgress()) Log.writeln("Alloc(STW) ", object);
@@ -154,6 +158,12 @@ public class PureG1Mutator extends ConcurrentMutator {
     if (phaseId == PureG1.PREPARE_EVACUATION) {
       //Log.writeln("Mutator #", getId());
       //enqueueCurrentRSBuffer();
+      return;
+    }
+
+    if (phaseId == PureG1.REMEMBERED_SETS) {
+      //Log.writeln("Mutator #", getId());
+      enqueueCurrentRSBuffer();
       return;
     }
 
@@ -247,6 +257,12 @@ public class PureG1Mutator extends ConcurrentMutator {
         Log.writeln(", which is in released block ", MarkBlock.of(value));
         VM.assertions._assert(false);
       }
+    }
+    if (PureG1.log) {
+      Log.write(src);
+      Log.write(".", slot);
+      Log.write(" = ");
+      Log.writeln(value);
     }
     //Log.write(src);
     //Log.write(".", slot);

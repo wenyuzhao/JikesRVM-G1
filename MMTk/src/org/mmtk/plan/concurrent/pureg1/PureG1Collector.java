@@ -20,6 +20,7 @@ import org.mmtk.policy.MarkBlockSpace;
 import org.mmtk.policy.RemSet;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.MarkBlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -110,6 +111,7 @@ public class PureG1Collector extends ConcurrentCollector {
       int bytes, int allocator) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == PureG1.ALLOC_DEFAULT);
 
+    VM.assertions._assert(MarkBlock.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
     MarkBlock.Card.updateCardMeta(object);
     PureG1.markBlockSpace.postCopy(object, bytes);
 
@@ -138,7 +140,6 @@ public class PureG1Collector extends ConcurrentCollector {
   public void collectionPhase(short phaseId, boolean primary) {
     Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 PREPARE");
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!global().markTrace.hasWork());
       currentTrace = markTrace;
       markTrace.prepare();
@@ -147,13 +148,11 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.CLOSURE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 CLOSURE");
       markTrace.completeTrace();
       return;
     }
 
     if (phaseId == PureG1.RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 RELEASE");
       markTrace.completeTrace();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
@@ -161,14 +160,12 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.RELOCATION_SET_SELECTION_PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 RELOCATION_SET_SELECTION_PREPARE");
       copy.reset();
       MarkBlockSpace.prepareComputeRelocationBlocks();
       return;
     }
 
     if (phaseId == PureG1.RELOCATION_SET_SELECTION) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 RELOCATION_SET_SELECTION");
       AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, false);
       if (relocationSet != null) {
         PureG1Collector.relocationSet = relocationSet;
@@ -177,7 +174,6 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.PREPARE_EVACUATION) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 PREPARE_EVACUATION");
       if (VM.activePlan.collector().getId() == 0) {
         VM.activePlan.resetMutatorIterator();
         PureG1Mutator m;
@@ -190,7 +186,7 @@ public class PureG1Collector extends ConcurrentCollector {
       rendezvous();
       return;
     }
-
+/*
     if (phaseId == PureG1.EVACUATION) {
       if (VM.VERIFY_ASSERTIONS) {
         Log.writeln("G1 EVACUATION");
@@ -199,9 +195,8 @@ public class PureG1Collector extends ConcurrentCollector {
       //RemSet.evacuateBlocks(relocationSet, false);
       return;
     }
-
+*/
     if (phaseId == PureG1.REDIRECT_PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_PREPARE");
       currentTrace = redirectTrace;
       //redirectTrace.log = true;
       redirectTrace.prepare();
@@ -210,45 +205,55 @@ public class PureG1Collector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == PureG1.REDIRECT_CLOSURE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_CLOSURE");
-      VM.activePlan.resetMutatorIterator();
-      PureG1Mutator m;
-      while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.enqueueCurrentRSBuffer();
+    if (phaseId == PureG1.REMEMBERED_SETS) {
+      if (rendezvous() == 0) {
+        VM.activePlan.resetMutatorIterator();
+        PureG1Mutator m;
+        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+          m.enqueueCurrentRSBuffer();
+        }
+        ConcurrentRemSetRefinement.refineAll();
+        CardTable.assertAllCardsAreNotMarked();
       }
-      ConcurrentRemSetRefinement.refineAll();
-      CardTable.assertAllCardsAreNotMarked();
-      //redirectTrace.processRoots();
-      //redirectTrace.log = false;
       rendezvous();
+      /*if (rendezvous() == 0) {
+        //RemSet.assertPointersToCSetAreAllInRSet(PureG1.markBlockSpace, relocationSet);
+        PureG1.log = true;
+      }
+      rendezvous();*/
+      redirectTrace.remSetsProcessing = true;
+      redirectTrace.processRemSets();
+      return;
+    }
+
+    if (phaseId == PureG1.REDIRECT_CLOSURE) {
       redirectTrace.completeTrace();
+      rendezvous();
+      redirectTrace.remSetsProcessing = false;
       //redirectTrace.processRoots();
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_CLOSURE Done.");
       return;
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("G1 REDIRECT_RELEASE");
+      /*if (rendezvous() == 0) {
+        //RemSet.assertNoPointersToCSet(PureG1.markBlockSpace, relocationSet);
+        PureG1.log = false;
+      }
+      rendezvous();*/
       redirectTrace.release();
       copy.reset();
       //super.collectionPhase(PureG1.RELEASE, primary);
-      MarkBlock.Card.clearCardMetaForUnmarkedCards(false);
+      MarkBlock.Card.clearCardMetaForUnmarkedCards(PureG1.markBlockSpace, false);
       return;
     }
 
     if (phaseId == PureG1.CLEANUP_BLOCKS) {
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.writeln("G1 CLEANUP_BLOCKS");
-        VM.assertions._assert(relocationSet != null);
-      }
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(relocationSet != null);
       RemSet.clearRemsetForRelocationSet(relocationSet, false);
       PureG1.markBlockSpace.cleanupBlocks(relocationSet, false);
       rendezvous();
       return;
     }
-
-
 
     if (phaseId == Validation.PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation PREPARE");

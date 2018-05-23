@@ -528,7 +528,7 @@ public class MarkBlock {
     }
 
     @Inline
-    public static void clearCardMetaForUnmarkedCards(boolean concurrent) {
+    public static void clearCardMetaForUnmarkedCards(MarkBlockSpace space, boolean concurrent) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -541,6 +541,7 @@ public class MarkBlock {
         Address c = VM.HEAP_START.plus(index << LOG_BYTES_IN_CARD);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(c));
         if (CardTable.cardIsMarked(c)) continue;
+        if (Space.isInSpace(space.getDescriptor(), c)) continue;
         clearCardMeta(c);
       }
     }

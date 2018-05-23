@@ -12,14 +12,17 @@
  */
 package org.mmtk.plan.concurrent.pureg1;
 
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.MarkBlock;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -44,6 +47,37 @@ public class PureG1MarkTraceLocal extends TraceLocal {
       return PureG1.markBlockSpace.isLive(object);
     }
     return super.isLive(object);
+  }
+
+  @Override
+  @Inline
+  public void processEdge(ObjectReference source, Address slot) {
+    VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));
+    ObjectReference object = slot.loadObjectReference();//VM.activePlan.global().loadObjectReference(slot);
+    if (!object.isNull() && Space.isInSpace(PureG1.MC, object)) {
+      if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+        VM.objectModel.dumpObject(source);
+        Log.write(Space.getSpaceForObject(source).getName());
+        Log.write(" object ", source);
+        Log.write(".", slot);
+        Log.write(": ", object);
+        Log.writeln(" is forwarded");
+        VM.assertions._assert(false);
+      }
+
+      Address block = MarkBlock.of(VM.objectModel.objectStartRef(object));
+      if (MarkBlock.relocationRequired(block)) {
+        VM.objectModel.dumpObject(source);
+        Log.write(Space.getSpaceForObject(source).getName());
+        Log.write(" object ", VM.objectModel.objectStartRef(source));
+        Log.write("  ", source);
+        Log.write(".", slot);
+        Log.write(": ", object);
+        Log.writeln(" is in released block and not forwarded");
+        VM.assertions._assert(false);
+      }
+    }
+    super.processEdge(source, slot);
   }
 
   @Override
