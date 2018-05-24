@@ -221,7 +221,7 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_PREPARE) {
-      stacksPrepared = false;
+      //stacksPrepared = false;
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {

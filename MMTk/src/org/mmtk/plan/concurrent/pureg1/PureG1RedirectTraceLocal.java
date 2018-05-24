@@ -104,6 +104,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
         if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
         VM.assertions._assert(VM.debugging.validRef(object));
       }
+      MarkBlock.Card.updateCardMeta(object);
       if (Space.isInSpace(PureG1.MC, object)) {
         ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
         MarkBlock.Card.updateCardMeta(newObject);
