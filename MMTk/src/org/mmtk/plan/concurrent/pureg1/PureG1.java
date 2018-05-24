@@ -184,7 +184,7 @@ public class PureG1 extends Concurrent {
     if (phaseId == RELEASE) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       markTrace.release();
-      markBlockSpace.release();
+      //markBlockSpace.release();
       //super.collectionPhase(phaseId);
       return;
     }
@@ -230,7 +230,7 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REDIRECT_RELEASE) {
       redirectTrace.release();
-      markBlockSpace.release();
+      //markBlockSpace.release();
       super.collectionPhase(RELEASE);
       return;
     }
