@@ -1,10 +1,8 @@
 package org.mmtk.plan.concurrent.pureg1;
 
-import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.*;
-import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -19,7 +17,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   RemSet.Processor processor = new RemSet.Processor(this);
 
   public void linearUpdatePointers(AddressArray relocationSet, boolean concurrent) {
-    processor.updatePointers(relocationSet, concurrent, PureG1.markBlockSpace);
+    processor.updatePointers(relocationSet, concurrent, PureG1.regionSpace);
   }
 
   public PureG1RedirectTraceLocal(Trace trace) {
@@ -30,7 +28,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(PureG1.MC, object)) {
-      return PureG1.markBlockSpace.isLive(object);
+      return PureG1.regionSpace.isLive(object);
     }
     return super.isLive(object);
   }
@@ -64,10 +62,10 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       if (!ref.isNull()) VM.debugging.validRef(ref);
     }*/
     if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
-      Address block = MarkBlock.of(VM.objectModel.objectStartRef(ref));
-      if (block.NE(MarkBlock.of(VM.objectModel.objectStartRef(source)))) {
-        MarkBlock.Card.updateCardMeta(source);
-        Address card = MarkBlock.Card.of(source);
+      Address block = Region.of(VM.objectModel.objectStartRef(ref));
+      if (block.NE(Region.of(VM.objectModel.objectStartRef(source)))) {
+        Region.Card.updateCardMeta(source);
+        Address card = Region.Card.of(source);
         RemSet.addCard(block, card);
       }
     }
@@ -93,14 +91,14 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     /*if (Space.isInSpace(PureG1.MC, object) && MarkBlock.relocationRequired(MarkBlock.of(object))) {
-      ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+      ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
       return newObject;
     }
     return object;*/
 
     if (remSetsProcessing) {
       if (Space.isInSpace(PureG1.MC, object)) {
-        ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+        ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
         return newObject;
       }
       return object;
@@ -109,10 +107,10 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
         if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
         VM.assertions._assert(VM.debugging.validRef(object));
       }
-      MarkBlock.Card.updateCardMeta(object);
+      Region.Card.updateCardMeta(object);
       if (Space.isInSpace(PureG1.MC, object)) {
-        ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
-        MarkBlock.Card.updateCardMeta(newObject);
+        ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+        Region.Card.updateCardMeta(newObject);
         VM.assertions._assert(isLive(newObject));
         return newObject;
       }
@@ -139,7 +137,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       MarkBlock.Card.updateCardMeta(object);
     }
     if (Space.isInSpace(PureG1.MC, object)) {
-      ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, !remSetsProcessing);
+      ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, !remSetsProcessing);
       if (!remSetsProcessing) {
         MarkBlock.Card.updateCardMeta(newObject);
       }
@@ -155,7 +153,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(PureG1.MC, object)) {
-      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
+      return !Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object)));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }
@@ -166,12 +164,6 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   //@Override
   @Inline
   public void processRemSets() {
-    //super.processRememberedSets();
-    //if (!remSetsProcessed) {
-    //remSetsProcessing = true;
-      processor.processRemSets(PureG1.relocationSet, false, PureG1.markBlockSpace);
-    //remSetsProcessing = false;
-      //remSetsProcessed = true;
-    //}
+    processor.processRemSets(PureG1.relocationSet, false, PureG1.regionSpace);
   }
 }

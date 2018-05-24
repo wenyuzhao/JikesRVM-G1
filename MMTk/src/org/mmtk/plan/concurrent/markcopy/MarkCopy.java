@@ -14,13 +14,11 @@ package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
-import org.mmtk.utility.options.ConcurrentTrigger;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
@@ -54,7 +52,7 @@ public class MarkCopy extends Concurrent {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("rc", VMRequest.discontiguous());
+  public static final RegionSpace markBlockSpace = new RegionSpace("rc", VMRequest.discontiguous());
   public static final int MC = markBlockSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);

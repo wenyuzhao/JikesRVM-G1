@@ -13,17 +13,13 @@
 package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.MutatorContext;
-import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.RemSet;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
-import org.mmtk.vm.Lock;
-import org.mmtk.vm.Monitor;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -52,7 +48,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final MarkBlockAllocator mc;
+  protected final RegionAllocator mc;
   private static final int REMSET_LOG_BUFFER_SIZE = 256;
   private AddressArray remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
   private int remSetLogBufferCursor = 0;
@@ -66,7 +62,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
    * Constructor
    */
   public MarkCopyMutator() {
-    mc = new MarkBlockAllocator(MarkCopy.markBlockSpace, false);
+    mc = new RegionAllocator(MarkCopy.markBlockSpace, false);
   }
 
   /****************************************************************************
@@ -81,7 +77,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == MarkCopy.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return mc.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
@@ -96,7 +92,7 @@ public class MarkCopyMutator extends StopTheWorldMutator {
     }
     VM.assertions._assert(VM.objectModel.objectStartRef(object).NE(Address.fromIntZeroExtend(0x68da4008)));
     */
-    MarkBlock.Card.updateCardMeta(object);
+    Region.Card.updateCardMeta(object);
     if (allocator == MarkCopy.ALLOC_MC) {
       MarkCopy.markBlockSpace.postAlloc(object, bytes);
     } else {
@@ -233,23 +229,23 @@ public class MarkCopyMutator extends StopTheWorldMutator {
       Log.writeln(")");
     };*/
     if (VM.VERIFY_ASSERTIONS) {
-      if (!value.isZero() && Space.isInSpace(MarkCopy.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
+      if (!value.isZero() && Space.isInSpace(MarkCopy.MC, value) && !Region.allocated(Region.of(value))) {
         Log.write("Use of dead object ", value);
-        Log.writeln(", which is in released block ", MarkBlock.of(value));
+        Log.writeln(", which is in released block ", Region.of(value));
         VM.assertions._assert(false);
       }
     }
     if (!src.isNull() && !slot.isZero() && !value.isZero()) {
       Word tmp = slot.toWord().xor(value.toWord());
-      tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
+      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isInSpace(MarkCopy.MC, value)) {
         /*if (src.toAddress().EQ(Address.fromIntZeroExtend(0x680a54cc))) {
           Log.writeln("Add card ", MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
         }*/
-        MarkBlock.Card.updateCardMeta(src);
-        markAndEnqueueCard(MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
+        Region.Card.updateCardMeta(src);
+        markAndEnqueueCard(Region.Card.of(VM.objectModel.objectStartRef(src)));
       }
     }
   }

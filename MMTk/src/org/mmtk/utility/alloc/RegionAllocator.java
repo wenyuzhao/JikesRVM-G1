@@ -13,9 +13,9 @@
 
 package org.mmtk.utility.alloc;
 
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -25,14 +25,14 @@ import org.vmmagic.unboxed.Address;
  *
  */
 @Uninterruptible
-public class MarkBlockAllocator extends Allocator {
+public class RegionAllocator extends Allocator {
 
   /****************************************************************************
    *
    * Instance variables
    */
 
-  protected final MarkBlockSpace space;
+  protected final RegionSpace space;
   private final boolean copy;
   private Address cursor;
   private Address limit;
@@ -43,7 +43,7 @@ public class MarkBlockAllocator extends Allocator {
    * @param space The space to bump point into.
    * @param copy TODO
    */
-  public MarkBlockAllocator(MarkBlockSpace space, boolean copy) {
+  public RegionAllocator(RegionSpace space, boolean copy) {
     this.space = space;
     this.copy = copy;
     reset();
@@ -86,7 +86,7 @@ public class MarkBlockAllocator extends Allocator {
     fillAlignmentGap(cursor, start);
     cursor = end;
     if (Space.isInSpace(this.space.getDescriptor(), start)) {
-      MarkBlock.setCursor(MarkBlock.of(start), cursor);
+      Region.setCursor(Region.of(start), cursor);
     }
     return start;
   }
@@ -112,9 +112,9 @@ public class MarkBlockAllocator extends Allocator {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(ptr));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
-    limit = ptr.plus(MarkBlock.BYTES_IN_BLOCK);
+    limit = ptr.plus(Region.BYTES_IN_BLOCK);
     return alloc(bytes, align, offset);
   }
 

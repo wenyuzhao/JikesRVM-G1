@@ -1,8 +1,7 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.RemSet;
+import org.mmtk.policy.Region;
 import org.mmtk.vm.VM;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
@@ -24,8 +23,8 @@ public class PauseTimePredictor {
     for (int i = 0; i < cset.length(); i++) {
       Address block = cset.get(i);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
-      int newLiveBytes = liveBytes + MarkBlock.usedSize(block);
-      int newRSSize = rsSize + MarkBlock.remSetSize(block);
+      int newLiveBytes = liveBytes + Region.usedSize(block);
+      int newRSSize = rsSize + 0;//Region.remSetSize(block);
       if (gcCost(d, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
         break;
       } else {

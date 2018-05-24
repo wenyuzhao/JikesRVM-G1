@@ -35,7 +35,7 @@ import org.vmmagic.unboxed.*;
  *
  */
 @Uninterruptible
-public final class MarkBlockSpace extends Space {
+public final class RegionSpace extends Space {
   /** number of header bits we may use */
   private static final int AVAILABLE_LOCAL_BITS = 5 - HeaderByte.USED_GLOBAL_BITS;
 
@@ -150,7 +150,7 @@ public final class MarkBlockSpace extends Space {
    * @param name The name of this space (used when printing error messages etc)
    * @param vmRequest The virtual memory request
    */
-  public MarkBlockSpace(String name, VMRequest vmRequest) {
+  public RegionSpace(String name, VMRequest vmRequest) {
     this(name, true, VMRequest.discontiguous());
   }
 
@@ -163,12 +163,12 @@ public final class MarkBlockSpace extends Space {
    * @param zeroed if true, allocations return zeroed memory
    * @param vmRequest The virtual memory request
    */
-  public MarkBlockSpace(String name, boolean zeroed, VMRequest vmRequest) {
+  public RegionSpace(String name, boolean zeroed, VMRequest vmRequest) {
     super(name, true, false, zeroed, VMRequest.discontiguous());
     if (vmRequest.isDiscontiguous())
-      pr = new FreeListPageResource(this, MarkBlock.METADATA_PAGES_PER_REGION);
+      pr = new FreeListPageResource(this, Region.METADATA_PAGES_PER_REGION);
     else
-      pr = new FreeListPageResource(this, start, extent, MarkBlock.METADATA_PAGES_PER_REGION);
+      pr = new FreeListPageResource(this, start, extent, Region.METADATA_PAGES_PER_REGION);
   }
 
   public void makeAllocAsMarked() {
@@ -183,8 +183,8 @@ public final class MarkBlockSpace extends Space {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Conversions.chunkAlign(start.plus(bytes), true).EQ(chunk));
       // MarkBlock.clearRegionMetadata(chunk);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.EQ(EmbeddedMetaData.getMetaDataBase(chunk)));
-      HeapLayout.mmapper.ensureMapped(chunk, MarkBlock.METADATA_PAGES_PER_REGION);
-      VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(MarkBlock.BLOCKS_START_OFFSET));
+      HeapLayout.mmapper.ensureMapped(chunk, Region.METADATA_PAGES_PER_REGION);
+      VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(Region.BLOCKS_START_OFFSET));
     }
   }
 
@@ -194,7 +194,7 @@ public final class MarkBlockSpace extends Space {
     Log.writeln("MarkState ", Header.markState);
     if (clearBlockLiveSize) {
       for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
-        MarkBlock.setUsedSize(b, 0);
+        Region.setUsedSize(b, 0);
       }
     }
   }
@@ -241,9 +241,9 @@ public final class MarkBlockSpace extends Space {
    */
   public Address getSpace(boolean copy) {
     // Allocate
-    Address region = acquire(MarkBlock.PAGES_IN_BLOCK);
+    Address region = acquire(Region.PAGES_IN_BLOCK);
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(region));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
     if (VM.VERIFY_ASSERTIONS) {
       Log.flush();
@@ -256,14 +256,14 @@ public final class MarkBlockSpace extends Space {
       //if (MarkBlock.allocated(region)) {
       //  VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
       //}
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!MarkBlock.allocated(region));
-      MarkBlock.register(region, copy);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.allocated(region));
+      Region.register(region, copy);
     }
     if (VM.VERIFY_ASSERTIONS) {
       if (!region.isZero()) {
-        VM.assertions._assert(MarkBlock.allocated(region));
-        VM.assertions._assert(!MarkBlock.relocationRequired(region));
-        VM.assertions._assert(MarkBlock.usedSize(region) == 0);
+        VM.assertions._assert(Region.allocated(region));
+        VM.assertions._assert(!Region.relocationRequired(region));
+        VM.assertions._assert(Region.usedSize(region) == 0);
       } else {
         Log.writeln("ALLOCATED A NULL REGION");
       }
@@ -280,10 +280,10 @@ public final class MarkBlockSpace extends Space {
   @Override
   @Inline
   public void release(Address region) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.isAligned(region));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(MarkBlock.allocated(region));
-    MarkBlock.unregister(region);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(region));
+    Region.unregister(region);
 
     ((FreeListPageResource) pr).releasePages(region);
   }
@@ -377,12 +377,12 @@ public final class MarkBlockSpace extends Space {
 
     if (Header.testAndMark(rtn)) {
       //Log.writeln("Mark ", rtn);
-      Address region = MarkBlock.of(rtn);
+      Address region = Region.of(rtn);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
       /*_lock.acquire();
       MarkBlock.setUsedSize(region, MarkBlock.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
       _lock.release();*/
-      MarkBlock.updateBlockAliveSize(region, rtn);
+      Region.updateBlockAliveSize(region, rtn);
       trace.processNode(rtn);
     }
 
@@ -409,7 +409,7 @@ public final class MarkBlockSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean mark) {
-    if (MarkBlock.relocationRequired(MarkBlock.of(object))) {
+    if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
@@ -477,7 +477,7 @@ public final class MarkBlockSpace extends Space {
       } else {
         /* we are the first to reach the object; either mark in place or forward it */
         ObjectReference rtn = object;
-        if (MarkBlock.relocationRequired(MarkBlock.of(object))) {
+        if (Region.relocationRequired(Region.of(object))) {
           /* forward */
           rtn = ForwardingWord.forwardObject(object, allocator);
           if (VM.VERIFY_ASSERTIONS) {
@@ -534,17 +534,17 @@ public final class MarkBlockSpace extends Space {
   public Address nextBlock(Address block) {
     if (VM.VERIFY_ASSERTIONS) {
       //VM.assertions._assert(!contiguous);
-      if (!(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (MarkBlock.indexOf(block) >= 0 && MarkBlock.indexOf(block) < MarkBlock.BLOCKS_IN_REGION))) {
+      if (!(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (Region.indexOf(block) >= 0 && Region.indexOf(block) < Region.BLOCKS_IN_REGION))) {
         Log.write("Invalid block ", block);
         Log.write(" at region ", EmbeddedMetaData.getMetaDataBase(block));
-        Log.write(" with index ", MarkBlock.indexOf(block));
-        Log.writeln(MarkBlock.isAligned(block) ? " aligned" : " not aligned");
+        Log.write(" with index ", Region.indexOf(block));
+        Log.writeln(Region.isAligned(block) ? " aligned" : " not aligned");
       }
-      VM.assertions._assert(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (MarkBlock.indexOf(block) >= 0 && MarkBlock.indexOf(block) < MarkBlock.BLOCKS_IN_REGION));
+      VM.assertions._assert(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (Region.indexOf(block) >= 0 && Region.indexOf(block) < Region.BLOCKS_IN_REGION));
     }
-    int i = block.EQ(EmbeddedMetaData.getMetaDataBase(block)) ? 0 : MarkBlock.indexOf(block) + 1;
+    int i = block.EQ(EmbeddedMetaData.getMetaDataBase(block)) ? 0 : Region.indexOf(block) + 1;
     Address region = EmbeddedMetaData.getMetaDataBase(block);
-    if (i >= MarkBlock.BLOCKS_IN_REGION) {
+    if (i >= Region.BLOCKS_IN_REGION) {
       i = 0;
       region = getNextRegion(region);//region.plus(NEXT_POINTER_OFFSET_IN_REGION).loadAddress();
     }
@@ -552,14 +552,14 @@ public final class MarkBlockSpace extends Space {
     while (true) {
       if (region.isZero()) return Address.zero();
 
-      Address allocated = region.plus(MarkBlock.METADATA_OFFSET_IN_REGION + i * MarkBlock.METADATA_BYTES + MarkBlock.METADATA_ALLOCATED_OFFSET);
+      Address allocated = region.plus(Region.METADATA_OFFSET_IN_REGION + i * Region.METADATA_BYTES + Region.METADATA_ALLOCATED_OFFSET);
       if (allocated.loadByte() != ((byte) 0)) {
-        Address rtn = region.plus(MarkBlock.BLOCKS_START_OFFSET + i * MarkBlock.BYTES_IN_BLOCK);
+        Address rtn = region.plus(Region.BLOCKS_START_OFFSET + i * Region.BYTES_IN_BLOCK);
         return rtn;
       }
 
       i++;
-      if (i >= MarkBlock.BLOCKS_IN_REGION) {
+      if (i >= Region.BLOCKS_IN_REGION) {
         i = 0;
         region = getNextRegion(region);
       }
@@ -586,7 +586,7 @@ public final class MarkBlockSpace extends Space {
   public AddressArray shapshotBlocks() {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
-    int blocksCount = MarkBlock.count();
+    int blocksCount = Region.count();
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
 
@@ -646,7 +646,7 @@ public final class MarkBlockSpace extends Space {
     for (int i = 0; i < blocksCount; i++) {
       Address block = blocks.get(i);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
-      int size = block.isZero() ? 0 : MarkBlock.usedSize(block);
+      int size = block.isZero() ? 0 : Region.usedSize(block);
       Address size2 = Address.fromIntZeroExtend(size);
       blockSizes.set(i, size2);
     }
@@ -655,18 +655,8 @@ public final class MarkBlockSpace extends Space {
     AddressArrayQuickSort.sort(blocks, blockSizes);
 
     // select relocation blocks
-    int availBlocks = ((int) (VM.activePlan.global().getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * MarkBlock.BLOCKS_IN_REGION;
-    final int usableBytesForCopying = availBlocks * MarkBlock.BYTES_IN_BLOCK;
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.writeln("Pages avail: ", VM.activePlan.global().getPagesAvail());
-      Log.write("Headroom: ");
-      //Log.writeln((double) Options.defragHeadroomFraction.getValue());
-      Log.write("HeadroomDefault: ");
-      //Log.writeln((double) Options.defragHeadroomFraction.getDefaultValue());
-      Log.writeln("PAGES_IN_REGION: ", EmbeddedMetaData.PAGES_IN_REGION);
-      Log.writeln("BLOCKS_IN_REGION: ", MarkBlock.BLOCKS_IN_REGION);
-      Log.writeln("Copy Blocks: ", availBlocks);
-    }
+    int availBlocks = ((int) (VM.activePlan.global().getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * Region.BLOCKS_IN_REGION;
+    final int usableBytesForCopying = availBlocks * Region.BYTES_IN_BLOCK;
     int currentSize = 0;
     int relocationBlocks = 0;
 
@@ -676,10 +666,10 @@ public final class MarkBlockSpace extends Space {
 
       if (VM.VERIFY_ASSERTIONS) {
         Log.write("Block ", block);
-        Log.write(": ", MarkBlock.usedSize(block));
-        Log.write("/", MarkBlock.BYTES_IN_BLOCK);
+        Log.write(": ", Region.usedSize(block));
+        Log.write("/", Region.BYTES_IN_BLOCK);
       }
-      if (currentSize + size > usableBytesForCopying || size > MarkBlock.BYTES_IN_BLOCK * 0.65) {
+      if (currentSize + size > usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
         if (VM.VERIFY_ASSERTIONS) Log.writeln();
         break;
       }
@@ -688,7 +678,7 @@ public final class MarkBlockSpace extends Space {
 
       currentSize += size;
       if (!block.isZero())
-        MarkBlock.setRelocationState(block, true);
+        Region.setRelocationState(block, true);
       relocationBlocks++;
     }
 
@@ -765,14 +755,14 @@ public final class MarkBlockSpace extends Space {
       relocationSet.set(cursor, Address.zero());
       if (!block.isZero()) {
         if (VM.VERIFY_ASSERTIONS) {
-          VM.assertions._assert(MarkBlock.relocationRequired(block));
+          VM.assertions._assert(Region.relocationRequired(block));
           Log.write("Block ", block);
-          Log.write(": ", MarkBlock.usedSize(block));
-          Log.write("/", MarkBlock.BYTES_IN_BLOCK);
+          Log.write(": ", Region.usedSize(block));
+          Log.write("/", Region.BYTES_IN_BLOCK);
           Log.writeln(" released");
         }
-        if (MarkBlock.Card.isEnabled()) {
-          MarkBlock.Card.clearCardMetaForBlock(block);
+        if (Region.Card.isEnabled()) {
+          Region.Card.clearCardMetaForBlock(block);
           //RemSet.clearRemsetMedaForBlock(block);
         }
         this.release(block);

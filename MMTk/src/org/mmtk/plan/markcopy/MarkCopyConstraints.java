@@ -13,8 +13,8 @@
 package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -32,11 +32,11 @@ public class MarkCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int gcHeaderBits() {
-    return MarkBlockSpace.LOCAL_GC_BITS_REQUIRED;
+    return RegionSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return MarkBlockSpace.GC_HEADER_WORDS_REQUIRED;
+    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {
@@ -44,6 +44,6 @@ public class MarkCopyConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return MarkBlock.BYTES_IN_BLOCK;
+    return Region.BYTES_IN_BLOCK;
   }
 }

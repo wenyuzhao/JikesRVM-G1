@@ -13,15 +13,13 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
-import org.vmmagic.pragma.Pure;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
@@ -87,7 +85,7 @@ public class Validation extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(PureG1.MC, object))
-      return PureG1.markBlockSpace.isLive(object);
+      return PureG1.regionSpace.isLive(object);
     return super.isLive(object);
   }
 
@@ -107,8 +105,8 @@ public class Validation extends TraceLocal {
         VM.assertions._assert(false);
       }
 
-      Address block = MarkBlock.of(VM.objectModel.objectStartRef(object));
-      if (MarkBlock.relocationRequired(block)) {
+      Address block = Region.of(VM.objectModel.objectStartRef(object));
+      if (Region.relocationRequired(block)) {
         VM.objectModel.dumpObject(source);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", VM.objectModel.objectStartRef(source));
@@ -135,14 +133,14 @@ public class Validation extends TraceLocal {
         Log.writeln(" was not marked in previous cycle");
         VM.assertions._assert(false);
       }*/
-      Address block = MarkBlock.of(VM.objectModel.objectStartRef(object));
-      if (MarkBlock.relocationRequired(block)) {
+      Address block = Region.of(VM.objectModel.objectStartRef(object));
+      if (Region.relocationRequired(block)) {
         VM.objectModel.dumpObject(object);
         Log.write("Object ", object);
         Log.writeln(" is in released block");
         VM.assertions._assert(false);
       }
-      return PureG1.markBlockSpace.traceMarkObject(this, object);
+      return PureG1.regionSpace.traceMarkObject(this, object);
     }
     return super.traceObject(object);
   }
@@ -156,7 +154,7 @@ public class Validation extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(PureG1.MC, object)) {
-      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
+      return !Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object)));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }
@@ -166,7 +164,7 @@ public class Validation extends TraceLocal {
   @Inline
   protected void processRememberedSets() {
     //if (!remSetsProcessed) {
-    processor.processRemSets(PureG1.relocationSet, false, PureG1.markBlockSpace);
+    processor.processRemSets(PureG1.relocationSet, false, PureG1.regionSpace);
     //remSetsProcessed = true;
     //}
   }

@@ -14,7 +14,7 @@ package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -52,7 +52,7 @@ public class MarkCopyMarkTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    MarkBlock.Card.updateCardMeta(object);
+    Region.Card.updateCardMeta(object);
     if (Space.isInSpace(MarkCopy.MC, object)) {
       //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       return MarkCopy.markBlockSpace.traceMarkObject(this, object);

@@ -17,10 +17,10 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -48,7 +48,7 @@ public class MarkCopyMutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final MarkBlockAllocator mc;
+  protected final RegionAllocator mc;
   private final TraceWriteBuffer markRemset, relocateRemset;
   private TraceWriteBuffer currentRemset;
 
@@ -61,7 +61,7 @@ public class MarkCopyMutator extends ConcurrentMutator {
    * Constructor
    */
   public MarkCopyMutator() {
-    mc = new MarkBlockAllocator(MarkCopy.markBlockSpace, false);
+    mc = new RegionAllocator(MarkCopy.markBlockSpace, false);
     markRemset = new TraceWriteBuffer(global().markTrace);
     relocateRemset = new TraceWriteBuffer(global().relocateTrace);
     currentRemset = markRemset;
@@ -79,7 +79,7 @@ public class MarkCopyMutator extends ConcurrentMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == MarkCopy.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return mc.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);

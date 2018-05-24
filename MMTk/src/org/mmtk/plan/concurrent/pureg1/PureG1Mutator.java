@@ -18,16 +18,14 @@ import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.RemSet;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
-import org.vmmagic.pragma.Pure;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
@@ -54,7 +52,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final MarkBlockAllocator mc;
+  protected final RegionAllocator mc;
   private static final int REMSET_LOG_BUFFER_SIZE = 256;
   private AddressArray remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
   private int remSetLogBufferCursor = 0;
@@ -70,7 +68,7 @@ public class PureG1Mutator extends ConcurrentMutator {
    * Constructor
    */
   public PureG1Mutator() {
-    mc = new MarkBlockAllocator(PureG1.markBlockSpace, false);
+    mc = new RegionAllocator(PureG1.regionSpace, false);
     markRemset = new TraceWriteBuffer(global().markTrace);
     relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
@@ -88,7 +86,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == PureG1.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return mc.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
@@ -105,13 +103,13 @@ public class PureG1Mutator extends ConcurrentMutator {
     */
     //Log.write("Post alloc ", VM.objectModel.objectStartRef(object));
     //Log.writeln(" ~ ", VM.objectModel.getObjectEndAddress(object));
-    MarkBlock.Card.updateCardMeta(object);
+    Region.Card.updateCardMeta(object);
     if (allocator == PureG1.ALLOC_MC) {
       if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(Space.isInSpace(PureG1.MC, object) && MarkBlock.allocated(MarkBlock.of(VM.objectModel.objectStartRef(object))));
-        VM.assertions._assert(MarkBlock.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
+        VM.assertions._assert(Space.isInSpace(PureG1.MC, object) && Region.allocated(Region.of(VM.objectModel.objectStartRef(object))));
+        VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
       }
-      PureG1.markBlockSpace.postAlloc(object, bytes);
+      PureG1.regionSpace.postAlloc(object, bytes);
       //if (barrierActive) Log.writeln("Alloc(Conc Mark) ", object);
       //else if (Plan.gcInProgress()) Log.writeln("Alloc(STW) ", object);
       //else Log.writeln("Alloc ", object);
@@ -122,7 +120,7 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == PureG1.markBlockSpace) return mc;
+    if (space == PureG1.regionSpace) return mc;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -228,7 +226,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     Address value = VM.objectModel.objectStartRef(ref);
     if (VM.VERIFY_ASSERTIONS) {
       //VM.assertions._assert(!Plan.gcInProgress());
-      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !MarkBlock.allocated(MarkBlock.of(value))) {
+      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !Region.allocated(Region.of(value))) {
         Log.write(src);
         Log.write(".", slot);
         Log.write(" = ");
@@ -236,7 +234,7 @@ public class PureG1Mutator extends ConcurrentMutator {
         VM.objectModel.dumpObject(src);
         VM.objectModel.dumpObject(ref);
         Log.write("Use of dead object ", ref);
-        Log.writeln(", which is in released block ", MarkBlock.of(value));
+        Log.writeln(", which is in released block ", Region.of(value));
         VM.assertions._assert(false);
       }
     }
@@ -252,13 +250,13 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.writeln(ref);
     if (!src.isNull() && !slot.isZero() && !value.isZero()) {
       Word tmp = slot.toWord().xor(value.toWord());
-      tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
+      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isInSpace(PureG1.MC, value)) {
         //RemSet.addCard(MarkBlock.of(VM.objectModel.objectStartRef(ref)), MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
-        MarkBlock.Card.updateCardMeta(src);
-        markAndEnqueueCard(MarkBlock.Card.of(src));
+        Region.Card.updateCardMeta(src);
+        markAndEnqueueCard(Region.Card.of(src));
       }
     }
   }
@@ -268,7 +266,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     if (ref.isNull()) return;
     //if (barrierActive) {
 
-    if (Space.isInSpace(PureG1.MC, ref)) PureG1.markBlockSpace.traceMarkObject(currentRemset, ref);
+    if (Space.isInSpace(PureG1.MC, ref)) PureG1.regionSpace.traceMarkObject(currentRemset, ref);
     else if (Space.isInSpace(PureG1.IMMORTAL, ref)) PureG1.immortalSpace.traceObject(currentRemset, ref);
     else if (Space.isInSpace(PureG1.LOS, ref)) PureG1.loSpace.traceObject(currentRemset, ref);
     else if (Space.isInSpace(PureG1.NON_MOVING, ref)) PureG1.nonMovingSpace.traceObject(currentRemset, ref);
@@ -278,7 +276,7 @@ public class PureG1Mutator extends ConcurrentMutator {
 
     if (VM.VERIFY_ASSERTIONS) {
       if (!ref.isNull() && !Plan.gcInProgress()) {
-        if (Space.isInSpace(PureG1.MC, ref)) VM.assertions._assert(PureG1.markBlockSpace.isLive(ref));
+        if (Space.isInSpace(PureG1.MC, ref)) VM.assertions._assert(PureG1.regionSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.IMMORTAL, ref)) VM.assertions._assert(PureG1.immortalSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.LOS, ref)) VM.assertions._assert(PureG1.loSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.NON_MOVING, ref)) VM.assertions._assert(PureG1.nonMovingSpace.isLive(ref));

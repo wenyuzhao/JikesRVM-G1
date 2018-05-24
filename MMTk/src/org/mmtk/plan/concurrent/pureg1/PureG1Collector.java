@@ -15,19 +15,17 @@ package org.mmtk.plan.concurrent.pureg1;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -56,7 +54,7 @@ public class PureG1Collector extends ConcurrentCollector {
   /**
    *
    */
-  protected final MarkBlockAllocator copy = new MarkBlockAllocator(PureG1.markBlockSpace, true);
+  protected final RegionAllocator copy = new RegionAllocator(PureG1.regionSpace, true);
   protected final PureG1MarkTraceLocal markTrace = new PureG1MarkTraceLocal(global().markTrace);
   protected final PureG1RedirectTraceLocal redirectTrace = new PureG1RedirectTraceLocal(global().redirectTrace);
   //protected final Validation validationTrace = new Validation();
@@ -92,11 +90,11 @@ public class PureG1Collector extends ConcurrentCollector {
     Address addr = copy.alloc(bytes, align, offset);
     org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
     if (VM.VERIFY_ASSERTIONS) {
-      Address region = MarkBlock.of(addr);
+      Address region = Region.of(addr);
       if (!region.isZero()) {
-        VM.assertions._assert(MarkBlock.allocated(region));
-        VM.assertions._assert(!MarkBlock.relocationRequired(region));
-        VM.assertions._assert(MarkBlock.usedSize(region) == 0);
+        VM.assertions._assert(Region.allocated(region));
+        VM.assertions._assert(!Region.relocationRequired(region));
+        VM.assertions._assert(Region.usedSize(region) == 0);
       } else {
         Log.writeln("ALLOCATED A NULL REGION");
       }
@@ -110,16 +108,16 @@ public class PureG1Collector extends ConcurrentCollector {
       int bytes, int allocator) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == PureG1.ALLOC_DEFAULT);
 
-    VM.assertions._assert(MarkBlock.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
-    MarkBlock.Card.updateCardMeta(object);
-    PureG1.markBlockSpace.postCopy(object, bytes);
+    VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
+    Region.Card.updateCardMeta(object);
+    PureG1.regionSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.write("Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
+        Log.write("Block ", Region.of(VM.objectModel.objectStartRef(object)));
         Log.write(" is marked for relocate:");
-        Log.writeln(MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
+        Log.writeln(Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
       }
 
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
@@ -179,7 +177,7 @@ public class PureG1Collector extends ConcurrentCollector {
       }
       rendezvous();
       /*if (rendezvous() == 0) {
-        //RemSet.assertPointersToCSetAreAllInRSet(PureG1.markBlockSpace, relocationSet);
+        //RemSet.assertPointersToCSetAreAllInRSet(PureG1.regionSpace, relocationSet);
         PureG1.log = true;
       }
       rendezvous();*/
@@ -201,16 +199,16 @@ public class PureG1Collector extends ConcurrentCollector {
       redirectTrace.release();
       copy.reset();
       super.collectionPhase(PureG1.RELEASE, primary);
-      //if (rendezvous() == 0) RemSet.assertNoPointersToCSet(PureG1.markBlockSpace, PureG1.relocationSet);
+      //if (rendezvous() == 0) RemSet.assertNoPointersToCSet(PureG1.regionSpace, PureG1.relocationSet);
       //rendezvous();
-      MarkBlock.Card.clearCardMetaForUnmarkedCards(PureG1.markBlockSpace, false);
+      Region.Card.clearCardMetaForUnmarkedCards(PureG1.regionSpace, false);
       return;
     }
 
     if (phaseId == PureG1.CLEANUP_BLOCKS) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
       RemSet.clearRemsetForRelocationSet(PureG1.relocationSet, false);
-      PureG1.markBlockSpace.cleanupBlocks(PureG1.relocationSet, false);
+      PureG1.regionSpace.cleanupBlocks(PureG1.relocationSet, false);
       rendezvous();
       return;
     }
@@ -257,7 +255,7 @@ public class PureG1Collector extends ConcurrentCollector {
         Log.writeln("/", VM.activePlan.collector().parallelWorkerCount());
         VM.assertions._assert(relocationSet != null);
       }
-      MarkCopy.markBlockSpace.cleanupBlocks(relocationSet, true);
+      MarkCopy.regionSpace.cleanupBlocks(relocationSet, true);
       if (rendezvous() == 0) {
         if (!group.isAborted()) {
           VM.collection.requestMutatorFlush();

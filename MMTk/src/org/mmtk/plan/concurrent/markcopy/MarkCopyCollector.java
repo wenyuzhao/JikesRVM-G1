@@ -14,11 +14,11 @@ package org.mmtk.plan.concurrent.markcopy;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -53,7 +53,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
   /**
    *
    */
-  protected final MarkBlockAllocator copy = new MarkBlockAllocator(MarkCopy.markBlockSpace, true);
+  protected final RegionAllocator copy = new RegionAllocator(MarkCopy.markBlockSpace, true);
   protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
   protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
   protected TraceLocal currentTrace;
@@ -86,16 +86,16 @@ public class MarkCopyCollector extends ConcurrentCollector {
       VM.assertions._assert(allocator == MarkCopy.ALLOC_MC);
       VM.assertions._assert(ForwardingWord.stateIsBeingForwarded(VM.objectModel.readAvailableBitsWord(original)));
     }
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= MarkBlock.BYTES_IN_BLOCK);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
 
     Address addr = copy.alloc(bytes, align, offset);
     org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
     if (VM.VERIFY_ASSERTIONS) {
-      Address region = MarkBlock.of(addr);
+      Address region = Region.of(addr);
       if (!region.isZero()) {
-        VM.assertions._assert(MarkBlock.allocated(region));
-        VM.assertions._assert(!MarkBlock.relocationRequired(region));
-        VM.assertions._assert(MarkBlock.usedSize(region) == 0);
+        VM.assertions._assert(Region.allocated(region));
+        VM.assertions._assert(!Region.relocationRequired(region));
+        VM.assertions._assert(Region.usedSize(region) == 0);
       } else {
         Log.writeln("ALLOCATED A NULL REGION");
       }
@@ -113,7 +113,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
     MarkCopy.markBlockSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(!MarkBlock.relocationRequired(MarkBlock.of(object)));
+      VM.assertions._assert(!Region.relocationRequired(Region.of(object)));
       VM.assertions._assert(getCurrentTrace().isLive(object));
     }
   }
@@ -153,14 +153,14 @@ public class MarkCopyCollector extends ConcurrentCollector {
     if (phaseId == MarkCopy.RELOCATION_SET_SELECTION_PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION_PREPARE");
       copy.reset();
-      MarkBlockSpace.prepareComputeRelocationBlocks();
+      RegionSpace.prepareComputeRelocationBlocks();
       relocationSet = null;
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATION_SET_SELECTION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, false);
+      AddressArray relocationSet = RegionSpace.computeRelocationBlocks(global().blocksSnapshot, false);
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }
@@ -229,7 +229,7 @@ public class MarkCopyCollector extends ConcurrentCollector {
 
     if (phaseId == MarkCopy.CONCURRENT_RELOCATION_SET_SELECTION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, true);
+      AddressArray relocationSet = RegionSpace.computeRelocationBlocks(global().blocksSnapshot, true);
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }

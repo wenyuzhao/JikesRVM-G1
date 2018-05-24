@@ -2,7 +2,7 @@ package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.vm.VM;
@@ -59,7 +59,7 @@ public class MarkCopyRedirectTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
+      return !Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object)));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

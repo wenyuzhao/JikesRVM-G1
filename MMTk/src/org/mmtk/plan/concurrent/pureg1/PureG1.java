@@ -15,9 +15,10 @@ package org.mmtk.plan.concurrent.pureg1;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.G1InitiatingHeapOccupancyPercent;
 import org.mmtk.utility.options.G1ReservePercent;
@@ -57,8 +58,8 @@ public class PureG1 extends Concurrent {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("g1", VMRequest.discontiguous());
-  public static final int MC = markBlockSpace.getDescriptor();
+  public static final RegionSpace regionSpace = new RegionSpace("g1", VMRequest.discontiguous());
+  public static final int MC = regionSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace redirectTrace = new Trace(metaDataSpace);
@@ -68,8 +69,8 @@ public class PureG1 extends Concurrent {
   static {
     Options.g1ReservePercent = new G1ReservePercent();
     Options.g1InitiatingHeapOccupancyPercent = new G1InitiatingHeapOccupancyPercent();
-    MarkBlock.Card.enable();
-    markBlockSpace.makeAllocAsMarked();
+    Region.Card.enable();
+    regionSpace.makeAllocAsMarked();
     smallCodeSpace.makeAllocAsMarked();
     nonMovingSpace.makeAllocAsMarked();
   }
@@ -173,7 +174,7 @@ public class PureG1 extends Concurrent {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
-      markBlockSpace.prepare(true);
+      regionSpace.prepare(true);
       return;
     }
 
@@ -184,19 +185,19 @@ public class PureG1 extends Concurrent {
     if (phaseId == RELEASE) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       markTrace.release();
-      //markBlockSpace.release();
+      //regionSpace.release();
       //super.collectionPhase(phaseId);
       return;
     }
 
     if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
-      blocksSnapshot = markBlockSpace.shapshotBlocks();
+      blocksSnapshot = regionSpace.shapshotBlocks();
       return;
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      blocksSnapshot = markBlockSpace.shapshotBlocks();
-      relocationSet = MarkBlockSpace.computeRelocationBlocks(blocksSnapshot, false);
+      blocksSnapshot = regionSpace.shapshotBlocks();
+      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false);
       return;
     }
 
@@ -212,7 +213,7 @@ public class PureG1 extends Concurrent {
 
       //super.collectionPhase(PREPARE);
       redirectTrace.prepare();
-      //markBlockSpace.prepare(false);
+      //regionSpace.prepare(false);
       return;
     }
 
@@ -220,7 +221,7 @@ public class PureG1 extends Concurrent {
       //super.collectionPhase(PREPARE);
       ConcurrentRemSetRefinement.refineAll();
       if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
-      //markBlockSpace.prepare();
+      //regionSpace.prepare();
       return;
     }
 
@@ -230,7 +231,7 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REDIRECT_RELEASE) {
       redirectTrace.release();
-      //markBlockSpace.release();
+      //regionSpace.release();
       super.collectionPhase(RELEASE);
       return;
     }
@@ -245,7 +246,9 @@ public class PureG1 extends Concurrent {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    if (getPagesAvail() * 100 < getTotalPages() * Options.g1ReservePercent.getValue()) {
+    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    if ((totalPages - usedPages) < (totalPages * Options.g1ReservePercent.getValue() / 100)) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);
@@ -254,7 +257,9 @@ public class PureG1 extends Concurrent {
   @Override
   protected boolean concurrentCollectionRequired() {
     //return false;
-    return !Phase.concurrentPhaseActive() && ((getPagesUsed() * 100) > (getTotalPages() * Options.g1InitiatingHeapOccupancyPercent.getValue()));
+    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * Options.g1InitiatingHeapOccupancyPercent.getValue()));
   }
 
   /**
@@ -264,7 +269,7 @@ public class PureG1 extends Concurrent {
   public final int getCollectionReserve() {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
-    return markBlockSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
+    return regionSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
   }
 
   @Override
@@ -278,7 +283,7 @@ public class PureG1 extends Concurrent {
   public int sanityExpectedRC(ObjectReference object, int sanityRootRC) {
     Space space = Space.getSpaceForObject(object);
     // Nursery
-    if (space == markBlockSpace) {
+    if (space == regionSpace) {
       // We are never sure about objects in MC.
       // This is not very satisfying but allows us to use the sanity checker to
       // detect dangling pointers.
@@ -294,7 +299,7 @@ public class PureG1 extends Concurrent {
    */
   @Override
   public int getPagesUsed() {
-    return super.getPagesUsed() + markBlockSpace.reservedPages();
+    return super.getPagesUsed() + regionSpace.reservedPages();
   }
 
   /**

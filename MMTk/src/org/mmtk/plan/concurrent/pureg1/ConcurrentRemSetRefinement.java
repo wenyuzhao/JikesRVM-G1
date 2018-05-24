@@ -18,10 +18,9 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
@@ -96,7 +95,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   static TransitiveClosure scanPointers = new TransitiveClosure() {
     @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      Address card = MarkBlock.Card.of(source);
+      Address card = Region.Card.of(source);
       ObjectReference ref = slot.loadObjectReference();
       Address value = VM.objectModel.objectStartRef(ref);
       /*Log.write("processCard scanPointers ", source);
@@ -104,14 +103,15 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       Log.writeln(": ", VM.activePlan.global().loadObjectReference(slot));*/
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!source.isNull() && !slot.isZero() && !value.isZero());
       Word tmp = slot.toWord().xor(value.toWord());
-      tmp = tmp.rshl(MarkBlock.LOG_BYTES_IN_BLOCK);
+      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isInSpace(PureG1.MC, value)) {
-        Address foreignBlock = MarkBlock.of(value);
+        Address foreignBlock = Region.of(value);
         //Log.write("Add card ", card);
         //Log.writeln(" to remset of block ", foreignBlock);
         RemSet.addCard(foreignBlock, card);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.containsCard(foreignBlock, card));
       }
       /*
       Address ptr = slot.loadAddress();
@@ -154,9 +154,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
     if (!Space.isInSpace(Plan.VM_SPACE, card)) {
       if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
+        VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
       }
-      MarkBlock.Card.linearScan(cardLinearScan, card);
+      Region.Card.linearScan(cardLinearScan, card);
     }
   }
 

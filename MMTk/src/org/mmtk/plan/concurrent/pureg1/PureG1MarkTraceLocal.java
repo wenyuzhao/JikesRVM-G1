@@ -15,7 +15,7 @@ package org.mmtk.plan.concurrent.pureg1;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
@@ -64,8 +64,8 @@ public class PureG1MarkTraceLocal extends TraceLocal {
         VM.assertions._assert(false);
       }
 
-      Address block = MarkBlock.of(VM.objectModel.objectStartRef(object));
-      if (MarkBlock.relocationRequired(block)) {
+      Address block = Region.of(VM.objectModel.objectStartRef(object));
+      if (Region.relocationRequired(block)) {
         VM.objectModel.dumpObject(source);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", VM.objectModel.objectStartRef(source));
@@ -84,9 +84,9 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-    MarkBlock.Card.updateCardMeta(object);
+    Region.Card.updateCardMeta(object);
     if (Space.isInSpace(PureG1.MC, object)) {
-      return PureG1.markBlockSpace.traceMarkObject(this, object);
+      return PureG1.regionSpace.traceMarkObject(this, object);
     }
     return super.traceObject(object);
   }

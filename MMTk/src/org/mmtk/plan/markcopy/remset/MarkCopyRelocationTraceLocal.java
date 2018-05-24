@@ -12,17 +12,13 @@
  */
 package org.mmtk.plan.markcopy.remset;
 
-import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.ForwardingWord;
-import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -82,7 +78,7 @@ public class MarkCopyRelocationTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(MarkCopy.MC, object)) {
-      return !MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object)));
+      return !Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object)));
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

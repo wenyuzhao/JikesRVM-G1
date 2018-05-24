@@ -19,7 +19,7 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.*;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.MarkBlockAllocator;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -53,7 +53,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
   /**
    *
    */
-  protected final MarkBlockAllocator copy = new MarkBlockAllocator(MarkCopy.markBlockSpace, true);
+  protected final RegionAllocator copy = new RegionAllocator(MarkCopy.markBlockSpace, true);
   protected final MarkCopyMarkTraceLocal markTrace = new MarkCopyMarkTraceLocal(global().markTrace);
   protected final MarkCopyRedirectTraceLocal redirectTrace = new MarkCopyRedirectTraceLocal(global().redirectTrace);
   protected final MarkCopyRelocationTraceLocal relocateTrace = new MarkCopyRelocationTraceLocal(global().relocateTrace);
@@ -90,11 +90,11 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     Address addr = copy.alloc(bytes, align, offset);
     org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
     if (VM.VERIFY_ASSERTIONS) {
-      Address region = MarkBlock.of(addr);
+      Address region = Region.of(addr);
       if (!region.isZero()) {
-        VM.assertions._assert(MarkBlock.allocated(region));
-        VM.assertions._assert(!MarkBlock.relocationRequired(region));
-        VM.assertions._assert(MarkBlock.usedSize(region) == 0);
+        VM.assertions._assert(Region.allocated(region));
+        VM.assertions._assert(!Region.relocationRequired(region));
+        VM.assertions._assert(Region.usedSize(region) == 0);
       } else {
         Log.writeln("ALLOCATED A NULL REGION");
       }
@@ -108,15 +108,15 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       int bytes, int allocator) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == MarkCopy.ALLOC_DEFAULT);
 
-    MarkBlock.Card.updateCardMeta(object);
+    Region.Card.updateCardMeta(object);
     MarkCopy.markBlockSpace.postCopy(object, bytes);
 
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
       if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
-        Log.write("Block ", MarkBlock.of(VM.objectModel.objectStartRef(object)));
+        Log.write("Block ", Region.of(VM.objectModel.objectStartRef(object)));
         Log.write(" is marked for relocate:");
-        Log.writeln(MarkBlock.relocationRequired(MarkBlock.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
+        Log.writeln(Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
       }
 
       VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
@@ -158,13 +158,13 @@ public class MarkCopyCollector extends StopTheWorldCollector {
     if (phaseId == MarkCopy.RELOCATION_SET_SELECTION_PREPARE) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION_PREPARE");
       copy.reset();
-      MarkBlockSpace.prepareComputeRelocationBlocks();
+      RegionSpace.prepareComputeRelocationBlocks();
       return;
     }
 
     if (phaseId == MarkCopy.RELOCATION_SET_SELECTION) {
       if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, false);
+      AddressArray relocationSet = RegionSpace.computeRelocationBlocks(global().blocksSnapshot, false);
       if (relocationSet != null) {
         MarkCopyCollector.relocationSet = relocationSet;
       }
@@ -204,7 +204,7 @@ public class MarkCopyCollector extends StopTheWorldCollector {
       redirectTrace.linearUpdatePointers(relocationSet, false);
       rendezvous();
       // Reset card anchors & limits
-      MarkBlock.Card.clearCardMetaForUnmarkedCards(false);
+      Region.Card.clearCardMetaForUnmarkedCards(MarkCopy.markBlockSpace, false);
       return;
     }
 

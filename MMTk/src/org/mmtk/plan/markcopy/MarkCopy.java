@@ -13,16 +13,14 @@
 package org.mmtk.plan.markcopy;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
-import org.mmtk.policy.MarkBlockSpace;
-import org.mmtk.utility.Log;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.DefragHeadroomFraction;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.sanitychecker.SanityChecker;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
@@ -56,7 +54,7 @@ public class MarkCopy extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("rc", VMRequest.discontiguous());
+  public static final RegionSpace markBlockSpace = new RegionSpace("rc", VMRequest.discontiguous());
   public static final int MC = markBlockSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
@@ -209,8 +207,8 @@ public class MarkCopy extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int totalBlocks = ((int) (getTotalPages() / EmbeddedMetaData.PAGES_IN_REGION)) * MarkBlock.BLOCKS_IN_REGION;
-    int availBlocks = ((int) (getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * MarkBlock.BLOCKS_IN_REGION;;
+    int totalBlocks = ((int) (getTotalPages() / EmbeddedMetaData.PAGES_IN_REGION)) * Region.BLOCKS_IN_REGION;
+    int availBlocks = ((int) (getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * Region.BLOCKS_IN_REGION;;
     if (availBlocks <= (int) (totalBlocks * Options.defragHeadroomFraction.getValue() + 0.5f)) {
       return true;
     }

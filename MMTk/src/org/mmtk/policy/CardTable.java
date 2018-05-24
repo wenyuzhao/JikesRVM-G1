@@ -17,7 +17,7 @@ public class CardTable {
 
   static {
     int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
-    int totalCards = memorySize >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+    int totalCards = memorySize >> Region.Card.LOG_BYTES_IN_CARD;
     cardTable = new int[totalCards >> Constants.LOG_BITS_IN_INT];
   }
 
@@ -29,7 +29,7 @@ public class CardTable {
 
   @Inline
   private static int hash(Address card) {
-    return card.diff(VM.HEAP_START).toInt() >> MarkBlock.Card.LOG_BYTES_IN_CARD;
+    return card.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
   }
 /*
   @Inline
@@ -46,7 +46,7 @@ public class CardTable {
 */
   @Inline
   public static boolean attemptToMarkCard(Address card, boolean mark) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(MarkBlock.Card.of(card)));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
     boolean success = attemptBitInBuffer(cardTable, cardIndex, mark);
     if (success) {
@@ -103,7 +103,7 @@ public class CardTable {
 
   @Inline
   public static boolean cardIsMarked(Address card) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(MarkBlock.Card.of(card)));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
     return getBit(cardTable, cardIndex);
     //return cardTable[cardIndex] > (int) 0;
@@ -113,8 +113,8 @@ public class CardTable {
     for (int i = 0; i < cardTable.length; i++) {
       if (cardTable[i] != (int) 0) {
         for (int j = 0; j < 32; j++) {
-          Address card = VM.HEAP_START.plus((i * 32 + j) << MarkBlock.Card.LOG_BYTES_IN_CARD);
-          VM.assertions._assert(MarkBlock.Card.isAligned(card));
+          Address card = VM.HEAP_START.plus((i * 32 + j) << Region.Card.LOG_BYTES_IN_CARD);
+          VM.assertions._assert(Region.Card.isAligned(card));
           if (cardIsMarked(card)) {
             Log.write("Card ", card);
             Log.writeln(" is marked.");

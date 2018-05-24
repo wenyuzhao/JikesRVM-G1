@@ -14,19 +14,12 @@ package org.mmtk.plan.markcopy.remset;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.*;
-import org.mmtk.utility.ForwardingWord;
-import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.VMRequest;
-import org.mmtk.utility.options.DefragHeadroomFraction;
-import org.mmtk.utility.options.G1GCLiveThresholdPercent;
 import org.mmtk.utility.options.G1ReservePercent;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.sanitychecker.SanityChecker;
-import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
-import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -57,7 +50,7 @@ public class MarkCopy extends StopTheWorld {
    */
 
   /** One of the two semi spaces that alternate roles at each collection */
-  public static final MarkBlockSpace markBlockSpace = new MarkBlockSpace("rc", VMRequest.discontiguous());
+  public static final RegionSpace markBlockSpace = new RegionSpace("rc", VMRequest.discontiguous());
   public static final int MC = markBlockSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
@@ -67,7 +60,7 @@ public class MarkCopy extends StopTheWorld {
 
   static {
     Options.g1ReservePercent = new G1ReservePercent();
-    MarkBlock.Card.enable();
+    Region.Card.enable();
   }
 
   /**
@@ -239,7 +232,7 @@ public class MarkCopy extends StopTheWorld {
     if (phaseId == REDIRECT_PREPARE) {
       //super.collectionPhase(PREPARE);
       redirectTrace.prepare();
-      //markBlockSpace.prepare(true);
+      //regionSpace.prepare(true);
       return;
     }
 
@@ -255,7 +248,7 @@ public class MarkCopy extends StopTheWorld {
 
     if (phaseId == REDIRECT_RELEASE) {
       //redirectTrace.release();
-      //markBlockSpace.release();
+      //regionSpace.release();
       //super.collectionPhase(RELEASE);
       return;
     }

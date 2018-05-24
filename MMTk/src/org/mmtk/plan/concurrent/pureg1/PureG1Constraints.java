@@ -12,10 +12,9 @@
  */
 package org.mmtk.plan.concurrent.pureg1;
 
-import org.mmtk.plan.StopTheWorldConstraints;
 import org.mmtk.plan.concurrent.ConcurrentConstraints;
-import org.mmtk.policy.MarkBlock;
-import org.mmtk.policy.MarkBlockSpace;
+import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -33,11 +32,11 @@ public class PureG1Constraints extends ConcurrentConstraints {
   }
   @Override
   public int gcHeaderBits() {
-    return MarkBlockSpace.LOCAL_GC_BITS_REQUIRED;
+    return RegionSpace.LOCAL_GC_BITS_REQUIRED;
   }
   @Override
   public int gcHeaderWords() {
-    return MarkBlockSpace.GC_HEADER_WORDS_REQUIRED;
+    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {
@@ -45,7 +44,7 @@ public class PureG1Constraints extends ConcurrentConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return MarkBlock.BYTES_IN_BLOCK;
+    return Region.BYTES_IN_BLOCK;
   }
   @Override
   public boolean needsObjectReferenceWriteBarrier() {

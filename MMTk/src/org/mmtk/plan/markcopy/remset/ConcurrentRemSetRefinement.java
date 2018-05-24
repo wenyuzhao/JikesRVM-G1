@@ -18,7 +18,7 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.CardTable;
-import org.mmtk.policy.MarkBlock;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
@@ -103,10 +103,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   static TransitiveClosure scanPointers = new TransitiveClosure() {
     @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      Address card = MarkBlock.Card.of(VM.objectModel.objectStartRef(source));
+      Address card = Region.Card.of(VM.objectModel.objectStartRef(source));
       Address ptr = slot.loadAddress();
-      if (!ptr.isZero() && Space.isInSpace(MarkCopy.MC, ptr) && MarkBlock.of(ptr).NE(MarkBlock.of(source.toAddress()))) { // cross block pointer
-        Address foreignBlock = MarkBlock.of(ptr);
+      if (!ptr.isZero() && Space.isInSpace(MarkCopy.MC, ptr) && Region.of(ptr).NE(Region.of(source.toAddress()))) { // cross block pointer
+        Address foreignBlock = Region.of(ptr);
         RemSet.addCard(foreignBlock, card);
       }
     }
@@ -129,9 +129,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 */
     if (!Space.isInSpace(Plan.VM_SPACE, card)) {
       if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(!MarkBlock.Card.getCardAnchor(card).isZero());
+        VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
       }
-      MarkBlock.Card.linearScan(cardLinearScan, card);
+      Region.Card.linearScan(cardLinearScan, card);
     }
   }
 

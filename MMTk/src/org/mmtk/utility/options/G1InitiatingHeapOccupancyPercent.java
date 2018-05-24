@@ -19,7 +19,7 @@ public class G1InitiatingHeapOccupancyPercent extends org.vmutil.options.FloatOp
   public G1InitiatingHeapOccupancyPercent() {
     super(Options.set, "G1 Initiating Heap Occupancy Percent",
           "Sets the Java heap occupancy threshold that triggers a marking cycle. The default occupancy is 45 percent of the entire Java heap.",
-          30f);
+          45f);
   }
 
   /**
