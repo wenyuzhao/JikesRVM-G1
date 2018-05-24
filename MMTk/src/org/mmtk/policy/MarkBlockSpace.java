@@ -625,10 +625,11 @@ public final class MarkBlockSpace extends Space {
   @Inline
   public static AddressArray computeRelocationBlocks(AddressArray blocks, boolean concurrent) {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
-
+    /*
     int id = concurrent ? VM.activePlan.collector().getId() - VM.activePlan.collector().parallelWorkerCount() : VM.activePlan.collector().getId();
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(id >= 0 && id < VM.activePlan.collector().parallelWorkerCount());
     if (id != 0) return null;
+    */
 /*
     relocationSetSelectionLock.acquire();
     if (relocationSetSelected) {

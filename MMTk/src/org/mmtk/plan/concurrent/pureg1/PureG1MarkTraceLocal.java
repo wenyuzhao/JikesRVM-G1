@@ -43,8 +43,7 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(PureG1.MC, object)) {
-      //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-      return PureG1.markBlockSpace.isLive(object);
+      return true;
     }
     return super.isLive(object);
   }
@@ -87,7 +86,6 @@ public class PureG1MarkTraceLocal extends TraceLocal {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     MarkBlock.Card.updateCardMeta(object);
     if (Space.isInSpace(PureG1.MC, object)) {
-      //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       return PureG1.markBlockSpace.traceMarkObject(this, object);
     }
     return super.traceObject(object);

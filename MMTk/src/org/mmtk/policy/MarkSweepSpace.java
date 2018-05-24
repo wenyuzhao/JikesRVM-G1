@@ -237,7 +237,7 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
    */
   @Override
   @Inline
-  protected boolean isCellLive(ObjectReference object) {
+  public boolean isCellLive(ObjectReference object) {
     if (!HEADER_MARK_BITS) {
       return super.isCellLive(object);
     }

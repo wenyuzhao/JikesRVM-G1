@@ -144,20 +144,9 @@ public class PureG1Mutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == PureG1.MARK_RELEASE) {
-      mc.reset();
-      super.collectionPhase(PureG1.RELEASE, primary);
-      return;
-    }
-
     if (phaseId == PureG1.RELEASE) {
-      //mc.reset();
-      //super.collectionPhase(phaseId, primary);
-      return;
-    }
-
-    if (phaseId == PureG1.RELOCATION_SET_SELECTION_PREPARE) {
       mc.reset();
+      super.collectionPhase(phaseId, primary);
       return;
     }
 
@@ -175,16 +164,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
-      super.collectionPhase(PureG1.RELEASE, primary);
-      return;
-    }
-
-    if (phaseId == Validation.PREPARE) {
-      super.collectionPhase(PureG1.PREPARE, primary);
       mc.reset();
-      return;
-    }
-    if (phaseId == Validation.RELEASE) {
       super.collectionPhase(PureG1.RELEASE, primary);
       return;
     }

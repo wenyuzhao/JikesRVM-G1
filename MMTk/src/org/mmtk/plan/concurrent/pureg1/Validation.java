@@ -166,7 +166,7 @@ public class Validation extends TraceLocal {
   @Inline
   protected void processRememberedSets() {
     //if (!remSetsProcessed) {
-    processor.processRemSets(PureG1Collector.relocationSet, false, PureG1.markBlockSpace);
+    processor.processRemSets(PureG1.relocationSet, false, PureG1.markBlockSpace);
     //remSetsProcessed = true;
     //}
   }

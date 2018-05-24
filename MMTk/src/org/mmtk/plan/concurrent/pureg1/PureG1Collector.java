@@ -61,7 +61,6 @@ public class PureG1Collector extends ConcurrentCollector {
   protected final PureG1RedirectTraceLocal redirectTrace = new PureG1RedirectTraceLocal(global().redirectTrace);
   protected final Validation validationTrace = new Validation();
   protected TraceLocal currentTrace;
-  static AddressArray relocationSet;
 
   /****************************************************************************
    *
@@ -152,61 +151,19 @@ public class PureG1Collector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == PureG1.MARK_RELEASE) {
+    if (phaseId == PureG1.RELEASE) {
       markTrace.completeTrace();
       markTrace.release();
-      return;
-    }
-
-    if (phaseId == PureG1.RELEASE) {
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == PureG1.RELOCATION_SET_SELECTION_PREPARE) {
-      copy.reset();
-      MarkBlockSpace.prepareComputeRelocationBlocks();
-      return;
-    }
-
-    if (phaseId == PureG1.RELOCATION_SET_SELECTION) {
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, false);
-      if (relocationSet != null) {
-        PureG1Collector.relocationSet = relocationSet;
-      }
-      return;
-    }
-/*
-    if (phaseId == PureG1.PREPARE_EVACUATION) {
-      if (VM.activePlan.collector().getId() == 0) {
-        VM.activePlan.resetMutatorIterator();
-        PureG1Mutator m;
-        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-          m.enqueueCurrentRSBuffer();
-        }
-        ConcurrentRemSetRefinement.refineAll();
-        CardTable.assertAllCardsAreNotMarked();
-      }
-      rendezvous();
-      return;
-    }
-*/
-/*
-    if (phaseId == PureG1.EVACUATION) {
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.writeln("G1 EVACUATION");
-        VM.assertions._assert(relocationSet != null);
-      }
-      //RemSet.evacuateBlocks(relocationSet, false);
-      return;
-    }
-*/
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       currentTrace = redirectTrace;
       //redirectTrace.log = true;
       redirectTrace.prepare();
       copy.reset();
-      //super.collectionPhase(PureG1.PREPARE, primary);
+      super.collectionPhase(PureG1.PREPARE, primary);
       return;
     }
 
@@ -227,59 +184,34 @@ public class PureG1Collector extends ConcurrentCollector {
       }
       rendezvous();*/
       redirectTrace.remSetsProcessing = true;
+      rendezvous();
       redirectTrace.processRemSets();
       return;
     }
 
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       redirectTrace.completeTrace();
+      rendezvous();
       redirectTrace.remSetsProcessing = false;
       //redirectTrace.processRoots();
       return;
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
-      /*if (rendezvous() == 0) {
-        //RemSet.assertNoPointersToCSet(PureG1.markBlockSpace, relocationSet);
-        PureG1.log = false;
-      }
-      rendezvous();*/
       redirectTrace.release();
       copy.reset();
-      //super.collectionPhase(PureG1.RELEASE, primary);
+      super.collectionPhase(PureG1.RELEASE, primary);
+      if (rendezvous() == 0) RemSet.assertNoPointersToCSet(PureG1.markBlockSpace, PureG1.relocationSet);
+      rendezvous();
       MarkBlock.Card.clearCardMetaForUnmarkedCards(PureG1.markBlockSpace, false);
       return;
     }
 
     if (phaseId == PureG1.CLEANUP_BLOCKS) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(relocationSet != null);
-      RemSet.clearRemsetForRelocationSet(relocationSet, false);
-      PureG1.markBlockSpace.cleanupBlocks(relocationSet, false);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
+      RemSet.clearRemsetForRelocationSet(PureG1.relocationSet, false);
+      PureG1.markBlockSpace.cleanupBlocks(PureG1.relocationSet, false);
       rendezvous();
-      return;
-    }
-
-    if (phaseId == Validation.PREPARE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation PREPARE");
-      currentTrace = validationTrace;
-      validationTrace.prepare();
-      copy.reset();
-      super.collectionPhase(PureG1.PREPARE, primary);
-      return;
-    }
-
-    if (phaseId == Validation.CLOSURE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation CLOSURE");
-      validationTrace.completeTrace();
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation CLOSURE Done.");
-      return;
-    }
-
-    if (phaseId == Validation.RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("Validation RELEASE");
-      validationTrace.release();
-      copy.reset();
-      super.collectionPhase(PureG1.RELEASE, primary);
       return;
     }
 

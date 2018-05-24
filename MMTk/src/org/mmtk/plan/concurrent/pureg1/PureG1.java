@@ -62,8 +62,8 @@ public class PureG1 extends Concurrent {
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace redirectTrace = new Trace(metaDataSpace);
-  public AddressArray blocksSnapshot;
-  public static boolean concurrentMarkingInProgress = false;
+  public static AddressArray blocksSnapshot, relocationSet;
+  //public static boolean concurrentMarkingInProgress = false;
 
   static {
     Options.g1ReservePercent = new G1ReservePercent();
@@ -91,16 +91,14 @@ public class PureG1 extends Concurrent {
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
 
   public static final short relocationSetSelection = Phase.createComplex("relocationSetSelection",
-    Phase.scheduleGlobal   (RELOCATION_SET_SELECTION_PREPARE),
-    Phase.scheduleCollector(RELOCATION_SET_SELECTION_PREPARE),
-    Phase.scheduleMutator  (RELOCATION_SET_SELECTION_PREPARE),
-    Phase.scheduleCollector(RELOCATION_SET_SELECTION)
+    Phase.scheduleGlobal(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleGlobal(RELOCATION_SET_SELECTION)
   );
   //public static final short EVACUATION = Phase.createSimple("evacuation");
   //public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
-  public static final short MARK_RELEASE = Phase.createSimple("mark-release");
+  //public static final short MARK_RELEASE = Phase.createSimple("mark-release");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleMutator  (REDIRECT_PREPARE),
@@ -113,30 +111,20 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (ROOTS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
-      /*Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
-      /*Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
     Phase.scheduleCollector(WEAK_REFS),
     Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
+    Phase.scheduleCollector(PHANTOM_REFS),
+    Phase.scheduleComplex  (forwardPhase),
       Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleComplex  (forwardPhase),
     Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
     Phase.scheduleGlobal   (REDIRECT_RELEASE)
@@ -152,22 +140,13 @@ public class PureG1 extends Concurrent {
   public static short _collection = Phase.createComplex("_collection", null,
     Phase.scheduleComplex  (initPhase),
     // Mark
-    Phase.scheduleComplex   (rootClosurePhase),
-    //Phase.scheduleComplex   (refTypeClosurePhase),
-    //Phase.scheduleComplex   (forwardPhase),
-
-
-      Phase.scheduleMutator  (MARK_RELEASE),
-      Phase.scheduleCollector(MARK_RELEASE),
-      Phase.scheduleGlobal   (MARK_RELEASE),
-
-    Phase.scheduleComplex   (relocationSetSelection),
-    //Phase.scheduleMutator   (PREPARE_EVACUATION),
-    //Phase.scheduleCollector (PREPARE_EVACUATION),
-
-    Phase.scheduleComplex   (relocationPhase),
-
+    Phase.scheduleComplex  (rootClosurePhase),
+    Phase.scheduleComplex  (refTypeClosurePhase),
     Phase.scheduleComplex  (completeClosurePhase),
+
+    Phase.scheduleComplex  (relocationSetSelection),
+
+    Phase.scheduleComplex  (relocationPhase),
 
     Phase.scheduleCollector(CLEANUP_BLOCKS),
 
@@ -197,26 +176,27 @@ public class PureG1 extends Concurrent {
       markBlockSpace.prepare(true);
       return;
     }
-    if (phaseId == CLOSURE) {
-      concurrentMarkingInProgress = false;
-      //markTrace.prepare();
-      return;
-    }
 
-    if (phaseId == MARK_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
-      markTrace.release();
+    if (phaseId == CLOSURE) {
       return;
     }
 
     if (phaseId == RELEASE) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
+      markTrace.release();
       markBlockSpace.release();
-      super.collectionPhase(phaseId);
+      //super.collectionPhase(phaseId);
       return;
     }
 
     if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
       blocksSnapshot = markBlockSpace.shapshotBlocks();
+      return;
+    }
+
+    if (phaseId == RELOCATION_SET_SELECTION) {
+      blocksSnapshot = markBlockSpace.shapshotBlocks();
+      relocationSet = MarkBlockSpace.computeRelocationBlocks(blocksSnapshot, false);
       return;
     }
 
@@ -229,11 +209,10 @@ public class PureG1 extends Concurrent {
       }
       ConcurrentRemSetRefinement.refineAll();
       CardTable.assertAllCardsAreNotMarked();
+
       //super.collectionPhase(PREPARE);
-      //ConcurrentRemSetRefinement.refineAll();
-      //CardTable.assertAllCardsAreNotMarked();
       redirectTrace.prepare();
-      //markBlockSpace.prepare();
+      //markBlockSpace.prepare(false);
       return;
     }
 
@@ -246,39 +225,13 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_CLOSURE) {
-      //redirectTrace.prepare();
       return;
     }
 
     if (phaseId == REDIRECT_RELEASE) {
       redirectTrace.release();
-      //markBlockSpace.release();
-      //super.collectionPhase(RELEASE);
-      return;
-    }
-
-    if (phaseId == Validation.PREPARE) {
-      super.collectionPhase(PREPARE);
-      Validation.trace.prepare();
-      markBlockSpace.prepare();
-      return;
-    }
-    if (phaseId == Validation.CLOSURE) {
-      return;
-    }
-    if (phaseId == Validation.RELEASE) {
-      Validation.trace.release();
       markBlockSpace.release();
       super.collectionPhase(RELEASE);
-      return;
-    }
-
-    if (phaseId == SET_BARRIER_ACTIVE) {
-      concurrentMarkingInProgress = true;
-      return;
-    }
-    if (phaseId == CLEAR_BARRIER_ACTIVE) {
-      concurrentMarkingInProgress = false;
       return;
     }
 
@@ -367,24 +320,4 @@ public class PureG1 extends Concurrent {
     TransitiveClosure.registerSpecializedScan(Validation.SCAN_VALIDATE, Validation.class);
     super.registerSpecializedMethods();
   }
-
-  /*
-  @Override
-  @Inline
-  public void storeObjectReference(Address slot, ObjectReference value) {
-    if (!value.isNull() && Space.isInSpace(MC, value) && ForwardingWord.isForwarded(value))
-      slot.store(MarkBlockSpace.getForwardingPointer(value));
-    else
-      slot.store(value);
-  }
-
-  @Override
-  @Inline
-  public ObjectReference loadObjectReference(Address slot) {
-    ObjectReference obj = slot.loadObjectReference();
-    if (!obj.isNull() && Space.isInSpace(MC, obj) && ForwardingWord.isForwarded(obj))
-      return MarkBlockSpace.getForwardingPointer(obj);
-    return obj;
-  }
-  */
 }

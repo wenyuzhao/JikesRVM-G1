@@ -331,6 +331,7 @@ public abstract class TraceLocal extends TransitiveClosure {
       return true;
     if (Plan.USE_CODE_SPACE && Space.isInSpace(Plan.LARGE_CODE, object))
       return true;
+    VM.assertions._assert(VM.debugging.validRef(object));
     if (VM.VERIFY_ASSERTIONS)
       VM.assertions._assert(false, "willNotMove not defined properly in subclass");
     return false;

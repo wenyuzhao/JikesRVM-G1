@@ -92,6 +92,11 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
+    /*if (Space.isInSpace(PureG1.MC, object) && MarkBlock.relocationRequired(MarkBlock.of(object))) {
+      ObjectReference newObject = PureG1.markBlockSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+      return newObject;
+    }
+    return object;*/
 
     if (remSetsProcessing) {
       if (Space.isInSpace(PureG1.MC, object)) {
@@ -115,6 +120,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(ref));
       return ref;
     }
+
 /*
     if (remSetsProcessing) {
       if (!Space.isMappedObject(object)) {
@@ -156,21 +162,14 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   }
 
   boolean remSetsProcessing = false;
-  //boolean remSetsProcessed = false;
-
-  @Inline
-  public void completeTrace() {
-    //remSetsProcessed = false;
-    super.completeTrace();
-    //remSetsProcessed = false;
-  }
 
   //@Override
   @Inline
   public void processRemSets() {
+    super.processRememberedSets();
     //if (!remSetsProcessed) {
     //remSetsProcessing = true;
-      processor.processRemSets(PureG1Collector.relocationSet, false, PureG1.markBlockSpace);
+      processor.processRemSets(PureG1.relocationSet, false, PureG1.markBlockSpace);
     //remSetsProcessing = false;
       //remSetsProcessed = true;
     //}
