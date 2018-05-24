@@ -166,7 +166,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   //@Override
   @Inline
   public void processRemSets() {
-    super.processRememberedSets();
+    //super.processRememberedSets();
     //if (!remSetsProcessed) {
     //remSetsProcessing = true;
       processor.processRemSets(PureG1.relocationSet, false, PureG1.markBlockSpace);

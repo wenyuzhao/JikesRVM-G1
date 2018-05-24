@@ -211,17 +211,17 @@ public class MarkBlock {
 
   @Inline
   public static void updateBlockAliveSize(Address block, ObjectReference object) {
-    aliveSizeModifierLock.acquire();
+    /*aliveSizeModifierLock.acquire();
     setUsedSize(block, usedSize(block) + VM.objectModel.getSizeWhenCopied(object));
-    aliveSizeModifierLock.release();
+    aliveSizeModifierLock.release();*/
 
-    /*
+    Address meta = metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET);
     int oldValue, newValue;
     do {
-      oldValue = usedSize(block);
+      oldValue = meta.prepareInt();
       newValue = oldValue + VM.objectModel.getSizeWhenCopied(object);
-    } while (!VM.objectModel.attemptInt(metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET), Offset.fromIntZeroExtend(0), oldValue, newValue));
-    */
+    } while (!meta.attempt(oldValue, newValue));
+
   }
 
   @Inline

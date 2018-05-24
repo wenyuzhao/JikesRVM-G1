@@ -59,7 +59,7 @@ public class PureG1Collector extends ConcurrentCollector {
   protected final MarkBlockAllocator copy = new MarkBlockAllocator(PureG1.markBlockSpace, true);
   protected final PureG1MarkTraceLocal markTrace = new PureG1MarkTraceLocal(global().markTrace);
   protected final PureG1RedirectTraceLocal redirectTrace = new PureG1RedirectTraceLocal(global().redirectTrace);
-  protected final Validation validationTrace = new Validation();
+  //protected final Validation validationTrace = new Validation();
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -201,8 +201,8 @@ public class PureG1Collector extends ConcurrentCollector {
       redirectTrace.release();
       copy.reset();
       super.collectionPhase(PureG1.RELEASE, primary);
-      if (rendezvous() == 0) RemSet.assertNoPointersToCSet(PureG1.markBlockSpace, PureG1.relocationSet);
-      rendezvous();
+      //if (rendezvous() == 0) RemSet.assertNoPointersToCSet(PureG1.markBlockSpace, PureG1.relocationSet);
+      //rendezvous();
       MarkBlock.Card.clearCardMetaForUnmarkedCards(PureG1.markBlockSpace, false);
       return;
     }
