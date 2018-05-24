@@ -40,7 +40,7 @@ public class PureG1Constraints extends ConcurrentConstraints {
   }
   @Override
   public int numSpecializedScans() {
-    return 3;
+    return 2;
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {

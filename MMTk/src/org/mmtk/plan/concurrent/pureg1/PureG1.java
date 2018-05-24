@@ -322,7 +322,6 @@ public class PureG1 extends Concurrent {
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, PureG1MarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_REDIRECT, PureG1RedirectTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(Validation.SCAN_VALIDATE, Validation.class);
     super.registerSpecializedMethods();
   }
 }
