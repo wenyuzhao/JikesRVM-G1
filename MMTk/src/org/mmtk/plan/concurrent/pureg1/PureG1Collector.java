@@ -23,6 +23,7 @@ import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.Pure;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
@@ -183,6 +184,8 @@ public class PureG1Collector extends ConcurrentCollector {
       rendezvous();*/
       redirectTrace.remSetsProcessing = true;
       rendezvous();
+      redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
+      rendezvous();
       redirectTrace.processRemSets();
       return;
     }
@@ -207,7 +210,10 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.CLEANUP_BLOCKS) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
-      RemSet.clearRemsetForRelocationSet(PureG1.relocationSet, false);
+      RemSet.cleanupRemSetRefsToRelocationSet(PureG1.regionSpace, PureG1.relocationSet, false);
+      rendezvous();
+      RemSet.releaseRemSetsOfRelocationSet(PureG1.relocationSet, false);
+      rendezvous();
       PureG1.regionSpace.cleanupBlocks(PureG1.relocationSet, false);
       rendezvous();
       return;

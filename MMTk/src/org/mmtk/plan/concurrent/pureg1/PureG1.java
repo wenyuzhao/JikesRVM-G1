@@ -24,6 +24,7 @@ import org.mmtk.utility.options.G1InitiatingHeapOccupancyPercent;
 import org.mmtk.utility.options.G1ReservePercent;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.utility.statistics.Timer;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -164,13 +165,20 @@ public class PureG1 extends Concurrent {
    *
    * Collection
    */
-
+  static long totalSTWTime = 0;
+  static long startTime = 0;
   /**
    * {@inheritDoc}
    */
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
+    if (phaseId == COMPLETE) {
+      totalSTWTime += VM.statistics.nanoTime() - startTime;
+      Log.writeln("TotalSTWTime ", totalSTWTime);
+      super.collectionPhase(COMPLETE);
+      return;
+    }
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
@@ -183,6 +191,7 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == RELEASE) {
+      startTime = VM.statistics.nanoTime();
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       markTrace.release();
       //regionSpace.release();
@@ -246,8 +255,8 @@ public class PureG1 extends Concurrent {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    int usedPages = getPagesUsed();// - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages();// - metaDataSpace.reservedPages();
     if ((totalPages - usedPages) < (totalPages * Options.g1ReservePercent.getValue() / 100)) {
       return true;
     }
@@ -257,8 +266,8 @@ public class PureG1 extends Concurrent {
   @Override
   protected boolean concurrentCollectionRequired() {
     //return false;
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    int usedPages = getPagesUsed();// - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages();// - metaDataSpace.reservedPages();
     return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * Options.g1InitiatingHeapOccupancyPercent.getValue()));
   }
 

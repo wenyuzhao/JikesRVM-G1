@@ -525,6 +525,25 @@ public final class RegionSpace extends Space {
   // Block iterator
 
   @Inline
+  public int allocatedRegionsCount() {
+    return Region.count();
+  }
+
+  @Inline
+  public AddressArray allocatedRegions() {
+    AddressArray array = AddressArray.create(allocatedRegionsCount());
+    Address region = firstBlock();
+    int i = 0;
+    do {
+      array.set(i, region);
+      region = nextBlock(region);
+      i += 1;
+    } while (!region.isZero());
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(i == allocatedRegionsCount());
+    return array;
+  }
+
+  @Inline
   public Address firstBlock() {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
     return nextBlock(headDiscontiguousRegion);

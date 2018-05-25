@@ -13,11 +13,48 @@ import org.vmmagic.unboxed.*;
 @Uninterruptible
 public class RemSet {
   private static Space space = Plan.metaDataSpace;
-  private static final int PAGES_IN_REMSET;
 
-  static {
-    int cards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
-    PAGES_IN_REMSET = ceilDiv(cards, Constants.BYTES_IN_PAGE << Constants.LOG_BITS_IN_BYTE);
+  @Uninterruptible
+  private static class CardHashSet {
+    @Inline
+    private static int hash(Address card) {
+      return card.toWord().rshl(Region.Card.LOG_BYTES_IN_CARD).toInt();
+    }
+    @Inline
+    private static boolean insert(Address table, int entries, Address card) {
+      Address cursor = table.plus((hash(card) % entries) << Constants.LOG_BYTES_IN_ADDRESS);
+      Address limit = table.plus(entries << Constants.LOG_BYTES_IN_ADDRESS);
+      for (Address i = cursor; i.LT(limit); i = i.plus(Constants.BYTES_IN_ADDRESS)) {
+        Address c = i.loadAddress();
+        if (c.EQ(card)) return false;
+        if (c.isZero()) {
+          i.store(card);
+          return true;
+        }
+      }
+      for (Address i = table; i.LT(cursor); i = i.plus(Constants.BYTES_IN_ADDRESS)) {
+        Address c = i.loadAddress();
+        if (c.EQ(card)) return false;
+        if (c.isZero()) {
+          i.store(card);
+          return true;
+        }
+      }
+      VM.assertions.fail("HashSet Overflow");
+      return false;
+    }
+    @Inline
+    private static boolean contains(Address table, int entries, Address card) {
+      Address cursor = table.plus((hash(card) % entries) << Constants.LOG_BYTES_IN_ADDRESS);
+      Address limit = table.plus(entries << Constants.LOG_BYTES_IN_ADDRESS);
+      for (Address i = cursor; i.LT(limit); i = i.plus(Constants.BYTES_IN_ADDRESS)) {
+        if (i.loadAddress().EQ(card)) return true;
+      }
+      for (Address i = table; i.LT(cursor); i = i.plus(Constants.BYTES_IN_ADDRESS)) {
+        if (i.loadAddress().EQ(card)) return true;
+      }
+      return false;
+    }
   }
 
   @Inline
@@ -36,71 +73,53 @@ public class RemSet {
   }
 
   @Inline
-  private static int hash(Address card) {
-    return card.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
+  private static void expandRemSetForRegion(Address region) {
+    Address oldRemSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
+    int oldRemSetPages = Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
+    int oldRemSetBytes = oldRemSetPages << Constants.LOG_BYTES_IN_PAGE;
+    int newRemSetPages = oldRemSet.isZero() ? 1 : (oldRemSetPages << 1);
+
+    Address newRemSet = space.acquire(newRemSetPages);
+    Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).store(newRemSet);
+    Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).store(newRemSetPages);
+    // Copy
+    Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(0);
+    for (int i = 0; i < oldRemSetBytes; i += Constants.BYTES_IN_ADDRESS) {
+      Address card = oldRemSet.plus(i).loadAddress();
+      if (!card.isZero()) addCard(region, card, false);
+    }
+
+    if (!oldRemSet.isZero()) space.release(oldRemSet);
   }
 
   @Inline
   public static void addCard(Address region, Address card) {
-    lock(region);
+    addCard(region, card, true);
+  }
+
+  @Inline
+  private static void addCard(Address region, Address card, boolean lock) {
+    if (lock) lock(region);
+
     Address remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
-    if (remSet.isZero()) {
-      remSet = space.acquire(PAGES_IN_REMSET);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remSet.isZero());
-      Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).store(remSet);
+    int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+    int remSetEntries = (Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE) >> Constants.LOG_BYTES_IN_ADDRESS;
+
+    if (remSet.isZero() || remSetSize >= remSetEntries) {
+      expandRemSetForRegion(region);
+      remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
+      remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      remSetEntries = (Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE) >> Constants.LOG_BYTES_IN_ADDRESS;
     }
 
-    if (!containsCard(region, card)) {
+    if (CardHashSet.insert(remSet, remSetEntries, card)) {
       // Increase REMSET_SIZE
-      int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
       Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize + 1);
-      // Set bit
-      int index = hash(card);
-      int byteIndex = index >> 3;
-      int bitIndex = index ^ (byteIndex << 3);
-      Address addr = remSet.plus(byteIndex);
-      byte b = addr.loadByte();
-      addr.store((byte) (b | (1 << (7 - bitIndex))));
     }
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(containsCard(region, card));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(CardHashSet.contains(remSet, remSetEntries, card));
 
-    unlock(region);
-  }
-
-  @Inline
-  private static void removeCard(Address region, Address card) {
-    lock(region);
-
-    Address remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
-    if (remSet.isZero()) return;
-
-    if (containsCard(region, card)) {
-      // Decrease REMSET_SIZE
-      int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-      Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize - 1);
-      // Set bit
-      int index = hash(card);
-      int byteIndex = index >> 3;
-      int bitIndex = index ^ (byteIndex << 3);
-      Address addr = remSet.plus(byteIndex);
-      byte b = addr.loadByte();
-      addr.store((byte) (b & ~(1 << (7 - bitIndex))));
-    }
-
-    unlock(region);
-  }
-
-  @Inline
-  public static boolean containsCard(Address region, Address card) {
-    Address remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
-    if (remSet.isZero()) return false;
-    int index = hash(card);
-    int byteIndex = index >> 3;
-    int bitIndex = index ^ (byteIndex << 3);
-    Address addr = remSet.plus(byteIndex);
-    byte b = addr.loadByte();
-    return ((byte) (b & (1 << (7 - bitIndex)))) != ((byte) 0);
+    if (lock) unlock(region);
   }
 
   @Inline
@@ -118,76 +137,128 @@ public class RemSet {
 
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
-        if (!object.isNull()) {
-            VM.scanning.scanObject(redirectPointerTrace, object);
-        }
+        if (!object.isNull()) VM.scanning.scanObject(redirectPointerTrace, object);
       }
     };
 
+    public void unionRemSets(RegionSpace regionSpace, AddressArray relocationSet, boolean concurrent) {
+      int workers = VM.activePlan.collector().parallelWorkerCount();
+      int id = VM.activePlan.collector().getId();
+      if (concurrent) id -= workers;
+      int regionsToVisit = ceilDiv(relocationSet.length(), workers);
+
+      Address targetRegion = relocationSet.get(0);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!targetRegion.isZero());
+
+      for (int i = 0; i < regionsToVisit; i++) {
+        int cursor = regionsToVisit * id + i;
+        if (cursor == 0) continue;
+        if (cursor >= relocationSet.length()) break;
+
+        Address region = relocationSet.get(cursor);
+        if (!region.isZero()) {
+          // Add all cards remembered by this region to targetRegion
+          Address remSetPointer = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET);
+          Address remSet = remSetPointer.loadAddress();
+          if (!remSet.isZero()) {
+            Address limit = remSet.plus(Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE);
+            for (Address j = remSet; j.LT(limit); j = j.plus(Constants.BYTES_IN_ADDRESS)) {
+              Address c = j.loadAddress();
+              if (c.isZero() || (Space.isInSpace(regionSpace.getDescriptor(), c) && Region.relocationRequired(Region.of(c))))
+                continue;
+              addCard(targetRegion, c);
+            }
+            // Release current remSet
+            lock(region);
+            remSetPointer.store(Address.zero());
+            space.release(remSet);
+            unlock(region);
+          }
+        }
+      }
+    }
+
+    /** Scan all cards in remsets of collection regions */
     public void processRemSets(AddressArray relocationSet, boolean concurrent, RegionSpace regionSpace) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
-      int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
-      int cardsToProcess = ceilDiv(totalCards, workers);
+      Address remSet = Region.metaDataOf(relocationSet.get(0), Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
+      int remSetEntries = (Region.metaDataOf(relocationSet.get(0), Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE) >> Constants.LOG_BYTES_IN_ADDRESS;
+      int entriesToVisit = ceilDiv(remSetEntries, workers);
 
-      for (int i = 0; i < cardsToProcess; i++) {
-        int index = cardsToProcess * id + i;
-        if (index >= totalCards) break;
-        Address c = VM.HEAP_START.plus(index << Region.Card.LOG_BYTES_IN_CARD);
-
+      for (int i = 0; i < entriesToVisit; i++) {
+        int cursor = entriesToVisit * id + i;
+        if (cursor >= remSetEntries) break;
+        Address c = remSet.plus(cursor << Constants.LOG_BYTES_IN_ADDRESS).loadAddress();
+        if (c.isZero()) continue;
         if (!Space.isMappedAddress(c)) continue;
         if (Space.isInSpace(regionSpace.getDescriptor(), c) && (Region.of(c).EQ(EmbeddedMetaData.getMetaDataBase(c)) || Region.relocationRequired(Region.of(c)))) {
           continue;
         }
         if (Space.isInSpace(Plan.VM_SPACE, c)) continue;
-
-        for (int j = 0; j < relocationSet.length(); j++) {
-          Address block = relocationSet.get(j);
-          if (containsCard(block, c)) {
-            Region.Card.linearScan(cardLinearScan, c);
-            break;
-          }
-        }
+        Region.Card.linearScan(cardLinearScan, c);
       }
     }
   }
 
   @Inline
-  public static void clearRemsetMetaForBlock(Address targetBlock) {
-    Address targetBlockLimit = targetBlock.plus(Region.BYTES_IN_BLOCK);
-    RegionSpace space =  (RegionSpace) Space.getSpaceForAddress(targetBlock);
-    Address block = space.firstBlock();
-    while (!block.isZero()) {
-      if (!Region.relocationRequired(block)) {
-        for (Address c = targetBlock; c.LT(targetBlockLimit); c = c.plus(Region.Card.BYTES_IN_CARD)) {
-          removeCard(block, c);
+  private static void cleanupRemSetRefsToRelocationSetForRegion(RegionSpace regionSpace, Address region, AddressArray relocationSet) {
+    lock(region);
+    Address remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
+    Address limit = remSet.plus(Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE);
+    for (Address i = remSet; i.LT(limit); i = i.plus(Constants.BYTES_IN_ADDRESS)) {
+      Address c = i.loadAddress();
+      if (c.isZero() || !Space.isInSpace(regionSpace.getDescriptor(), c)) continue;
+      Address cardRegion = Region.of(c);
+      for (int j = 0; j < relocationSet.length(); j++) {
+        if (relocationSet.get(j).EQ(cardRegion)) {
+          // This card is in CSet, remove this card from RemSet.
+          i.store(Address.zero());
+          int oldRemSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldRemSetSize > 0);
+          Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(oldRemSetSize - 1);
+          break;
         }
       }
-      block = space.nextBlock(block);
     }
+    unlock(region);
   }
 
-  public static void clearRemsetForRelocationSet(AddressArray relocationSet, boolean concurrent) {
+  /** Remove cards in collection regions from remsets of other regions & Release remsets of collection regions */
+  @Inline
+  public static void cleanupRemSetRefsToRelocationSet(RegionSpace regionSpace, AddressArray relocationSet, boolean concurrent) {
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
     if (concurrent) id -= workers;
-    int blocksToRelease = ceilDiv(relocationSet.length(), workers);
+    AddressArray regions = regionSpace.allocatedRegions();
+    int regionsToVisit = ceilDiv(regions.length(), workers);
 
-    for (int i = 0; i < blocksToRelease; i++) {
-      int cursor = blocksToRelease * id + i;
-      if (cursor >= relocationSet.length()) break;
-      Address block = relocationSet.get(cursor);
-      if (!block.isZero()) {
-        clearRemsetMetaForBlock(block);
-        Address remSetPointer = Region.metaDataOf(block, Region.METADATA_REMSET_POINTER_OFFSET);
-        Address remSet = remSetPointer.loadAddress();
-        if (!remSet.isZero()) {
-          lock(block);
-          remSetPointer.store(Address.zero());
-          space.release(remSet);
-          unlock(block);
-        }
+    for (int i = 0; i < regionsToVisit; i++) {
+      int cursor = regionsToVisit * id + i;
+      if (cursor >= regions.length()) break;
+      Address region = regions.get(cursor);
+      if (!region.isZero() && !Region.relocationRequired(region)) {
+        cleanupRemSetRefsToRelocationSetForRegion(regionSpace, region, relocationSet);
+      }
+    }
+  }
+
+  @Inline
+  public static void releaseRemSetsOfRelocationSet(AddressArray relocationSet, boolean concurrent) {
+    int workers = VM.activePlan.collector().parallelWorkerCount();
+    int id = VM.activePlan.collector().getId();
+    if (concurrent) id -= workers;
+
+    if (id == 0) {
+      Address region = relocationSet.get(0);
+      Address remSetPointer = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET);
+      Address remSet = remSetPointer.loadAddress();
+      if (!remSet.isZero()) {
+        lock(region);
+        remSetPointer.store(Address.zero());
+        space.release(remSet);
+        unlock(region);
       }
     }
   }

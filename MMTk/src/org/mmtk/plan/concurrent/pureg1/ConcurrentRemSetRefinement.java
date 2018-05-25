@@ -111,7 +111,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         //Log.write("Add card ", card);
         //Log.writeln(" to remset of block ", foreignBlock);
         RemSet.addCard(foreignBlock, card);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.containsCard(foreignBlock, card));
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.containsCard(foreignBlock, card));
       }
       /*
       Address ptr = slot.loadAddress();
