@@ -1,5 +1,6 @@
 package org.mmtk.policy;
 
+import org.mmtk.plan.Plan;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.Lock;
@@ -7,20 +8,45 @@ import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.Extent;
 import org.vmmagic.unboxed.Offset;
 
 @Uninterruptible
 public class CardTable {
+  static final int TOTAL_CARDS;
+  static final int HOTNESS_TABLE_PAGES;
+  static final byte HOTNESS_THRESHOLD = 4;
   static final int[] cardTable;
   static int dirtyCards = 0;
   static final Lock dirtyCardsLock = VM.newLock("dirtyCardsLock");
+  static Address cardHotnessTable = Address.zero();
+
+  static int maxHotness = 0;
 
   static {
     int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
-    int totalCards = memorySize >> Region.Card.LOG_BYTES_IN_CARD;
-    cardTable = new int[totalCards >> Constants.LOG_BITS_IN_INT];
+    TOTAL_CARDS = memorySize >> Region.Card.LOG_BYTES_IN_CARD;
+    cardTable = new int[TOTAL_CARDS >> Constants.LOG_BITS_IN_INT];
+    HOTNESS_TABLE_PAGES = RemSet.ceilDiv(TOTAL_CARDS, Constants.BYTES_IN_PAGE);
   }
 
+  @Inline
+  public static boolean increaseHotness(Address card) {
+    if (cardHotnessTable.isZero()) cardHotnessTable = Plan.metaDataSpace.acquire(HOTNESS_TABLE_PAGES);
+    int cardIndex = hash(card);
+    Address hotnessPtr = cardHotnessTable.plus(cardIndex);
+    byte oldHotness = hotnessPtr.loadByte();
+    if (oldHotness > HOTNESS_THRESHOLD) return true; // This is a hot card
+    byte newHotness = (byte) (oldHotness + 1);
+    hotnessPtr.store(newHotness);
+    return newHotness > HOTNESS_THRESHOLD;
+  }
+
+  @Inline
+  public static void clearAllHotness() {
+    if (cardHotnessTable.isZero()) return;
+    VM.memory.zero(false, cardHotnessTable, Extent.fromIntZeroExtend(HOTNESS_TABLE_PAGES << Constants.LOG_BYTES_IN_PAGE));
+  }
 
   @Inline
   public static int dirtyCardSize() {

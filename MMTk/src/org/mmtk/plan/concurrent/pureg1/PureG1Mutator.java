@@ -150,7 +150,6 @@ public class PureG1Mutator extends ConcurrentMutator {
 
     if (phaseId == PureG1.REMEMBERED_SETS) {
       //Log.writeln("Mutator #", getId());
-      enqueueCurrentRSBuffer();
       return;
     }
 
@@ -172,7 +171,7 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    enqueueCurrentRSBuffer();
+    //enqueueCurrentRSBuffer();
     currentRemset.flush();
     mc.reset();
     assertRemsetsFlushed();

@@ -158,6 +158,10 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REDIRECT_PREPARE) {
+      ConcurrentRemSetRefinement.refineHotCards();
+      if (rendezvous() == 0) {
+        ConcurrentRemSetRefinement.finishRefineHotCards();
+      }
       currentTrace = redirectTrace;
       //redirectTrace.log = true;
       redirectTrace.prepare();
@@ -167,23 +171,11 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REMEMBERED_SETS) {
+      ConcurrentRemSetRefinement.refineHotCards();
       if (rendezvous() == 0) {
-        VM.activePlan.resetMutatorIterator();
-        PureG1Mutator m;
-        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-          m.enqueueCurrentRSBuffer();
-        }
-        ConcurrentRemSetRefinement.refineAll();
-        CardTable.assertAllCardsAreNotMarked();
+        ConcurrentRemSetRefinement.finishRefineHotCards();
       }
-      rendezvous();
-      /*if (rendezvous() == 0) {
-        //RemSet.assertPointersToCSetAreAllInRSet(PureG1.regionSpace, relocationSet);
-        PureG1.log = true;
-      }
-      rendezvous();*/
       redirectTrace.remSetsProcessing = true;
-      rendezvous();
       redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
       redirectTrace.processRemSets();

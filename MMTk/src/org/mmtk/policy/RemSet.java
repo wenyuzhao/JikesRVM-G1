@@ -123,7 +123,7 @@ public class RemSet {
   }
 
   @Inline
-  protected static int ceilDiv(int a, int b) {
+  public static int ceilDiv(int a, int b) {
     return (a + b - 1) / b;
   }
 

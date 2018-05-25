@@ -218,7 +218,7 @@ public class PureG1 extends Concurrent {
         m.enqueueCurrentRSBuffer();
       }
       ConcurrentRemSetRefinement.refineAll();
-      CardTable.assertAllCardsAreNotMarked();
+      //CardTable.assertAllCardsAreNotMarked();
 
       //super.collectionPhase(PREPARE);
       redirectTrace.prepare();
@@ -227,9 +227,16 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REMEMBERED_SETS) {
+
+        VM.activePlan.resetMutatorIterator();
+        PureG1Mutator m;
+        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+          m.enqueueCurrentRSBuffer();
+        }
+        ConcurrentRemSetRefinement.refineAll();
       //super.collectionPhase(PREPARE);
-      ConcurrentRemSetRefinement.refineAll();
-      if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
+      //ConcurrentRemSetRefinement.refineAll();
+      //if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
       //regionSpace.prepare();
       return;
     }
@@ -255,8 +262,8 @@ public class PureG1 extends Concurrent {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int usedPages = getPagesUsed();// - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages();// - metaDataSpace.reservedPages();
+    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
     if ((totalPages - usedPages) < (totalPages * Options.g1ReservePercent.getValue() / 100)) {
       return true;
     }
@@ -266,8 +273,8 @@ public class PureG1 extends Concurrent {
   @Override
   protected boolean concurrentCollectionRequired() {
     //return false;
-    int usedPages = getPagesUsed();// - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages();// - metaDataSpace.reservedPages();
+    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
     return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * Options.g1InitiatingHeapOccupancyPercent.getValue()));
   }
 

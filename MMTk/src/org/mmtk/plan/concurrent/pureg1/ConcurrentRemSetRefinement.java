@@ -53,6 +53,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   private static final AddressArray[] filledRSBuffers = new AddressArray[16];
   private static int filledRSBuffersCursor = 0;
   private static final Lock filledRSBuffersLock = VM.newLock("filledRSBuffersLock ");
+  private static AddressArray hotCardsBuffer = AddressArray.create(1024);
+  private static int hotCardsBufferCursor = 0;
 
   private static Monitor lock;
 
@@ -144,14 +146,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   };
 
   public static void processCard(Address card) {
-    /*Log.write("Process card ", card);
-    Log.write(", range ", MarkBlock.Card.getCardAnchor(card));
-    Log.write(" ..< ", MarkBlock.Card.getCardLimit(card));
-    Log.write(", offsets ", MarkBlock.Card.getByte(MarkBlock.Card.anchors, MarkBlock.Card.hash(card)));
-    Log.write(" ..< ", MarkBlock.Card.getByte(MarkBlock.Card.limits, MarkBlock.Card.hash(card)));
-    Log.write(" in space: ");
-    Log.writeln(Space.getSpaceForAddress(card).getName());*/
-
     if (!Space.isInSpace(Plan.VM_SPACE, card)) {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
@@ -165,9 +159,19 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     for (int i = 0; i < buffer.length(); i++) {
       Address card = buffer.get(i);
       if (!card.isZero()) {
-        if (CardTable.attemptToMarkCard(card, false)) {
-          //Log.writeln("Unmark card ", card);
-          processCard(card);
+        if (CardTable.cardIsMarked(card) && CardTable.increaseHotness(card)) {
+          if (hotCardsBufferCursor >= hotCardsBuffer.length()) {
+            Log.writeln("Expand hot cards buffer size");
+            AddressArray oldBuffer = hotCardsBuffer;
+            hotCardsBuffer = AddressArray.create(oldBuffer.length() << 1);
+            for (int j = 0; j < oldBuffer.length(); j++)
+              hotCardsBuffer.set(j, oldBuffer.get(i));
+          }
+          hotCardsBuffer.set(hotCardsBufferCursor++, card);
+        } else {
+          if (CardTable.attemptToMarkCard(card, false)) {
+            processCard(card);
+          }
         }
       }
     }
@@ -179,25 +183,88 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   public static void refine() {
     //refineLock.acquire();
     if (VM.VERIFY_ASSERTIONS) Log.writeln("CONCURRENT REMSET REFINEMENT");
-    refineAll();
+    refinePartial(4/5);
   }
 
   @UninterruptibleNoWarn
   public static void refineAll() {
+    refinePartial(1);
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(filledRSBuffersCursor == 0);
+    }
+    /*
+    // Process hot cards
+    Log.write("Processing ", hotCardsBufferCursor);
+    Log.writeln(" hot cards ", hotCardsBuffer.length());
     refineLock.acquire();
-    for (int i = 0; i < filledRSBuffers.length; i++) {
-      if (filledRSBuffers[i] != null) {
-        refineSingleBuffer(filledRSBuffers[i]);
+    for (int i = 0; i < hotCardsBufferCursor; i++) {
+      Address card = hotCardsBuffer.get(i);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!card.isZero());
+      if (CardTable.attemptToMarkCard(card, false)) {
+        processCard(card);
       }
-      filledRSBuffers[i] = null;
+      hotCardsBuffer.set(i, Address.zero());
+    }
+    hotCardsBufferCursor = 0;
+    CardTable.clearAllHotness();
+    refineLock.release();
+    */
+  }
+
+  @UninterruptibleNoWarn
+  public static void refineHotCards() {
+    int workers = VM.activePlan.collector().parallelWorkerCount();
+    int id = VM.activePlan.collector().getId();
+    int cardsToProcess = RemSet.ceilDiv(hotCardsBufferCursor, workers);
+
+    if (VM.VERIFY_ASSERTIONS && id == 0) {
+      // Process hot cards
+      Log.write("Processing ", hotCardsBufferCursor);
+      Log.writeln(" hot cards ", hotCardsBuffer.length());
+    }
+
+    for (int i = 0; i < cardsToProcess; i++) {
+      int cursor = cardsToProcess * id + i;
+      if (cursor >= hotCardsBufferCursor) break;
+      Address card = hotCardsBuffer.get(cursor);
+      if (VM.VERIFY_ASSERTIONS) {
+        if (card.isZero()) {
+          Log.writeln("Null HotCard at index ", cursor);
+        }
+        VM.assertions._assert(!card.isZero());
+      }
+      if (CardTable.attemptToMarkCard(card, false)) {
+        processCard(card);
+      }
+      hotCardsBuffer.set(cursor, Address.zero());
+    }
+  }
+
+  @UninterruptibleNoWarn
+  public static void finishRefineHotCards() {
+    refineLock.acquire();
+    hotCardsBufferCursor = 0;
+    CardTable.clearAllHotness();
+    refineLock.release();
+    //CardTable.assertAllCardsAreNotMarked();
+  }
+
+  @UninterruptibleNoWarn
+  private static void refinePartial(float ratio) {
+    refineLock.acquire();
+    int start = (int) (filledRSBuffers.length - (filledRSBuffers.length * ratio));
+    for (int i = filledRSBuffers.length - 1; i >= start; i--) {
+      AddressArray buf = filledRSBuffers[i];
+      if (buf != null) {
+        filledRSBuffers[i] = null;
+        refineSingleBuffer(buf);
+      }
     }
     filledRSBuffersLock.acquire();
-    filledRSBuffersCursor = 0;
+    filledRSBuffersCursor = start;
     filledRSBuffersLock.release();
     refineLock.release();
   }
-
-
 
   @Inline
   private static PureG1 global() {
