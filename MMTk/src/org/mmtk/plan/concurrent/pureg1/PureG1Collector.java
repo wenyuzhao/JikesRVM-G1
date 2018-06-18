@@ -175,9 +175,9 @@ public class PureG1Collector extends ConcurrentCollector {
       if (rendezvous() == 0) {
         ConcurrentRemSetRefinement.finishRefineHotCards();
       }
-      redirectTrace.remSetsProcessing = true;
-      redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
+      //redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
+      redirectTrace.remSetsProcessing = true;
       redirectTrace.processRemSets();
       return;
     }
@@ -204,8 +204,8 @@ public class PureG1Collector extends ConcurrentCollector {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
       RemSet.cleanupRemSetRefsToRelocationSet(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
-      RemSet.releaseRemSetsOfRelocationSet(PureG1.relocationSet, false);
-      rendezvous();
+      //RemSet.releaseRemSetsOfRelocationSet(PureG1.relocationSet, false);
+      //rendezvous();
       PureG1.regionSpace.cleanupBlocks(PureG1.relocationSet, false);
       rendezvous();
       return;

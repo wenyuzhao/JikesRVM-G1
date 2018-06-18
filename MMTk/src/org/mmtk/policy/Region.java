@@ -513,7 +513,7 @@ public class Region {
         Log.writeln(Space.getSpaceForAddress(card).getName());
       }
       do {
-        //if (ref.isNull()) break;
+        //if (ref.isNull() || !Space.isMappedObject(ref)) break;
 
         if (log) {
           VM.objectModel.dumpObject(ref);
@@ -535,27 +535,6 @@ public class Region {
           // Get current cell for `ref`
           int cellIndex = VM.objectModel.objectStartRef(ref).diff(firstCell).toInt() / cellExtent;
           Address currentCell = firstCell.plus(cellExtent * cellIndex);
-
-          /*if (currentCell.NE(VM.objectModel.objectStartRef(ref))) {
-            VM.objectModel.dumpObject(ref);
-            Log.writeln("Size ", VM.objectModel.getCurrentSize(ref));
-            Log.writeln("SizeWhenCopy ", VM.objectModel.getSizeWhenCopied(ref));
-            Log.writeln("BlockSize ", BlockAllocator.blockSize(BlockAllocator.getBlkSizeClass(ref.toAddress())));
-            Log.write("!!! ", currentCell);
-            Log.write(" vs ", VM.objectModel.objectStartRef(ref));
-            Log.write(", block ", block);
-            Log.write(" first cell ", firstCell);
-            Log.write(" cellSizeClass ", cellSizeClass);
-            Log.write(" cellExtent ", cellExtent);
-            Log.writeln(" cellIndex ", cellIndex);
-            VM.memory.dumpMemory(VM.objectModel.objectStartRef(ref), 0, VM.objectModel.getCurrentSize(ref) + 30);
-            if (VM.objectModel.objectStartRef(ref).EQ(Address.fromIntZeroExtend(0x6801a014))) {
-              ObjectReference ref2 = VM.objectModel.getObjectFromStartAddress(Address.fromIntZeroExtend(0x6801a010));
-              VM.objectModel.dumpObject(ref2);
-            }
-          }
-          VM.assertions._assert(currentCell.EQ(VM.objectModel.objectStartRef(ref)));
-          */
           // Get next freelist start address
           Address nextCell = currentCell.plus(cellExtent);
           //
@@ -565,6 +544,22 @@ public class Region {
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
         }
 
+
+        ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+        if (!next.toAddress().GT(ref.toAddress())) {
+          Log.write(Space.getSpaceForObject(ref).getName());
+          Log.write((Space.getSpaceForAddress(card) instanceof MarkSweepSpace) ? " MS " : " _ ");
+          Log.write(" object ", ref.toAddress());
+          Log.write(" ends at ", VM.objectModel.getObjectEndAddress(ref));
+          Log.write(" ", currentObjectEnd);
+          Log.writeln(" next ", VM.objectModel.getObjectFromStartAddress(VM.objectModel.getObjectEndAddress(ref)));
+          VM.objectModel.dumpObject(ref);
+          VM.objectModel.dumpObject(next);
+          Log.write("Ref ", ref.toAddress());
+          Log.writeln(" Next ", next.toAddress());
+        }
+        VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
+
         //if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(ref);
         scan.scan(ref);
 
@@ -572,8 +567,22 @@ public class Region {
           break;
         }
 
-        ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+        //ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
         if (VM.VERIFY_ASSERTIONS) {
+          if (!(Space.getSpaceForAddress(card) instanceof MarkSweepSpace))
+            VM.assertions._assert(currentObjectEnd.EQ(VM.objectModel.getObjectEndAddress(ref)));
+          if (!next.toAddress().GT(ref.toAddress())) {
+            Log.write(Space.getSpaceForObject(ref).getName());
+            Log.write((Space.getSpaceForAddress(card) instanceof MarkSweepSpace) ? " MS " : " _ ");
+            Log.write(" object ", ref.toAddress());
+            Log.write(" ends at ", VM.objectModel.getObjectEndAddress(ref));
+            Log.write(" ", currentObjectEnd);
+            Log.writeln(" next ", VM.objectModel.getObjectFromStartAddress(VM.objectModel.getObjectEndAddress(ref)));
+            VM.objectModel.dumpObject(ref);
+            VM.objectModel.dumpObject(next);
+            Log.write("Ref ", ref.toAddress());
+            Log.writeln(" Next ", next.toAddress());
+          }
           VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
         }
         ref = next;
