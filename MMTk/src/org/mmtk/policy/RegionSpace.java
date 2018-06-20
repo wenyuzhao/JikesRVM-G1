@@ -409,7 +409,7 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean mark) {
+  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean tracerNonCSetObjects) {
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
@@ -436,7 +436,7 @@ public final class RegionSpace extends Space {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       if (Header.testAndMark(object)) {
         //Log.writeln("EvaMark ", object);
-        if (mark) trace.processNode(object);
+        if (tracerNonCSetObjects) trace.processNode(object);
       }
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;

@@ -52,9 +52,9 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
     if (VM.VERIFY_ASSERTIONS) {
-      if (!VM.debugging.validRef(source)) {
-        VM.objectModel.dumpObject(source);
-      }
+      //if (!VM.debugging.validRef(source)) {
+      //  VM.objectModel.dumpObject(source);
+      //}
       VM.assertions._assert(VM.debugging.validRef(source));
     }
     VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));
@@ -62,6 +62,7 @@ public class PureG1MarkTraceLocal extends TraceLocal {
     if (!object.isNull()) {
       if (VM.VERIFY_ASSERTIONS) {
         if (!VM.debugging.validRef(object)) {
+          VM.objectModel.dumpObject(source);
           VM.objectModel.dumpObject(object);
         }
         VM.assertions._assert(VM.debugging.validRef(object));
@@ -70,17 +71,20 @@ public class PureG1MarkTraceLocal extends TraceLocal {
     if (!object.isNull() && Space.isInSpace(PureG1.MC, object)) {
       if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
         VM.objectModel.dumpObject(source);
+        VM.objectModel.dumpObject(object);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", source);
         Log.write(".", slot);
         Log.write(": ", object);
-        Log.writeln(" is forwarded");
+        Log.write("(");
+        Log.write(Space.getSpaceForObject(object).getName());
+        Log.writeln(") is forwarded");
         VM.assertions._assert(false);
       }
 
       Address block = Region.of(VM.objectModel.objectStartRef(object));
       if (Region.relocationRequired(block)) {
-        VM.objectModel.dumpObject(source);
+        //VM.objectModel.dumpObject(source);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", VM.objectModel.objectStartRef(source));
         Log.write("  ", source);
@@ -98,9 +102,9 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     if (VM.VERIFY_ASSERTIONS) {
-      if (!VM.debugging.validRef(object)) {
-        VM.objectModel.dumpObject(object);
-      }
+      //if (!VM.debugging.validRef(object)) {
+      //  VM.objectModel.dumpObject(object);
+      //}
       VM.assertions._assert(VM.debugging.validRef(object));
     }
     Region.Card.updateCardMeta(object);

@@ -152,7 +152,8 @@ public class PureG1 extends Concurrent {
 
     Phase.scheduleComplex  (relocationPhase),
 
-    Phase.scheduleCollector(CLEANUP_BLOCKS),
+      //Phase.scheduleGlobal(CLEANUP_BLOCKS),
+      Phase.scheduleCollector(CLEANUP_BLOCKS),
 
     Phase.scheduleComplex  (finishPhase)
   );

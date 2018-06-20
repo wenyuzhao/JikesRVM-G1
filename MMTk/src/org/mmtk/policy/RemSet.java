@@ -142,8 +142,8 @@ public class RemSet {
     int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
     if (PerRegionTable.insert(prt, card)) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PerRegionTable.contains(prt, card));
-      /*Log.write("Insert card ", card);
-      Log.writeln(" -> ", region);*/
+      //Log.write("Insert card ", card);
+      //Log.writeln(" -> ", region);
       // Increase REMSET_SIZE
       Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize + 1);
     }

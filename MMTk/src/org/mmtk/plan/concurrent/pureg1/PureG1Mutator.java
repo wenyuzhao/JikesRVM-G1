@@ -237,8 +237,8 @@ public class PureG1Mutator extends ConcurrentMutator {
         Log.write(".", slot);
         Log.write(" = ");
         Log.writeln(value);
-        VM.objectModel.dumpObject(src);
-        VM.objectModel.dumpObject(ref);
+        //VM.objectModel.dumpObject(src);
+        //VM.objectModel.dumpObject(ref);
         Log.write("Use of dead object ", ref);
         Log.writeln(", which is in released block ", Region.of(value));
         VM.assertions._assert(false);
@@ -254,7 +254,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.write(".", slot);
     //Log.write(" = ");
     //Log.writeln(ref);
-    if (!src.isNull() && !slot.isZero() && !value.isZero()) {
+    if (!src.isNull() && !slot.isZero() && !ref.isNull() && !value.isZero()) {
       Word tmp = slot.toWord().xor(value.toWord());
       tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
       tmp = value.isZero() ? Word.zero() : tmp;

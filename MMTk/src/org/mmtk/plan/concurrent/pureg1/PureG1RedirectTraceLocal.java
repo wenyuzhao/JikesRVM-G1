@@ -29,6 +29,35 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   }
 
   @Inline
+  @Override
+  public ObjectReference traceObject(ObjectReference object, boolean root) {
+    if (root) {
+      if (object.isNull()) return object;
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remSetsProcessing);
+
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
+        VM.assertions._assert(VM.debugging.validRef(object));
+      }
+
+      Region.Card.updateCardMeta(object);
+
+      ObjectReference newObject;
+      if (Space.isInSpace(PureG1.MC, object)) {
+        newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+      } else {
+        newObject = super.traceObject(object);
+      }
+      Region.Card.updateCardMeta(newObject);
+      this.processNode(newObject);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
+      return newObject;
+    } else {
+      return traceObject(object);
+    }
+  }
+
+  @Inline
   public void processEdge(ObjectReference source, Address slot) {
     super.processEdge(source, slot);
 
@@ -60,7 +89,8 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
     if (remSetsProcessing) {
       if (Space.isInSpace(PureG1.MC, object)) {
-        ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+        // Mark only, not tracing children
+        ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
         return newObject;
       }
       return object;

@@ -524,7 +524,7 @@ public class Region {
         //if (ref.isNull() || !Space.isMappedObject(ref)) break;
 
         if (log) {
-          VM.objectModel.dumpObject(ref);
+          //VM.objectModel.dumpObject(ref);
         }
 
         // Get next object start address, i.e. current object end address
@@ -560,13 +560,14 @@ public class Region {
         //VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
         //VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
-        if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
+        //if (!VM.debugging.validRef(ref)) V(ref);
         VM.assertions._assert(VM.debugging.validRef(ref));
         //lock.acquire();
         //Log.write(Space.getSpaceForObject(ref).getName());
         //Log.write(" ", ref);
         //Log.write(" ", VM.objectModel.objectStartRef(ref));
         //Log.writeln("..<", currentObjectEnd);
+        if (!Space.isMappedAddress(card) || getCardAnchor(card).isZero() || getCardLimit(card).isZero()) break;
         if (currentObjectEnd.GE(end)) {
           scan.scan(ref);
           break;
@@ -574,7 +575,6 @@ public class Region {
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
           ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
           if (!VM.debugging.validRef(next)) {
-            VM.objectModel.dumpObject(next);
             Log.write("Linear scan card ", card);
             Log.write(", range ", Region.Card.getCardAnchor(card));
             Log.write(" ..< ", Region.Card.getCardLimit(card));
@@ -584,6 +584,7 @@ public class Region {
             Log.write(" ..< ", Region.Card.getByte(Region.Card.limits, Region.Card.hash(card)));
             Log.write(" in space: ");
             Log.writeln(Space.getSpaceForAddress(card).getName());
+            Log.writeln("Invalid Ref ", next);
           }
           VM.assertions._assert(VM.debugging.validRef(next));
           //lock.release();
@@ -594,8 +595,8 @@ public class Region {
             Log.write(" ends at ", VM.objectModel.getObjectEndAddress(ref));
             Log.write(" ", currentObjectEnd);
             Log.writeln(" next ", VM.objectModel.getObjectFromStartAddress(VM.objectModel.getObjectEndAddress(ref)));
-            VM.objectModel.dumpObject(ref);
-            VM.objectModel.dumpObject(next);
+            //VM.objectModel.dumpObject(ref);
+            //VM.objectModel.dumpObject(next);
             Log.write("Ref ", ref.toAddress());
             Log.writeln(" Next ", next.toAddress());
           }
@@ -605,6 +606,7 @@ public class Region {
           scan.scan(ref);
           ref = next;
         }
+        if (!Space.isMappedAddress(card) || getCardAnchor(card).isZero() || getCardLimit(card).isZero()) break;
 
 
       } while (true);

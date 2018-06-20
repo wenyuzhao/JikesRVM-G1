@@ -202,11 +202,19 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.CLEANUP_BLOCKS) {
+      if (rendezvous() == 0) {
+        VM.activePlan.resetMutatorIterator();
+        PureG1Mutator m;
+        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+          m.enqueueCurrentRSBuffer();
+        }
+        ConcurrentRemSetRefinement.refineAll();
+      }
+      rendezvous();
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
       RemSet.cleanupRemSetRefsToRelocationSet(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
       //RemSet.releaseRemSetsOfRelocationSet(PureG1.relocationSet, false);
-      //rendezvous();
       PureG1.regionSpace.cleanupBlocks(PureG1.relocationSet, false);
       rendezvous();
       return;
