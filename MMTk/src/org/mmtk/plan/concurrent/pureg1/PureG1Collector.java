@@ -166,7 +166,7 @@ public class PureG1Collector extends ConcurrentCollector {
       //redirectTrace.log = true;
       redirectTrace.prepare();
       copy.reset();
-      super.collectionPhase(PureG1.PREPARE, primary);
+      //super.collectionPhase(PureG1.PREPARE, primary);
       return;
     }
 
@@ -191,6 +191,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
+      markTrace.release();
       redirectTrace.release();
       copy.reset();
       super.collectionPhase(PureG1.RELEASE, primary);

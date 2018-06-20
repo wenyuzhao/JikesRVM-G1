@@ -150,7 +150,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
       }
-      Region.Card.linearScan(cardLinearScan, card);
+      Region.Card.linearScan(cardLinearScan, card, true);
     }
   }
 

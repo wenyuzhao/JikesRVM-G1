@@ -16,6 +16,8 @@ package org.mmtk.utility.alloc;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.RegionSpace;
+import org.mmtk.utility.Log;
+import org.mmtk.vm.Assert;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -85,8 +87,16 @@ public class RegionAllocator extends Allocator {
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
-    if (Space.isInSpace(this.space.getDescriptor(), start)) {
-      Region.setCursor(Region.of(start), cursor);
+    //if (Space.isInSpace(this.space.getDescriptor(), start)) {
+    //  Region.setCursor(Region.of(start), cursor);
+    //}
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!Region.allocated(Region.of(start))) {
+        Log.writeln("cursor: ", cursor);
+        Log.writeln("start: ", start);
+        Log.writeln("limit: ", limit);
+      }
+      VM.assertions._assert(Region.allocated(Region.of(start)));
     }
     return start;
   }
@@ -115,6 +125,7 @@ public class RegionAllocator extends Allocator {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
     limit = ptr.plus(Region.BYTES_IN_BLOCK);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
     return alloc(bytes, align, offset);
   }
 

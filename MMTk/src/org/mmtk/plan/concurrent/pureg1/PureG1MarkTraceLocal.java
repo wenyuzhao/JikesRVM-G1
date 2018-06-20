@@ -51,8 +51,22 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   @Override
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!VM.debugging.validRef(source)) {
+        VM.objectModel.dumpObject(source);
+      }
+      VM.assertions._assert(VM.debugging.validRef(source));
+    }
     VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));
     ObjectReference object = slot.loadObjectReference();//VM.activePlan.global().loadObjectReference(slot);
+    if (!object.isNull()) {
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!VM.debugging.validRef(object)) {
+          VM.objectModel.dumpObject(object);
+        }
+        VM.assertions._assert(VM.debugging.validRef(object));
+      }
+    }
     if (!object.isNull() && Space.isInSpace(PureG1.MC, object)) {
       if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
         VM.objectModel.dumpObject(source);
@@ -83,7 +97,12 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!VM.debugging.validRef(object)) {
+        VM.objectModel.dumpObject(object);
+      }
+      VM.assertions._assert(VM.debugging.validRef(object));
+    }
     Region.Card.updateCardMeta(object);
     if (Space.isInSpace(PureG1.MC, object)) {
       return PureG1.regionSpace.traceMarkObject(this, object);

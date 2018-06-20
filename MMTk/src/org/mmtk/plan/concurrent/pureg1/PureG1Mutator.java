@@ -106,7 +106,8 @@ public class PureG1Mutator extends ConcurrentMutator {
     Region.Card.updateCardMeta(object);
     if (allocator == PureG1.ALLOC_MC) {
       if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(Space.isInSpace(PureG1.MC, object) && Region.allocated(Region.of(VM.objectModel.objectStartRef(object))));
+        VM.assertions._assert(Space.isInSpace(PureG1.MC, object));
+        VM.assertions._assert(Region.allocated(Region.of(VM.objectModel.objectStartRef(object))));
         VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
       }
       PureG1.regionSpace.postAlloc(object, bytes);
@@ -144,7 +145,7 @@ public class PureG1Mutator extends ConcurrentMutator {
 
     if (phaseId == PureG1.RELEASE) {
       mc.reset();
-      super.collectionPhase(phaseId, primary);
+      //super.collectionPhase(phaseId, primary);
       return;
     }
 
@@ -153,10 +154,14 @@ public class PureG1Mutator extends ConcurrentMutator {
       return;
     }
 
+    if (phaseId == PureG1.RELOCATION_SET_SELECTION_PREPARE) {
+      mc.reset();
+      return;
+    }
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       //flushRememberedSets();
-      super.collectionPhase(PureG1.PREPARE, primary);
-      mc.reset();
+      //super.collectionPhase(PureG1.PREPARE, primary);
+      //mc.reset();
       return;
     }
 
@@ -221,7 +226,9 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
-
+    VM.assertions._assert(src.isNull() || VM.debugging.validRef(src));
+    VM.assertions._assert(slot.loadObjectReference().isNull() || VM.debugging.validRef(slot.loadObjectReference()));
+    VM.assertions._assert(ref.isNull() || VM.debugging.validRef(ref));
     Address value = VM.objectModel.objectStartRef(ref);
     if (VM.VERIFY_ASSERTIONS) {
       //VM.assertions._assert(!Plan.gcInProgress());

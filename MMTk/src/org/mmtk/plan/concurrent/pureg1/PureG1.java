@@ -94,6 +94,7 @@ public class PureG1 extends Concurrent {
 
   public static final short relocationSetSelection = Phase.createComplex("relocationSetSelection",
     Phase.scheduleGlobal(RELOCATION_SET_SELECTION_PREPARE),
+    Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
     Phase.scheduleGlobal(RELOCATION_SET_SELECTION)
   );
   //public static final short EVACUATION = Phase.createSimple("evacuation");
@@ -127,9 +128,10 @@ public class PureG1 extends Concurrent {
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),
-    Phase.scheduleMutator  (REDIRECT_RELEASE),
+
     Phase.scheduleCollector(REDIRECT_RELEASE),
-    Phase.scheduleGlobal   (REDIRECT_RELEASE)
+    Phase.scheduleGlobal   (REDIRECT_RELEASE),
+      Phase.scheduleMutator  (REDIRECT_RELEASE)
 
 
 
@@ -144,7 +146,7 @@ public class PureG1 extends Concurrent {
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
     Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (completeClosurePhase),
+    //Phase.scheduleComplex  (completeClosurePhase),
 
     Phase.scheduleComplex  (relocationSetSelection),
 
@@ -205,12 +207,14 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      blocksSnapshot = regionSpace.shapshotBlocks();
+      //blocksSnapshot = regionSpace.shapshotBlocks();
       relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false);
+      blocksSnapshot = null;
       return;
     }
 
     if (phaseId == REDIRECT_PREPARE) {
+      startTime = VM.statistics.nanoTime();
       //stacksPrepared = false;
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
@@ -246,6 +250,7 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_RELEASE) {
+      markTrace.release();
       redirectTrace.release();
       //regionSpace.release();
       super.collectionPhase(RELEASE);

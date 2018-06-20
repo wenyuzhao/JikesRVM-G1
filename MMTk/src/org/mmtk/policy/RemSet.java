@@ -276,7 +276,7 @@ public class RemSet {
               }
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
               //Log.writeln("Scan card ", card);
-              Region.Card.linearScan(cardLinearScan, card);
+              Region.Card.linearScan(cardLinearScan, card, false);
               /*for (int l = 0; l < relocationSet.length(); l++) {
                 Address otherRegion = relocationSet.get(l);
                 if (otherRegion.NE(region)) {

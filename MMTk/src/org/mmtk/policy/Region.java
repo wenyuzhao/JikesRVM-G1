@@ -343,7 +343,7 @@ public class Region {
       Log.write(Space.getSpaceForObject(ref).getName());
       Log.write(" object ", ref);
       Log.write(" (", VM.objectModel.objectStartRef(ref));
-      Log.write(", ", VM.objectModel.getObjectEndAddress(ref));
+      Log.write("..<", VM.objectModel.getObjectEndAddress(ref));
       Log.writeln(")");*/
       //lock.acquire();
       //lock.acquire();
@@ -495,14 +495,22 @@ public class Region {
     public static void linearScan(LinearScan scan, Address card) {
       linearScan(scan, card, false);
     }
+    //static Lock lock = VM.newLock()
     @Inline
     public static void linearScan(LinearScan scan, Address card, boolean log) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
+        VM.assertions._assert(Space.isMappedAddress(card));
+      }
       Address end = getCardLimit(card);
       if (end.isZero()) return;
       Address cursor = Region.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
+
+      VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
+      VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
+
       if (log) {
         Log.write("Linear scan card ", card);
         Log.write(", range ", Region.Card.getCardAnchor(card));
@@ -541,36 +549,44 @@ public class Region {
           currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
           //Log.writeln(" -> ", currentObjectEnd);
         } else {
+          if (VM.VERIFY_ASSERTIONS) {
+            //if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
+            VM.assertions._assert(VM.debugging.validRef(ref));
+          }
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
         }
 
+        //VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
+        //VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
-        ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-        if (!next.toAddress().GT(ref.toAddress())) {
-          Log.write(Space.getSpaceForObject(ref).getName());
-          Log.write((Space.getSpaceForAddress(card) instanceof MarkSweepSpace) ? " MS " : " _ ");
-          Log.write(" object ", ref.toAddress());
-          Log.write(" ends at ", VM.objectModel.getObjectEndAddress(ref));
-          Log.write(" ", currentObjectEnd);
-          Log.writeln(" next ", VM.objectModel.getObjectFromStartAddress(VM.objectModel.getObjectEndAddress(ref)));
-          VM.objectModel.dumpObject(ref);
-          VM.objectModel.dumpObject(next);
-          Log.write("Ref ", ref.toAddress());
-          Log.writeln(" Next ", next.toAddress());
-        }
-        VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
-
-        //if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(ref);
-        scan.scan(ref);
-
+        if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
+        VM.assertions._assert(VM.debugging.validRef(ref));
+        //lock.acquire();
+        //Log.write(Space.getSpaceForObject(ref).getName());
+        //Log.write(" ", ref);
+        //Log.write(" ", VM.objectModel.objectStartRef(ref));
+        //Log.writeln("..<", currentObjectEnd);
         if (currentObjectEnd.GE(end)) {
+          scan.scan(ref);
           break;
-        }
-
-        //ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-        if (VM.VERIFY_ASSERTIONS) {
-          if (!(Space.getSpaceForAddress(card) instanceof MarkSweepSpace))
-            VM.assertions._assert(currentObjectEnd.EQ(VM.objectModel.getObjectEndAddress(ref)));
+        } else {
+          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
+          ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+          if (!VM.debugging.validRef(next)) {
+            VM.objectModel.dumpObject(next);
+            Log.write("Linear scan card ", card);
+            Log.write(", range ", Region.Card.getCardAnchor(card));
+            Log.write(" ..< ", Region.Card.getCardLimit(card));
+            Log.write(" cursor ", cursor);
+            Log.write(" end ", end);
+            Log.write(", offsets ", Region.Card.getByte(Region.Card.anchors, Region.Card.hash(card)));
+            Log.write(" ..< ", Region.Card.getByte(Region.Card.limits, Region.Card.hash(card)));
+            Log.write(" in space: ");
+            Log.writeln(Space.getSpaceForAddress(card).getName());
+          }
+          VM.assertions._assert(VM.debugging.validRef(next));
+          //lock.release();
           if (!next.toAddress().GT(ref.toAddress())) {
             Log.write(Space.getSpaceForObject(ref).getName());
             Log.write((Space.getSpaceForAddress(card) instanceof MarkSweepSpace) ? " MS " : " _ ");
@@ -584,8 +600,13 @@ public class Region {
             Log.writeln(" Next ", next.toAddress());
           }
           VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
+
+          //if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(ref);
+          scan.scan(ref);
+          ref = next;
         }
-        ref = next;
+
+
       } while (true);
     }
   }

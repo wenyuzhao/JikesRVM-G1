@@ -252,6 +252,7 @@ public final class RegionSpace extends Space {
     }
 
     if (!region.isZero()) {
+      if (Region.Card.isEnabled()) Region.Card.clearCardMetaForBlock(region);
       //int oldCount = MarkBlock.count();
       //if (MarkBlock.allocated(region)) {
       //  VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
