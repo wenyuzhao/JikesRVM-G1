@@ -101,6 +101,14 @@ public class PureG1 extends Concurrent {
   //public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
+  public static final short CONCURRENT_LOCK_MUTATORS = Phase.createConcurrent("flush-refinement-thread", Phase.scheduleMutator(FLUSH_MUTATOR));
+  protected static final short concurrentLockMutators = Phase.createComplex("concurrent-lock-mutators", null,
+      Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
+      Phase.scheduleMutator   (SET_BARRIER_ACTIVE),
+      Phase.scheduleCollector (FLUSH_COLLECTOR),
+      Phase.scheduleConcurrent(CONCURRENT_LOCK_MUTATORS),
+      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
+      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));
   //public static final short MARK_RELEASE = Phase.createSimple("mark-release");
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
@@ -145,8 +153,13 @@ public class PureG1 extends Concurrent {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleComplex  (refTypeClosurePhase),
+    //Phase.scheduleComplex  (refTypeClosurePhase),
     //Phase.scheduleComplex  (completeClosurePhase),
+      //Phase.scheduleComplex(concurrentLockMutators),
+      //hase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
+    Phase.scheduleCollector(RELEASE),
+      Phase.scheduleGlobal(RELEASE),
+    //Phase.scheduleComplex(completeClosurePhase),
 
     Phase.scheduleComplex  (relocationSetSelection),
 
@@ -156,6 +169,7 @@ public class PureG1 extends Concurrent {
       Phase.scheduleCollector(CLEANUP_BLOCKS),
 
     Phase.scheduleComplex  (finishPhase)
+      //Phase.scheduleMutator(COMPLETE)
   );
 
   /**
@@ -194,11 +208,13 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == RELEASE) {
-      startTime = VM.statistics.nanoTime();
+      //VM.assertions._assert(false);
+      //startTime = VM.statistics.nanoTime();
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       markTrace.release();
       //regionSpace.release();
       //super.collectionPhase(phaseId);
+      inConcurrentCollection = false;
       return;
     }
 
@@ -220,7 +236,7 @@ public class PureG1 extends Concurrent {
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.enqueueCurrentRSBuffer();
+        m.enqueueCurrentRSBuffer(false);
       }
       ConcurrentRemSetRefinement.refineAll();
       //CardTable.assertAllCardsAreNotMarked();
@@ -236,7 +252,7 @@ public class PureG1 extends Concurrent {
         VM.activePlan.resetMutatorIterator();
         PureG1Mutator m;
         while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-          m.enqueueCurrentRSBuffer();
+          m.enqueueCurrentRSBuffer(false);
         }
         ConcurrentRemSetRefinement.refineAll();
       //super.collectionPhase(PREPARE);
@@ -251,7 +267,8 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_RELEASE) {
-      markTrace.release();
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
+      //markTrace.release();
       redirectTrace.release();
       //regionSpace.release();
       super.collectionPhase(RELEASE);

@@ -12,10 +12,7 @@
  */
 package org.mmtk.plan.concurrent.pureg1;
 
-import org.mmtk.plan.MutatorContext;
-import org.mmtk.plan.Plan;
-import org.mmtk.plan.StopTheWorldMutator;
-import org.mmtk.plan.TraceWriteBuffer;
+import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
@@ -24,6 +21,8 @@ import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.vm.Lock;
+import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -58,6 +57,8 @@ public class PureG1Mutator extends ConcurrentMutator {
   private int remSetLogBufferCursor = 0;
   private final TraceWriteBuffer markRemset, relocateRemset;
   private TraceWriteBuffer currentRemset;
+  public final Lock refinementLock = VM.newLock("refinementLock");
+  private boolean refinementInProgress = false;
 
   /****************************************************************************
    *
@@ -136,6 +137,8 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
+    Log.write("[Mutator] ");
+    Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
       //flushRememberedSets();
       super.collectionPhase(phaseId, primary);
@@ -158,16 +161,34 @@ public class PureG1Mutator extends ConcurrentMutator {
       mc.reset();
       return;
     }
+    if (phaseId == Simple.WEAK_REFS) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
+      super.collectionPhase(phaseId, primary);
+    }
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       //flushRememberedSets();
       //super.collectionPhase(PureG1.PREPARE, primary);
       //mc.reset();
+      //Log.writeln("Mutator release refinementLock #", getId());
+      //refinementLock.release();
+      mc.reset();
+      enqueueCurrentRSBuffer(false);
+      if (barrierActive) {
+        Log.writeln("BarrierActive for mutator #", getId());
+      }
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
       return;
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
       mc.reset();
       super.collectionPhase(PureG1.RELEASE, primary);
+      return;
+    }
+
+    if (phaseId == PureG1.COMPLETE) {
+      mc.reset();
+//      super.collectionPhase(PureG1.COMPLETE, primary);
       return;
     }
 
@@ -184,14 +205,33 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Override
   public void deinitMutator() {
-    enqueueCurrentRSBuffer();
+    enqueueCurrentRSBuffer(true);
     super.deinitMutator();
   }
 
+  public boolean rsBufferIsEmpty() {
+    return remSetLogBufferCursor == 0;
+  }
+
+  public boolean isRefinementInProgress() {
+    return refinementInProgress;
+  }
+
   @Inline
-  public void enqueueCurrentRSBuffer() {
+  @Uninterruptible
+  public void enqueueCurrentRSBuffer(boolean triggerConcurrentRefinement) {
     if (remSetLogBufferCursor == 0) return;
-    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer);
+    //Log.writeln("try refinementLock.acquire #", getId());
+    //refinementLock.acquire();
+    //Log.writeln("done refinementLock.acquire #", getId());
+    //refinementInProgress = true;
+    //refinementLock.unlock();
+    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer, triggerConcurrentRefinement);
+    //refinementLock.broadcast();
+    //refinementLock.lock();
+    // refinementInProgress = false;
+    //refinementLock.release();
+    if (remSetLogBufferCursor == 0) return;
     remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
     remSetLogBufferCursor = 0;
   }
@@ -214,7 +254,7 @@ public class PureG1Mutator extends ConcurrentMutator {
       if (remSetLogBufferCursor >= remSetLogBuffer.length()) {
         //remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
         //remSetLogBufferCursor = 0;
-        enqueueCurrentRSBuffer();
+        enqueueCurrentRSBuffer(true);
       }
     } else {
       //VM.assertions._assert(CardTable.cardIsMarked(card));
@@ -226,9 +266,10 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
-    VM.assertions._assert(src.isNull() || VM.debugging.validRef(src));
-    VM.assertions._assert(slot.loadObjectReference().isNull() || VM.debugging.validRef(slot.loadObjectReference()));
-    VM.assertions._assert(ref.isNull() || VM.debugging.validRef(ref));
+    VM.assertions._assert(src.isNull() || (VM.debugging.validRef(src) && Space.isMappedObject(src)));
+    ObjectReference _oldRef = slot.loadObjectReference();
+    VM.assertions._assert(_oldRef.isNull() || (VM.debugging.validRef(_oldRef) && Space.isMappedObject(_oldRef)));
+    VM.assertions._assert(ref.isNull() || (VM.debugging.validRef(ref) && Space.isMappedObject(ref)));
     Address value = VM.objectModel.objectStartRef(ref);
     if (VM.VERIFY_ASSERTIONS) {
       //VM.assertions._assert(!Plan.gcInProgress());

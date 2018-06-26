@@ -13,6 +13,7 @@
 package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
+import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
@@ -152,8 +153,8 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.RELEASE) {
       markTrace.completeTrace();
-      markTrace.release();
-      super.collectionPhase(phaseId, primary);
+      //markTrace.release();
+      //super.collectionPhase(phaseId, primary);
       return;
     }
 
@@ -206,16 +207,33 @@ public class PureG1Collector extends ConcurrentCollector {
         VM.activePlan.resetMutatorIterator();
         PureG1Mutator m;
         while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-          m.enqueueCurrentRSBuffer();
+          m.enqueueCurrentRSBuffer(false);
         }
         ConcurrentRemSetRefinement.refineAll();
+        ConcurrentRemSetRefinement.refineLock.acquire();
+        ConcurrentRemSetRefinement.refineLock.release();
+        CardTable.assertAllCardsAreNotMarked();
       }
+      VM.assertions._assert(!ConcurrentRemSetRefinement.inProgress());
+      VM.assertions._assert(!ConcurrentRemSetRefinement.hasWork());
       rendezvous();
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
       RemSet.cleanupRemSetRefsToRelocationSet(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
       //RemSet.releaseRemSetsOfRelocationSet(PureG1.relocationSet, false);
       PureG1.regionSpace.cleanupBlocks(PureG1.relocationSet, false);
+      rendezvous();
+      if (rendezvous() == 0) {
+        VM.activePlan.resetMutatorIterator();
+        PureG1Mutator m;
+        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+          VM.assertions._assert(m.rsBufferIsEmpty());
+          //Log.writeln("Mutator #", m.getId());
+        }
+        CardTable.assertAllCardsAreNotMarked();
+        VM.assertions._assert(!ConcurrentRemSetRefinement.inProgress());
+        VM.assertions._assert(!ConcurrentRemSetRefinement.hasWork());
+      }
       rendezvous();
       return;
     }
@@ -235,6 +253,40 @@ public class PureG1Collector extends ConcurrentCollector {
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+
+
+    if (phaseId == PureG1.CONCURRENT_LOCK_MUTATORS) {
+      if (rendezvous() == 0) {
+        //Log.writeln(VM.activePlan.isMutator() ? "is mutator" : "not mutator");
+        //while (true) {
+          //boolean allNotRefining = true;
+          VM.activePlan.resetMutatorIterator();
+          PureG1Mutator m;
+          while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+            //Log.writeln("Try lock mutator #", m.getId());
+            m.refinementLock.acquire();
+            /*if (m.isRefinementInProgress())  {
+              allNotRefining = false;
+              m.refinementLock.await();
+            }*/
+            //m.refinementLock.unlock();
+            //Log.writeln("Done lock mutator #", m.getId());
+          }
+          //if (allNotRefining) break;
+        //}
+      }
+      rendezvous();
+      //Log.write("END ");
+      //Log.writeln(Phase.getName(phaseId));
+      if (rendezvous() == 0) {
+        //Log.writeln("requestMutatorFlush");
+        VM.collection.requestMutatorFlush();
+        continueCollecting = Phase.notifyConcurrentPhaseComplete();
+      }
+      rendezvous();
+      return;
+    }
+
     if (phaseId == PureG1.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
       super.concurrentCollectionPhase(phaseId);

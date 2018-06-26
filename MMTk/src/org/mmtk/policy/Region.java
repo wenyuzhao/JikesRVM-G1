@@ -10,6 +10,7 @@ import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.*;
 
 import static org.mmtk.utility.Constants.*;
@@ -490,6 +491,7 @@ public class Region {
         clearCardMeta(c);
       }
     }
+    public static String tag = null;
 
     @Inline
     public static void linearScan(LinearScan scan, Address card) {
@@ -497,6 +499,7 @@ public class Region {
     }
     //static Lock lock = VM.newLock()
     @Inline
+    @Uninterruptible
     public static void linearScan(LinearScan scan, Address card, boolean log) {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
@@ -512,6 +515,11 @@ public class Region {
       VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
       if (log) {
+        if (tag != null) {
+          Log.write("[");
+          Log.write(tag);
+          Log.write("]");
+        }
         Log.write("Linear scan card ", card);
         Log.write(", range ", Region.Card.getCardAnchor(card));
         Log.write(" ..< ", Region.Card.getCardLimit(card));
@@ -526,7 +534,7 @@ public class Region {
         if (log) {
           //VM.objectModel.dumpObject(ref);
         }
-
+        //if (!Space.isMappedAddress(card)) break;
         // Get next object start address, i.e. current object end address
         Address currentObjectEnd;
         if (Space.getSpaceForAddress(card) instanceof MarkSweepSpace) {
@@ -561,19 +569,29 @@ public class Region {
         //VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
         //if (!VM.debugging.validRef(ref)) V(ref);
+        //if (!Space.isMappedAddress(card)) break;
         VM.assertions._assert(VM.debugging.validRef(ref));
+        if (!Space.isMappedAddress(card)) {
+          Log.writeln("Unmapped card ", card);
+        }
+        VM.assertions._assert(Space.isMappedAddress(card));
+        //if (Space.getSpaceForAddress(card) instanceof RegionSpace) {
+        //VM.assertions._assert(Region.relocationRequired(Region.of(card)));
+        //}
         //lock.acquire();
         //Log.write(Space.getSpaceForObject(ref).getName());
         //Log.write(" ", ref);
         //Log.write(" ", VM.objectModel.objectStartRef(ref));
         //Log.writeln("..<", currentObjectEnd);
-        if (!Space.isMappedAddress(card) || getCardAnchor(card).isZero() || getCardLimit(card).isZero()) break;
+        //if (!Space.isMappedAddress(card) || getCardAnchor(card).isZero() || getCardLimit(card).isZero()) break;
         if (currentObjectEnd.GE(end)) {
           scan.scan(ref);
           break;
         } else {
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
+          //if (!Space.isMappedAddress(card)) break;
           ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+          //if (!Space.isMappedAddress(card)) break;
           if (!VM.debugging.validRef(next)) {
             Log.write("Linear scan card ", card);
             Log.write(", range ", Region.Card.getCardAnchor(card));
@@ -586,6 +604,7 @@ public class Region {
             Log.writeln(Space.getSpaceForAddress(card).getName());
             Log.writeln("Invalid Ref ", next);
           }
+          //if (!Space.isMappedAddress(card)) break;
           VM.assertions._assert(VM.debugging.validRef(next));
           //lock.release();
           if (!next.toAddress().GT(ref.toAddress())) {
@@ -603,13 +622,15 @@ public class Region {
           VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
 
           //if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(ref);
+//          if (!Space.isMappedAddress(card)) break;
           scan.scan(ref);
           ref = next;
         }
-        if (!Space.isMappedAddress(card) || getCardAnchor(card).isZero() || getCardLimit(card).isZero()) break;
+        //if (!Space.isMappedAddress(card) || getCardAnchor(card).isZero() || getCardLimit(card).isZero()) break;
 
 
       } while (true);
+      //if (log) Log.writeln("Finished scanning card ", card);
     }
   }
 

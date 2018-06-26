@@ -131,10 +131,12 @@ public abstract class Concurrent extends Simple {
   public void collectionPhase(short phaseId) {
     if (phaseId == SET_BARRIER_ACTIVE) {
       ConcurrentMutator.newMutatorBarrierActive = true;
+      Log.writeln("newMutatorBarrierActive = true");
       return;
     }
     if (phaseId == CLEAR_BARRIER_ACTIVE) {
       ConcurrentMutator.newMutatorBarrierActive = false;
+      Log.writeln("newMutatorBarrierActive = false");
       return;
     }
     if (phaseId == CLOSURE) {

@@ -31,6 +31,7 @@ public class CardTable {
   }
 
   @Inline
+  @Uninterruptible
   public static boolean increaseHotness(Address card) {
     if (cardHotnessTable.isZero()) cardHotnessTable = Plan.metaDataSpace.acquire(HOTNESS_TABLE_PAGES);
     int cardIndex = hash(card);
@@ -54,6 +55,7 @@ public class CardTable {
   }
 
   @Inline
+  @Uninterruptible
   private static int hash(Address card) {
     return card.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
   }
@@ -71,6 +73,7 @@ public class CardTable {
   }
 */
   @Inline
+  @Uninterruptible
   public static boolean attemptToMarkCard(Address card, boolean mark) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
@@ -85,6 +88,7 @@ public class CardTable {
   }
 
   @Inline
+  @Uninterruptible
   private static boolean attemptBitInBuffer(int[] buf, int index, boolean newBit) {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldBit != newBit);
     int intIndex = index >> Constants.LOG_BITS_IN_INT;
@@ -128,6 +132,7 @@ public class CardTable {
   }
 
   @Inline
+  @Uninterruptible
   public static boolean cardIsMarked(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);

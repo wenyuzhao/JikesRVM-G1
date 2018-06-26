@@ -33,7 +33,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object, boolean root) {
     if (root) {
       if (object.isNull()) return object;
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remSetsProcessing);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remSetsProcessing);
 
       if (VM.VERIFY_ASSERTIONS) {
         if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
@@ -67,6 +67,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       if (block.NE(Region.of(VM.objectModel.objectStartRef(source)))) {
         Region.Card.updateCardMeta(source);
         Address card = Region.Card.of(source);
+        //if (remSetsProcessing)
         RemSet.addCard(block, card);
       }
     }
@@ -79,6 +80,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     if (remSetsProcessing) {
       if (!Space.isMappedObject(object)) return;
     }
+    VM.assertions._assert(VM.debugging.validRef(object));
     super.scanObject(object);
   }
 

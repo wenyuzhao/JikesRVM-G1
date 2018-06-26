@@ -57,30 +57,49 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   private static int hotCardsBufferCursor = 0;
 
   private static Monitor lock;
+  //private static Monitor refineLock;
 
   @Override
   @Interruptible
   public void initCollector(int id) {
     super.initCollector(id);
     lock = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock");
+    //refineLock = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock-refineLock");
   }
+  public static boolean bufferIsEmpty() {
+    return filledRSBuffers.length == 0 && hotCardsBufferCursor == 0;
+  }
+  public static boolean hasWork() {
+    return filledRSBuffersCursor != 0 || hotCardsBufferCursor != 0;
+  }
+  public static boolean inProgress() {
+    return inProgress;
+  }
+  private static boolean inProgress = false;
 
   @Override
   @Unpreemptible
   public void run() {
     while (true) {
       lock.await();
+      refineLock.acquire();
+      inProgress = true;
+      refineLock.release();
       refine();
+      refineLock.acquire();
+      inProgress = false;
+      refineLock.release();
     }
   }
 
   /** Runs in mutator threads */
-  @UninterruptibleNoWarn
   @Inline
-  public static void enqueueFilledRSBuffer(AddressArray buf) {
+  @UninterruptibleNoWarn
+  public static void enqueueFilledRSBuffer(AddressArray buf, boolean triggerConcurrentRefinement) {
     filledRSBuffersLock.acquire();
-    if (filledRSBuffersCursor < filledRSBuffers.length) {
+    if (triggerConcurrentRefinement && filledRSBuffersCursor < filledRSBuffers.length) {
       filledRSBuffers[filledRSBuffersCursor++] = buf;
+      //ObjectReference.fromObject(filledRSBuffers).toAddress().plus()
       if (filledRSBuffersCursor >= filledRSBuffers.length) {
         ConcurrentRemSetRefinement.trigger();
       }
@@ -112,6 +131,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         Address foreignBlock = Region.of(value);
         //Log.write("Add card ", card);
         //Log.writeln(" to remset of block ", foreignBlock);
+        Region.Card.tag = "RE";
         RemSet.addCard(foreignBlock, card);
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.containsCard(foreignBlock, card));
       }
@@ -145,6 +165,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }
   };
 
+  @Uninterruptible
   public static void processCard(Address card) {
     if (!Space.isInSpace(Plan.VM_SPACE, card)) {
       if (VM.VERIFY_ASSERTIONS) {
@@ -154,6 +175,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }
   }
 
+  @Uninterruptible
   public static void refineSingleBuffer(AddressArray buffer) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(buffer != null);
     for (int i = 0; i < buffer.length(); i++) {
@@ -192,7 +214,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(filledRSBuffersCursor == 0);
     }
-    /*
     // Process hot cards
     Log.write("Processing ", hotCardsBufferCursor);
     Log.writeln(" hot cards ", hotCardsBuffer.length());
@@ -208,11 +229,11 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     hotCardsBufferCursor = 0;
     CardTable.clearAllHotness();
     refineLock.release();
-    */
   }
 
   @UninterruptibleNoWarn
   public static void refineHotCards() {
+    //refineLock.acquire();
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
     int cardsToProcess = RemSet.ceilDiv(hotCardsBufferCursor, workers);
@@ -238,6 +259,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       }
       hotCardsBuffer.set(cursor, Address.zero());
     }
+    //refineLock.release();
   }
 
   @UninterruptibleNoWarn

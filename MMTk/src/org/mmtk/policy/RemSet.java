@@ -2,10 +2,12 @@ package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.vm.Scanning;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -201,7 +203,10 @@ public class RemSet {
 
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
-        if (!object.isNull()) VM.scanning.scanObject(redirectPointerTrace, object);
+        if (!object.isNull()) {
+          //VM.scanning.scanObject(redirectPointerTrace, object);
+          redirectPointerTrace.traceObject(object, true);
+        }
       }
     };
 
@@ -271,11 +276,15 @@ public class RemSet {
               Address card = currentRegion.plus(cardIndex << Region.Card.LOG_BYTES_IN_CARD);
               // This `card` is in rem-set of `region`
               if (!Space.isMappedAddress(card)) continue;
-              if (Space.isInSpace(regionSpace.getDescriptor(), card) && (Region.of(card).EQ(EmbeddedMetaData.getMetaDataBase(card)) || Region.relocationRequired(Region.of(card)))) {
-                continue;
+              if (Space.isInSpace(regionSpace.getDescriptor(), card)) {
+                if (VM.VERIFY_ASSERTIONS)
+                  VM.assertions._assert(Region.of(card).NE(EmbeddedMetaData.getMetaDataBase(card)));
+                if (Region.relocationRequired(Region.of(card)))
+                  continue;
               }
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
               //Log.writeln("Scan card ", card);
+              Region.Card.tag = "UP";
               Region.Card.linearScan(cardLinearScan, card, false);
               /*for (int l = 0; l < relocationSet.length(); l++) {
                 Address otherRegion = relocationSet.get(l);
@@ -333,6 +342,45 @@ public class RemSet {
         Region.Card.linearScan(cardLinearScan, c);
       }*/
     }
+
+    /*RegionSpace _regionSpace;
+
+    TransitiveClosure verificationTC = new TransitiveClosure() {
+      @Override @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
+        ObjectReference ref = slot.loadObjectReference();
+        if (ref.isNull()) return;
+        if (!Space.isInSpace(_regionSpace.getDescriptor(), ref)) {
+          if (!Space.isMappedObject(ref)) {
+            Log.write(source);
+            Log.write(".", slot);
+            Log.write(": ", ref);
+            Log.writeln(" outside of heap ");
+            VM.objectModel.dumpObject(ref);
+            VM.assertions._assert(false);
+          }
+          return;
+        }
+        if (!Space.isInSpace(_regionSpace.getDescriptor(), ref)
+        if ()
+        VM.assertions._assert();
+      }
+    };
+
+    LinearScan verificationLinearScan = new LinearScan() {
+      @Override @Uninterruptible public void scan(ObjectReference object) {
+        VM.assertions._assert(!object.isNull());
+        VM.scanning.scanObject(verificationTC, object);
+      }
+    };
+
+    public void assertAllRefsUpdated(RegionSpace regionSpace) {
+      _regionSpace = regionSpace;
+      Address block = regionSpace.firstBlock();
+      while (!block.isZero()) {
+        Region.linearScan(verificationLinearScan, block);
+        block = regionSpace.nextBlock(block);
+      }
+    }*/
   }
 
   /** Remove cards in collection regions from remsets of other regions & Release remsets of collection regions */
@@ -359,6 +407,8 @@ public class RemSet {
       for (int j = 0; j < remSet.length; j++) {
         Address remSetRegion = VM.HEAP_START.plus(j << Region.LOG_BYTES_IN_BLOCK);
         if (Space.isInSpace(regionSpace.getDescriptor(), remSetRegion) && Region.of(remSetRegion).NE(EmbeddedMetaData.getMetaDataBase(remSetRegion)) && Region.relocationRequired(remSetRegion)) {
+          //Log.write("Remove region ", remSetRegion);
+          //Log.writeln(" from remset of region ", visitedRegion);
           remSet[j] = null;
         }
       }
@@ -408,4 +458,6 @@ public class RemSet {
       }
     }*/
   }
+
+
 }
