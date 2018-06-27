@@ -17,6 +17,7 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
+import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.vm.Lock;
@@ -409,7 +410,7 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean tracerNonCSetObjects) {
+  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean processNode) {
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
@@ -436,7 +437,7 @@ public final class RegionSpace extends Space {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
       if (Header.testAndMark(object)) {
         //Log.writeln("EvaMark ", object);
-        if (tracerNonCSetObjects) trace.processNode(object);
+        if (processNode) trace.processNode(object);
       }
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;
@@ -521,6 +522,47 @@ public final class RegionSpace extends Space {
   @Inline
   public boolean isLive(ObjectReference object) {
     return ForwardingWord.isForwardedOrBeingForwarded(object) || Header.isMarked(object);
+  }
+
+  TransitiveClosure validateTC = new TransitiveClosure() {
+    @Uninterruptible void errorEdge(ObjectReference source, Address slot, ObjectReference ref, String msg) {
+      Log.write(source);
+      Log.write("(");
+      Log.write(Space.getSpaceForObject(source).getName());
+      Log.write(Header.isMarked(source) ? ", live" : ", dead");
+      Log.write(").", slot);
+      Log.write(": ", ref);
+      Log.write(" ");
+      Log.writeln(msg);
+      VM.assertions._assert(false);
+    }
+    @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
+      ObjectReference ref = slot.loadObjectReference();
+      if (ref.isNull()) return;
+      for (int i = 0; i < __cset.length(); i++) {
+        Address cRegion = __cset.get(i);
+        if (Region.of(ref).EQ(cRegion)) {
+          errorEdge(source, slot, ref, " is forwarded");
+        }
+      }
+    }
+  };
+
+  LinearScan validateLS = new LinearScan() {
+    @Uninterruptible public void scan(ObjectReference object) {
+      if (!Header.isMarked(object)) return;
+      VM.scanning.scanObject(validateTC, object);
+    }
+  };
+  AddressArray __cset;
+  public void validate(AddressArray cset) {
+    __cset = cset;
+    Address block = firstBlock();
+    while (!block.isZero()) {
+      Region.linearScan(validateLS, block);
+      block = nextBlock(block);
+    }
+    __cset = null;
   }
 
   // Block iterator

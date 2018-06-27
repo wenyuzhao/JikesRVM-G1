@@ -87,9 +87,9 @@ public class RegionAllocator extends Allocator {
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
-    //if (Space.isInSpace(this.space.getDescriptor(), start)) {
-    //  Region.setCursor(Region.of(start), cursor);
-    //}
+    if (Space.isInSpace(this.space.getDescriptor(), start)) {
+      Region.setCursor(Region.of(start), cursor);
+    }
     if (VM.VERIFY_ASSERTIONS) {
       if (!Region.allocated(Region.of(start))) {
         Log.writeln("cursor: ", cursor);

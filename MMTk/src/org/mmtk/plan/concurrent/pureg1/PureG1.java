@@ -122,6 +122,11 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (ROOTS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
+      /*Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
@@ -130,7 +135,13 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleComplex  (forwardPhase),
+
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+
       Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(REMEMBERED_SETS),
@@ -154,6 +165,17 @@ public class PureG1 extends Concurrent {
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
     //Phase.scheduleComplex  (refTypeClosurePhase),
+      Phase.scheduleCollector  (SOFT_REFS),
+      Phase.scheduleGlobal     (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),
+      Phase.scheduleCollector  (WEAK_REFS),
+      //Phase.scheduleCollector  (FINALIZABLE),
+      Phase.scheduleGlobal     (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),
+      //Phase.schedulePlaceholder(WEAK_TRACK_REFS),
+      Phase.scheduleCollector  (PHANTOM_REFS),
+      Phase.scheduleGlobal     (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),
     //Phase.scheduleComplex  (completeClosurePhase),
       //Phase.scheduleComplex(concurrentLockMutators),
       //hase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
@@ -194,6 +216,7 @@ public class PureG1 extends Concurrent {
       totalSTWTime += VM.statistics.nanoTime() - startTime;
       Log.writeln("TotalSTWTime ", totalSTWTime);
       super.collectionPhase(COMPLETE);
+      //regionSpace.validate(relocationSet);
       return;
     }
     if (phaseId == PREPARE) {
@@ -214,7 +237,7 @@ public class PureG1 extends Concurrent {
       markTrace.release();
       //regionSpace.release();
       //super.collectionPhase(phaseId);
-      inConcurrentCollection = false;
+      //inConcurrentCollection = false;
       return;
     }
 

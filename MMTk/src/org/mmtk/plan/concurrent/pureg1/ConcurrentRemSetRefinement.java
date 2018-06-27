@@ -131,7 +131,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         Address foreignBlock = Region.of(value);
         //Log.write("Add card ", card);
         //Log.writeln(" to remset of block ", foreignBlock);
-        Region.Card.tag = "RE";
         RemSet.addCard(foreignBlock, card);
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.containsCard(foreignBlock, card));
       }

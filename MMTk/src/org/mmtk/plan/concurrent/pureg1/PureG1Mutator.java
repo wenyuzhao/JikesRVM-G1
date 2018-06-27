@@ -55,10 +55,10 @@ public class PureG1Mutator extends ConcurrentMutator {
   private static final int REMSET_LOG_BUFFER_SIZE = 256;
   private AddressArray remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
   private int remSetLogBufferCursor = 0;
-  private final TraceWriteBuffer markRemset, relocateRemset;
+  private final TraceWriteBuffer markRemset;//, relocateRemset;
   private TraceWriteBuffer currentRemset;
-  public final Lock refinementLock = VM.newLock("refinementLock");
-  private boolean refinementInProgress = false;
+  // public final Lock refinementLock = VM.newLock("refinementLock");
+  // private boolean refinementInProgress = false;
 
   /****************************************************************************
    *
@@ -71,7 +71,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   public PureG1Mutator() {
     mc = new RegionAllocator(PureG1.regionSpace, false);
     markRemset = new TraceWriteBuffer(global().markTrace);
-    relocateRemset = new TraceWriteBuffer(global().redirectTrace);
+    //relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
   }
 
@@ -137,8 +137,8 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    Log.write("[Mutator] ");
-    Log.writeln(Phase.getName(phaseId));
+    //Log.write("[Mutator] ");
+    //Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
       //flushRememberedSets();
       super.collectionPhase(phaseId, primary);
@@ -211,10 +211,6 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   public boolean rsBufferIsEmpty() {
     return remSetLogBufferCursor == 0;
-  }
-
-  public boolean isRefinementInProgress() {
-    return refinementInProgress;
   }
 
   @Inline

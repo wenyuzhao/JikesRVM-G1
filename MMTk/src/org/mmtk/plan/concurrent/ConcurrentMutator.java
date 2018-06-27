@@ -61,13 +61,11 @@ public abstract class ConcurrentMutator extends SimpleMutator {
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == Concurrent.SET_BARRIER_ACTIVE) {
       barrierActive = true;
-      Log.writeln("barrierActive = true #", getId());
       return;
     }
 
     if (phaseId == Concurrent.CLEAR_BARRIER_ACTIVE) {
       barrierActive = false;
-      Log.writeln("barrierActive = false #", getId());
       return;
     }
 

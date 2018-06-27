@@ -153,6 +153,7 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.RELEASE) {
       markTrace.completeTrace();
+      markTrace.release();
       //markTrace.release();
       //super.collectionPhase(phaseId, primary);
       return;
@@ -192,7 +193,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
-      markTrace.release();
+      redirectTrace.completeTrace();
       redirectTrace.release();
       copy.reset();
       super.collectionPhase(PureG1.RELEASE, primary);
@@ -253,39 +254,6 @@ public class PureG1Collector extends ConcurrentCollector {
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
-
-
-    if (phaseId == PureG1.CONCURRENT_LOCK_MUTATORS) {
-      if (rendezvous() == 0) {
-        //Log.writeln(VM.activePlan.isMutator() ? "is mutator" : "not mutator");
-        //while (true) {
-          //boolean allNotRefining = true;
-          VM.activePlan.resetMutatorIterator();
-          PureG1Mutator m;
-          while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-            //Log.writeln("Try lock mutator #", m.getId());
-            m.refinementLock.acquire();
-            /*if (m.isRefinementInProgress())  {
-              allNotRefining = false;
-              m.refinementLock.await();
-            }*/
-            //m.refinementLock.unlock();
-            //Log.writeln("Done lock mutator #", m.getId());
-          }
-          //if (allNotRefining) break;
-        //}
-      }
-      rendezvous();
-      //Log.write("END ");
-      //Log.writeln(Phase.getName(phaseId));
-      if (rendezvous() == 0) {
-        //Log.writeln("requestMutatorFlush");
-        VM.collection.requestMutatorFlush();
-        continueCollecting = Phase.notifyConcurrentPhaseComplete();
-      }
-      rendezvous();
-      return;
-    }
 
     if (phaseId == PureG1.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;

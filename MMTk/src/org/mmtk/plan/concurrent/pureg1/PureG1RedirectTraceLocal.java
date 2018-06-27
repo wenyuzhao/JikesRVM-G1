@@ -13,7 +13,7 @@ import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
 public class PureG1RedirectTraceLocal extends TraceLocal {
-  RemSet.Processor processor = new RemSet.Processor(this);
+  RemSet.Processor processor = new RemSet.Processor(this, PureG1.regionSpace);
 
   public PureG1RedirectTraceLocal(Trace trace) {
     super(PureG1.SCAN_REDIRECT, trace);
@@ -59,7 +59,16 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
-    super.processEdge(source, slot);
+    if (remSetsProcessing) {
+      ObjectReference ref = slot.loadObjectReference();
+      if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref) && Region.relocationRequired(Region.of(ref)) && isLive(ref)) {
+        super.processEdge(source, slot);
+      }// else {
+        //return;
+      //}
+    } else {
+      super.processEdge(source, slot);
+    }
 
     ObjectReference ref = slot.loadObjectReference();
     if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
