@@ -59,16 +59,17 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
-    if (remSetsProcessing) {
+    VM.assertions._assert(VM.debugging.validRef(source));
+    /*if (remSetsProcessing) {
       ObjectReference ref = slot.loadObjectReference();
       if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref) && Region.relocationRequired(Region.of(ref)) && isLive(ref)) {
         super.processEdge(source, slot);
       }// else {
         //return;
       //}
-    } else {
+    } else {*/
       super.processEdge(source, slot);
-    }
+    //}
 
     ObjectReference ref = slot.loadObjectReference();
     if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
@@ -85,10 +86,10 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Inline
   @Override
   public void scanObject(ObjectReference object) {
-    if (object.isNull()) return;
-    if (remSetsProcessing) {
-      if (!Space.isMappedObject(object)) return;
-    }
+    //if (object.isNull()) return;
+    //if (remSetsProcessing) {
+      //if (!Space.isMappedObject(object)) return;
+    //}
     VM.assertions._assert(VM.debugging.validRef(object));
     super.scanObject(object);
   }
@@ -98,29 +99,33 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
 
-    if (remSetsProcessing) {
+    /*if (remSetsProcessing) {
       if (Space.isInSpace(PureG1.MC, object)) {
         // Mark only, not tracing children
         ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
         return newObject;
       }
       return object;
-    } else {
+    } else {*/
       if (VM.VERIFY_ASSERTIONS) {
         if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
         VM.assertions._assert(VM.debugging.validRef(object));
       }
       Region.Card.updateCardMeta(object);
+      ObjectReference newObject;
       if (Space.isInSpace(PureG1.MC, object)) {
-        ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
-        Region.Card.updateCardMeta(newObject);
-        VM.assertions._assert(isLive(newObject));
-        return newObject;
+        newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+      } else {
+        newObject = super.traceObject(object);
       }
-      ObjectReference ref = super.traceObject(object);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(ref));
-      return ref;
-    }
+
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(VM.debugging.validRef(newObject));
+        VM.assertions._assert(isLive(newObject));
+      }
+      Region.Card.updateCardMeta(newObject);
+      return newObject;
+    //}
   }
 
   @Override

@@ -122,11 +122,11 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (ROOTS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
-      /*Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
@@ -135,22 +135,21 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
 
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
-      Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+    Phase.scheduleMutator  (REMEMBERED_SETS),
+    Phase.scheduleGlobal   (REMEMBERED_SETS),
+    Phase.scheduleCollector(REMEMBERED_SETS),
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
 
     Phase.scheduleCollector(REDIRECT_RELEASE),
     Phase.scheduleGlobal   (REDIRECT_RELEASE),
-      Phase.scheduleMutator  (REDIRECT_RELEASE)
+    Phase.scheduleMutator  (REDIRECT_RELEASE)
 
 
 

@@ -25,6 +25,8 @@ import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.*;
 
+import static org.mmtk.utility.Constants.*;
+
 /**
  * Each instance of this class corresponds to one immix <b>space</b>.
  * Each of the instance methods of this class may be called by any
@@ -52,36 +54,24 @@ public final class RegionSpace extends Space {
   public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
   public static final int GLOBAL_GC_BITS_REQUIRED = 0;
   public static final int GC_HEADER_WORDS_REQUIRED = 0;
-
-  //private static boolean relocation = false;
   private static boolean allocAsMarked = false;
-  //public Address allocBlock = Address.zero();
+  private static final boolean HEADER_MARK_BIT = false;
 
   @Uninterruptible
-  public static class Header {
+  private static class Header {
     static byte markState = MARK_BASE_VALUE;
-    @Inline
-    static boolean isNewObject(ObjectReference object) {
-      return (VM.objectModel.readAvailableByte(object) & MARK_AND_FORWARDING_MASK) == NEW_OBJECT_MARK;
-    }
     @Inline
     public static boolean isMarked(ObjectReference object) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return isMarked(VM.objectModel.readAvailableByte(object));
     }
     @Inline
-    static boolean isMarked(byte gcByte) {
+    private static boolean isMarked(byte gcByte) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return ((byte) (gcByte & MARK_MASK)) == markState;
     }
     @Inline
-    public static boolean isPreviouslyMarked(ObjectReference object) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
-      byte gcByte = VM.objectModel.readAvailableByte(object);
-      return ((byte) (gcByte & MARK_MASK)) == decreasedMarkState();
-    }
-    @Inline
-    static boolean testAndMark(ObjectReference object) {
+    public static boolean testAndMark(ObjectReference object) {
       byte oldValue, newValue, oldMarkState;
 
       oldValue = VM.objectModel.readAvailableByte(object);
@@ -95,17 +85,7 @@ public final class RegionSpace extends Space {
       return oldMarkState != markState;
     }
     @Inline
-    static byte decreasedMarkState() {
-      byte rtn = markState;
-      do {
-        rtn = (byte) (rtn - MARK_INCREMENT);
-        rtn &= MARK_MASK;
-      } while (rtn < MARK_BASE_VALUE);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
-      return rtn;
-    }
-    @Inline
-    static void increaseMarkState() {
+    public static void increaseMarkState() {
       byte rtn = markState;
       do {
         rtn = (byte) (rtn + MARK_INCREMENT);
@@ -128,11 +108,7 @@ public final class RegionSpace extends Space {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((oldGCByte & MARK_MASK) != markState);
     }
     @Inline
-    public static void mark(ObjectReference object) {
-      testAndMark(object);
-    }
-    @Inline
-    static void writeMarkState(ObjectReference object) {
+    public static void writeMarkState(ObjectReference object) {
       byte oldValue = VM.objectModel.readAvailableByte(object);
       byte markValue = markState;
       byte newValue = (byte) (oldValue & ~MARK_AND_FORWARDING_MASK);
@@ -140,6 +116,66 @@ public final class RegionSpace extends Space {
         newValue |= HeaderByte.UNLOGGED_BIT;
       newValue |= markValue;
       VM.objectModel.writeAvailableByte(object, newValue);
+    }
+  }
+
+  @Uninterruptible
+  private static class MarkBitMap {
+    private static final int OBJECT_LIVE_SHIFT = LOG_MIN_ALIGNMENT; // 4 byte resolution
+    private static final int LOG_BIT_COVERAGE = OBJECT_LIVE_SHIFT;
+    private static final int LOG_LIVE_COVERAGE = LOG_BIT_COVERAGE + LOG_BITS_IN_BYTE;
+    private static final Word WORD_SHIFT_MASK = Word.one().lsh(LOG_BITS_IN_WORD).minus(Extent.one());
+    @Inline
+    public static boolean isMarked(ObjectReference object) {
+      return liveBitSet(VM.objectModel.refToAddress(object));
+    }
+    @Inline
+    public static boolean testAndMark(ObjectReference object) {
+      return setLiveBit(VM.objectModel.objectStartRef(object), true, true);
+    }
+    @Inline
+    public static void writeMarkState(ObjectReference object) {
+      byte oldValue = VM.objectModel.readAvailableByte(object);
+      byte newValue = (byte) (oldValue & ~MARK_AND_FORWARDING_MASK);
+      if (HeaderByte.NEEDS_UNLOGGED_BIT) newValue |= HeaderByte.UNLOGGED_BIT;
+      VM.objectModel.writeAvailableByte(object, newValue);
+      setLiveBit(VM.objectModel.objectStartRef(object), true, false);
+    }
+    @Inline
+    private static boolean setLiveBit(Address address, boolean set, boolean atomic) {
+      Word oldValue, newValue;
+      Address liveWord = getLiveWordAddress(address);
+      Word mask = getMask(address, true);
+      if (atomic) {
+        do {
+          oldValue = liveWord.prepareWord();
+          newValue = (set) ? oldValue.or(mask) : oldValue.and(mask.not());
+        } while (!liveWord.attempt(oldValue, newValue));
+      } else {
+        oldValue = liveWord.loadWord();
+        liveWord.store(set ? oldValue.or(mask) : oldValue.and(mask.not()));
+      }
+      return oldValue.and(mask).NE(mask);
+    }
+    @Inline
+    protected static boolean liveBitSet(Address address) {
+      Address liveWord = getLiveWordAddress(address);
+      Word mask = getMask(address, true);
+      Word value = liveWord.loadWord();
+      return value.and(mask).EQ(mask);
+    }
+    @Inline
+    private static Word getMask(Address address, boolean set) {
+      int shift = address.toWord().rshl(OBJECT_LIVE_SHIFT).and(WORD_SHIFT_MASK).toInt();
+      Word rtn = Word.one().lsh(shift);
+      return (set) ? rtn : rtn.not();
+    }
+    @Inline
+    private static Address getLiveWordAddress(Address address) {
+      Address rtn = EmbeddedMetaData.getMetaDataBase(address);
+      Address liveWordAddress = rtn.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
+      return liveWordAddress;
     }
   }
 
@@ -191,8 +227,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public void prepare(boolean clearBlockLiveSize) {
-    Header.increaseMarkState();
-    Log.writeln("MarkState ", Header.markState);
+    prepare();
     if (clearBlockLiveSize) {
       for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
         Region.setUsedSize(b, 0);
@@ -203,8 +238,18 @@ public final class RegionSpace extends Space {
    * Prepare for a new collection increment.
    */
   @Inline
-  public void prepare() {
-    prepare(false);
+  private void prepare() {
+    if (HEADER_MARK_BIT) {
+      Header.increaseMarkState();
+      Log.writeln("MarkState ", Header.markState);
+    } else {
+      // Clear marking data
+      for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
+        //Address base = EmbeddedMetaData.getMetaDataBase(b);
+        //if (b.diff(base).toInt() == Region.BYTES_IN_BLOCK)
+          Region.clearMarkBitMap(b);
+      }
+    }
   }
 
   /**
@@ -301,12 +346,12 @@ public final class RegionSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
     //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
     //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
 
     //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (allocAsMarked) {
-      Header.writeMarkState(object);
+      writeMarkState(object);
     } else {
       VM.objectModel.writeAvailableByte(object, (byte) 0);
     }
@@ -326,7 +371,7 @@ public final class RegionSpace extends Space {
   public void postCopy(ObjectReference object, int bytes) {
     //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
     //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
-    Header.writeMarkState(object);
+    writeMarkState(object);
     //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
@@ -377,7 +422,7 @@ public final class RegionSpace extends Space {
 
     }
 
-    if (Header.testAndMark(rtn)) {
+    if (testAndMark(rtn)) {
       //Log.writeln("Mark ", rtn);
       Address region = Region.of(rtn);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
@@ -390,27 +435,14 @@ public final class RegionSpace extends Space {
 
     // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
     if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+
+    VM.assertions._assert(isLive(rtn));
     return rtn;
   }
 
   @Inline
-  public ObjectReference traceRedirectObject(TraceLocal trace, ObjectReference object) {
-    if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ForwardingWord.isForwarded(object));
-      ObjectReference newObject = getForwardingPointer(object);
-      Log.write(object);
-      Log.writeln(" ~> ", newObject);
-      object = newObject;
-      VM.assertions._assert(false);
-    }
-    if (Header.testAndMark(object)) {
-      trace.processNode(object);
-    }
-    return object;
-  }
-
-  @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean processNode) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
@@ -428,81 +460,19 @@ public final class RegionSpace extends Space {
           //Log.write("Forward ", object);
           //Log.writeln(" => ", newObject);
         }
-        Header.writeMarkState(newObject);
+        writeMarkState(newObject);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         trace.processNode(newObject);
         return newObject;
       }
     } else {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-      if (Header.testAndMark(object)) {
+      if (testAndMark(object)) {
         //Log.writeln("EvaMark ", object);
         if (processNode) trace.processNode(object);
       }
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;
-    }
-  }
-
-  /**
-   * Trace an object under a copying collection policy.
-   * If the object is already copied, the copy is returned.
-   * Otherwise, a copy is created and returned.
-   * In either case, the object will be marked on return.
-   *
-   * @param trace The trace being conducted.
-   * @param object The object to be forwarded.
-   * @return The forwarded object.
-   */
-  @Inline
-  public ObjectReference traceRelocateObject(TraceLocal trace, ObjectReference object, int allocator) {
-
-    /* Race to be the (potential) forwarder */
-    Word priorStatusWord = ForwardingWord.attemptToForward(object);
-    if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
-      /* We lost the race; the object is either forwarded or being forwarded by another thread. */
-      /* Note that the concurrent attempt to forward the object may fail, so the object may remain in-place */
-      ObjectReference rtn = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
-      if (VM.VERIFY_ASSERTIONS && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-      //Log.write("# ", object);
-      //Log.writeln(" -> ", rtn);
-      return rtn;
-    } else {
-      /* the object is unforwarded, either because this is the first thread to reach it, or because the object can't be forwarded */
-      byte priorState = (byte) (priorStatusWord.toInt() & 0xFF);
-      if (Header.isMarked(priorState)) {
-        /* the object has not been forwarded, but has the correct mark state; unlock and return unmoved object */
-        Header.returnToPriorStateAndEnsureUnlogged(object, priorState); // return to uncontested state
-        if (VM.VERIFY_ASSERTIONS && Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(object));
-        return object;
-      } else {
-        /* we are the first to reach the object; either mark in place or forward it */
-        ObjectReference rtn = object;
-        if (Region.relocationRequired(Region.of(object))) {
-          /* forward */
-          rtn = ForwardingWord.forwardObject(object, allocator);
-          if (VM.VERIFY_ASSERTIONS) {
-            VM.assertions._assert(ForwardingWord.isForwarded(object));
-            VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
-            if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-          }
-          /*if (VM.VERIFY_ASSERTIONS) {
-            Log.write("Forward ", object);
-            Log.writeln(" => ", rtn);
-          }*/
-          Header.writeMarkState(rtn);
-        } else {
-          Header.setMarkStateUnlogAndUnlock(object, priorState);
-          if (VM.VERIFY_ASSERTIONS) {
-            //VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
-            if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-          }
-        }
-        trace.processNode(rtn);
-
-        return rtn;
-      }
     }
   }
 
@@ -521,48 +491,20 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public boolean isLive(ObjectReference object) {
-    return ForwardingWord.isForwardedOrBeingForwarded(object) || Header.isMarked(object);
+    if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
+    return HEADER_MARK_BIT ? Header.isMarked(object) : MarkBitMap.isMarked(object);
   }
 
-  TransitiveClosure validateTC = new TransitiveClosure() {
-    @Uninterruptible void errorEdge(ObjectReference source, Address slot, ObjectReference ref, String msg) {
-      Log.write(source);
-      Log.write("(");
-      Log.write(Space.getSpaceForObject(source).getName());
-      Log.write(Header.isMarked(source) ? ", live" : ", dead");
-      Log.write(").", slot);
-      Log.write(": ", ref);
-      Log.write(" ");
-      Log.writeln(msg);
-      VM.assertions._assert(false);
-    }
-    @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      ObjectReference ref = slot.loadObjectReference();
-      if (ref.isNull()) return;
-      for (int i = 0; i < __cset.length(); i++) {
-        Address cRegion = __cset.get(i);
-        if (Region.of(ref).EQ(cRegion)) {
-          errorEdge(source, slot, ref, " is forwarded");
-        }
-      }
-    }
-  };
+  private void writeMarkState(ObjectReference object) {
+    if (HEADER_MARK_BIT)
+      Header.writeMarkState(object);
+    else
+      MarkBitMap.writeMarkState(object);
+    VM.assertions._assert(isLive(object));
+  }
 
-  LinearScan validateLS = new LinearScan() {
-    @Uninterruptible public void scan(ObjectReference object) {
-      if (!Header.isMarked(object)) return;
-      VM.scanning.scanObject(validateTC, object);
-    }
-  };
-  AddressArray __cset;
-  public void validate(AddressArray cset) {
-    __cset = cset;
-    Address block = firstBlock();
-    while (!block.isZero()) {
-      Region.linearScan(validateLS, block);
-      block = nextBlock(block);
-    }
-    __cset = null;
+  private static boolean testAndMark(ObjectReference object) {
+    return HEADER_MARK_BIT ? Header.testAndMark(object) : MarkBitMap.testAndMark(object);
   }
 
   // Block iterator

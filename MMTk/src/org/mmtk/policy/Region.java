@@ -38,6 +38,8 @@ public class Region {
   public static final int METADATA_PAGES_PER_REGION;
   public static final int BLOCKS_IN_REGION;
   public static final int BLOCKS_START_OFFSET;
+  public static final int MARKING_METADATA_START;
+  public static final int MARKING_METADATA_EXTENT;
 
   static {
     int blocksInRegion = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK; // 1024 / 256 = 4
@@ -45,6 +47,8 @@ public class Region {
     BLOCKS_IN_REGION = blocksInRegion - metadataBlocksInRegion; // 3
     METADATA_PAGES_PER_REGION = metadataBlocksInRegion * PAGES_IN_BLOCK; // 256
     BLOCKS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_REGION; // 1048576
+    MARKING_METADATA_START = METADATA_BYTES * BLOCKS_IN_REGION;
+    MARKING_METADATA_EXTENT = BYTES_IN_BLOCK * metadataBlocksInRegion - MARKING_METADATA_START;
   }
 
   public static void dumpMeta() {
@@ -63,11 +67,14 @@ public class Region {
     Log.writeln("METADATA_REMSET_PAGES_OFFSET ", METADATA_REMSET_PAGES_OFFSET);
     Log.writeln("METADATA_REMSET_POINTER_OFFSET ", METADATA_REMSET_POINTER_OFFSET);
     Log.writeln("METADATA_BYTES ", METADATA_BYTES);
+    Log.writeln("MARKING_METADATA_START ", MARKING_METADATA_START);
+    Log.writeln("MARKING_METADATA_EXTENT ", MARKING_METADATA_EXTENT);
     Log.writeln("METADATA_OFFSET_IN_REGION ", METADATA_OFFSET_IN_REGION);
     Log.writeln("METADATA_PAGES_PER_REGION ", METADATA_PAGES_PER_REGION);
     Log.writeln("METADATA_PAGES_PER_REGION ", METADATA_PAGES_PER_REGION);
     Log.writeln("BLOCKS_IN_REGION ", BLOCKS_IN_REGION);
     Log.writeln("BLOCKS_START_OFFSET ", BLOCKS_START_OFFSET);
+    //VM.assertions.fail("");
   }
 
   private static int ceilDiv(int a, int b) {
@@ -81,8 +88,9 @@ public class Region {
   @Inline
   private static void assertInMetadata(Address addr, int size) {
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(addr.GE(EmbeddedMetaData.getMetaDataBase(addr)));
-      VM.assertions._assert(addr.plus(size).LE(EmbeddedMetaData.getMetaDataBase(addr).plus(METADATA_PAGES_PER_REGION * BYTES_IN_PAGE)));
+      Address base = EmbeddedMetaData.getMetaDataBase(addr);
+      VM.assertions._assert(addr.GE(base));
+      VM.assertions._assert(addr.plus(size).LE(base.plus(METADATA_BYTES * BYTES_IN_BLOCK)));
     }
   }
 
@@ -143,6 +151,12 @@ public class Region {
   @Inline
   public static boolean relocationRequired(Address block) {
     return metaDataOf(block, METADATA_RELOCATE_OFFSET).loadByte() != ((byte) 0);
+  }
+
+  @Inline
+  public static void clearMarkBitMap(Address block) {
+    Address start = EmbeddedMetaData.getMetaDataBase(block).plus(MARKING_METADATA_START);
+    VM.memory.zero(false, start, Extent.fromIntZeroExtend(MARKING_METADATA_EXTENT));
   }
 
   @Inline

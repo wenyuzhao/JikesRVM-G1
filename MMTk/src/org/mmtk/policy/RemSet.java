@@ -230,7 +230,7 @@ public class RemSet {
 
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible public void scan(ObjectReference object) {
-        if (!object.isNull()) {
+        if (!object.isNull() && redirectPointerTrace.isLive(object)) {
           //VM.scanning.scanObject(redirectPointerTransitiveClosure, object);
           redirectPointerTrace.traceObject(object, true);
         }
