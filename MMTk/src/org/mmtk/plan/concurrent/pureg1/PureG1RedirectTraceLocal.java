@@ -31,50 +31,27 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Inline
   @Override
   public ObjectReference traceObject(ObjectReference object, boolean root) {
-    if (root) {
-      if (object.isNull()) return object;
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remSetsProcessing);
+    ObjectReference newObject = super.traceObject(object, root);
 
-      if (VM.VERIFY_ASSERTIONS) {
-        if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
-        VM.assertions._assert(VM.debugging.validRef(object));
-      }
-
-      Region.Card.updateCardMeta(object);
-
-      ObjectReference newObject;
-      if (Space.isInSpace(PureG1.MC, object)) {
-        newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
-      } else {
-        newObject = super.traceObject(object);
-      }
-      Region.Card.updateCardMeta(newObject);
+    if (!object.isNull() && root) {
       this.processNode(newObject);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
-      return newObject;
-    } else {
-      return traceObject(object);
     }
+
+    return newObject;
   }
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
     VM.assertions._assert(VM.debugging.validRef(source));
-    /*if (remSetsProcessing) {
-      ObjectReference ref = slot.loadObjectReference();
-      if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref) && Region.relocationRequired(Region.of(ref)) && isLive(ref)) {
-        super.processEdge(source, slot);
-      }// else {
-        //return;
-      //}
-    } else {*/
-      super.processEdge(source, slot);
-    //}
+    super.processEdge(source, slot);
 
     ObjectReference ref = slot.loadObjectReference();
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(ref.isNull() || Space.isMappedObject(ref));
+    }
     if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
-      Address block = Region.of(VM.objectModel.objectStartRef(ref));
-      if (block.NE(Region.of(VM.objectModel.objectStartRef(source)))) {
+      Address block = Region.of(ref);
+      if (block.NE(Region.of(source))) {
         Region.Card.updateCardMeta(source);
         Address card = Region.Card.of(source);
         //if (remSetsProcessing)
@@ -86,12 +63,23 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Inline
   @Override
   public void scanObject(ObjectReference object) {
-    //if (object.isNull()) return;
-    //if (remSetsProcessing) {
-      //if (!Space.isMappedObject(object)) return;
-    //}
     VM.assertions._assert(VM.debugging.validRef(object));
     super.scanObject(object);
+  }
+
+  @Inline
+  public ObjectReference getForwardedReference(ObjectReference object) {
+    return traceObject(object, true);
+  }
+
+  @Inline
+  public ObjectReference retainReferent(ObjectReference object) {
+    return traceObject(object, true);
+  }
+
+  @Inline
+  public ObjectReference retainForFinalize(ObjectReference object) {
+    return traceObject(object, true);
   }
 
   @Override
@@ -131,7 +119,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(PureG1.MC, object)) {
-      return !Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object)));
+      return false;
     } else {
       return super.willNotMoveInCurrentCollection(object);
     }

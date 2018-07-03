@@ -40,7 +40,7 @@ import static org.mmtk.utility.Constants.*;
 @Uninterruptible
 public final class RegionSpace extends Space {
   /** number of header bits we may use */
-  private static final int AVAILABLE_LOCAL_BITS = 5 - HeaderByte.USED_GLOBAL_BITS;
+  private static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
 
   /* local status bits */
   private static final byte NEW_OBJECT_MARK = 0; // using zero means no need for explicit initialization on allocation

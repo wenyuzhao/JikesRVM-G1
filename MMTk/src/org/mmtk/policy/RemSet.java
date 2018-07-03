@@ -39,11 +39,10 @@ public class RemSet {
     @Inline
     private static boolean attemptBitInBuffer(Address buf, int index, boolean newBit) {
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldBit != newBit);
-      int intIndex = index >> Constants.LOG_BITS_IN_INT;
+      int intIndex = index >>> Constants.LOG_BITS_IN_INT;
       int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
       if (VM.VERIFY_ASSERTIONS) {
-        //VM.assertions._assert(intIndex >= 0 && intIndex < buf.length);
-        VM.assertions._assert(bitIndex >= 0 && bitIndex < Constants.BITS_IN_INT);
+        VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
       }
       Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
       int oldValue, newValue;
@@ -59,7 +58,7 @@ public class RemSet {
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(((newValue & (1 << (31 - bitIndex))) != 0) == newBit);
           if (bitIndex != 0) {
-            VM.assertions._assert((oldValue >> (32 - bitIndex)) == (newValue >> (32 - bitIndex)));
+            VM.assertions._assert((oldValue >>> (32 - bitIndex)) == (newValue >>> (32 - bitIndex)));
           }
           if (bitIndex != 31) {
             VM.assertions._assert((oldValue << (1 + bitIndex)) == (newValue << (1 + bitIndex)));
@@ -72,8 +71,9 @@ public class RemSet {
 
     @Inline
     static boolean getBit(Address buf, int index) {
-      int intIndex = index >> Constants.LOG_BITS_IN_INT;
+      int intIndex = index >>> Constants.LOG_BITS_IN_INT;
       int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
       int entry = buf.plus(intIndex << Constants.LOG_BYTES_IN_INT).loadInt();//buf[intIndex];
       return (entry & (1 << (31 - bitIndex))) != 0;
     }
@@ -142,8 +142,14 @@ public class RemSet {
     return prtEntry.loadAddress();
   }
 
+  public static boolean noCSet = false;
   @Inline
   public static void addCard(Address region, Address card) {
+    if (VM.VERIFY_ASSERTIONS) {
+      if (noCSet) {
+        VM.assertions._assert(!Region.relocationRequired(region));
+      }
+    }
     addCard(region, card, true);
   }
 

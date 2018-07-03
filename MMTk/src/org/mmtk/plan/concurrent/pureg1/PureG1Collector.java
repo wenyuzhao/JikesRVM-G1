@@ -116,13 +116,13 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(getCurrentTrace().isLive(object));
-      if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
+      /*if (!getCurrentTrace().willNotMoveInCurrentCollection(object)) {
         Log.write("Block ", Region.of(VM.objectModel.objectStartRef(object)));
         Log.write(" is marked for relocate:");
         Log.writeln(Region.relocationRequired(Region.of(VM.objectModel.objectStartRef(object))) ? "true" : "false");
       }
 
-      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));
+      VM.assertions._assert(getCurrentTrace().willNotMoveInCurrentCollection(object));*/
     }
   }
 
@@ -143,6 +143,7 @@ public class PureG1Collector extends ConcurrentCollector {
       currentTrace = markTrace;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
+      //ConcurrentRemSetRefinement.cardBufPool.prepareNonBlocking();
       return;
     }
 
@@ -164,6 +165,7 @@ public class PureG1Collector extends ConcurrentCollector {
       if (rendezvous() == 0) {
         ConcurrentRemSetRefinement.finishRefineHotCards();
       }
+      rendezvous();
       currentTrace = redirectTrace;
       //redirectTrace.log = true;
       redirectTrace.prepare();
@@ -176,6 +178,7 @@ public class PureG1Collector extends ConcurrentCollector {
       ConcurrentRemSetRefinement.refineHotCards();
       if (rendezvous() == 0) {
         ConcurrentRemSetRefinement.finishRefineHotCards();
+        //if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
       }
       //redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
@@ -196,6 +199,7 @@ public class PureG1Collector extends ConcurrentCollector {
       redirectTrace.completeTrace();
       redirectTrace.release();
       copy.reset();
+      //ConcurrentRemSetRefinement.cardBufPool.reset();
       super.collectionPhase(PureG1.RELEASE, primary);
       //if (rendezvous() == 0) RemSet.assertNoPointersToCSet(PureG1.regionSpace, PureG1.relocationSet);
       //rendezvous();
@@ -204,7 +208,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.CLEANUP_BLOCKS) {
-      if (rendezvous() == 0) {
+      /*if (rendezvous() == 0) {
         VM.activePlan.resetMutatorIterator();
         PureG1Mutator m;
         while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
@@ -214,9 +218,9 @@ public class PureG1Collector extends ConcurrentCollector {
         ConcurrentRemSetRefinement.refineLock.acquire();
         ConcurrentRemSetRefinement.refineLock.release();
         CardTable.assertAllCardsAreNotMarked();
-      }
-      VM.assertions._assert(!ConcurrentRemSetRefinement.inProgress());
-      VM.assertions._assert(!ConcurrentRemSetRefinement.hasWork());
+      }*/
+      //VM.assertions._assert(!ConcurrentRemSetRefinement.inProgress());
+      //VM.assertions._assert(!ConcurrentRemSetRefinement.hasWork());
       rendezvous();
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PureG1.relocationSet != null);
       RemSet.cleanupRemSetRefsToRelocationSet(PureG1.regionSpace, PureG1.relocationSet, false);
@@ -231,9 +235,9 @@ public class PureG1Collector extends ConcurrentCollector {
           VM.assertions._assert(m.rsBufferIsEmpty());
           //Log.writeln("Mutator #", m.getId());
         }
-        CardTable.assertAllCardsAreNotMarked();
-        VM.assertions._assert(!ConcurrentRemSetRefinement.inProgress());
-        VM.assertions._assert(!ConcurrentRemSetRefinement.hasWork());
+        //CardTable.assertAllCardsAreNotMarked();
+        //VM.assertions._assert(!ConcurrentRemSetRefinement.inProgress());
+        //VM.assertions._assert(!ConcurrentRemSetRefinement.hasWork());
       }
       rendezvous();
       return;
@@ -260,39 +264,6 @@ public class PureG1Collector extends ConcurrentCollector {
       super.concurrentCollectionPhase(phaseId);
       return;
     }
-    /*
-    if (phaseId == PureG1.CONCURRENT_RELOCATION_SET_SELECTION) {
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("MarkCopy CONCURRENT_RELOCATION_SET_SELECTION");
-      AddressArray relocationSet = MarkBlockSpace.computeRelocationBlocks(global().blocksSnapshot, true);
-      if (relocationSet != null) {
-        MarkCopyCollector.relocationSet = relocationSet;
-      }
-      if (rendezvous() == 0) {
-        if (!group.isAborted()) {
-          VM.collection.requestMutatorFlush();
-          continueCollecting = Phase.notifyConcurrentPhaseComplete();
-        }
-      }
-      rendezvous();
-      return;
-    }
-    if (phaseId == MarkCopy.CONCURRENT_CLEANUP_BLOCKS) {
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.write("MarkCopy CONCURRENT_CLEANUP_BLOCKS #", VM.activePlan.collector().getId());
-        Log.writeln("/", VM.activePlan.collector().parallelWorkerCount());
-        VM.assertions._assert(relocationSet != null);
-      }
-      MarkCopy.regionSpace.cleanupBlocks(relocationSet, true);
-      if (rendezvous() == 0) {
-        if (!group.isAborted()) {
-          VM.collection.requestMutatorFlush();
-          continueCollecting = Phase.notifyConcurrentPhaseComplete();
-        }
-      }
-      rendezvous();
-      return;
-    }
-    */
     super.concurrentCollectionPhase(phaseId);
   }
 

@@ -14,10 +14,7 @@ package org.mmtk.plan.concurrent.pureg1;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
-import org.mmtk.policy.CardTable;
-import org.mmtk.policy.Region;
-import org.mmtk.policy.RegionSpace;
-import org.mmtk.policy.Space;
+import org.mmtk.policy.*;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.G1InitiatingHeapOccupancyPercent;
@@ -115,18 +112,26 @@ public class PureG1 extends Concurrent {
     Phase.scheduleMutator  (REDIRECT_PREPARE),
     Phase.scheduleGlobal   (REDIRECT_PREPARE),
     Phase.scheduleCollector(REDIRECT_PREPARE),
+
+
+      /*Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
+
     Phase.scheduleComplex  (prepareStacks),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
-    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-    Phase.scheduleCollector(REDIRECT_CLOSURE),
-      Phase.scheduleMutator  (REMEMBERED_SETS),
+      /*Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
+    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
@@ -164,7 +169,7 @@ public class PureG1 extends Concurrent {
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
     //Phase.scheduleComplex  (refTypeClosurePhase),
-      Phase.scheduleCollector  (SOFT_REFS),
+      /*Phase.scheduleCollector  (SOFT_REFS),
       Phase.scheduleGlobal     (CLOSURE),
       Phase.scheduleCollector  (CLOSURE),
       Phase.scheduleCollector  (WEAK_REFS),
@@ -174,7 +179,7 @@ public class PureG1 extends Concurrent {
       //Phase.schedulePlaceholder(WEAK_TRACK_REFS),
       Phase.scheduleCollector  (PHANTOM_REFS),
       Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),*/
     //Phase.scheduleComplex  (completeClosurePhase),
       //Phase.scheduleComplex(concurrentLockMutators),
       //hase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
@@ -215,7 +220,6 @@ public class PureG1 extends Concurrent {
       totalSTWTime += VM.statistics.nanoTime() - startTime;
       Log.writeln("TotalSTWTime ", totalSTWTime);
       super.collectionPhase(COMPLETE);
-      //regionSpace.validate(relocationSet);
       return;
     }
     if (phaseId == PREPARE) {
@@ -254,6 +258,7 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REDIRECT_PREPARE) {
       startTime = VM.statistics.nanoTime();
+      stacksPrepared = false;
       //stacksPrepared = false;
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
@@ -271,12 +276,13 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REMEMBERED_SETS) {
 
-        VM.activePlan.resetMutatorIterator();
-        PureG1Mutator m;
-        while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-          m.enqueueCurrentRSBuffer(false);
-        }
-        ConcurrentRemSetRefinement.refineAll();
+      VM.activePlan.resetMutatorIterator();
+      PureG1Mutator m;
+      while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+        m.enqueueCurrentRSBuffer(false);
+      }
+      ConcurrentRemSetRefinement.refineAll();
+      //RemSet.noCSet = true;
       //super.collectionPhase(PREPARE);
       //ConcurrentRemSetRefinement.refineAll();
       //if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
@@ -294,6 +300,7 @@ public class PureG1 extends Concurrent {
       redirectTrace.release();
       //regionSpace.release();
       super.collectionPhase(RELEASE);
+      //ConcurrentRemSetRefinement.cardBufPool.clearDeque(1);
       return;
     }
 

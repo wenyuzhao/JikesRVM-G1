@@ -17,10 +17,12 @@ import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.AddressDeque;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
@@ -52,11 +54,12 @@ public class PureG1Mutator extends ConcurrentMutator {
    * Instance fields
    */
   protected final RegionAllocator mc;
-  private static final int REMSET_LOG_BUFFER_SIZE = 256;
-  private AddressArray remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+  private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
+  private Address remSetLogBuffer = Address.zero();// = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
   private int remSetLogBufferCursor = 0;
   private final TraceWriteBuffer markRemset;//, relocateRemset;
   private TraceWriteBuffer currentRemset;
+  //private final AddressDeque cardBuf;
   // public final Lock refinementLock = VM.newLock("refinementLock");
   // private boolean refinementInProgress = false;
 
@@ -73,6 +76,19 @@ public class PureG1Mutator extends ConcurrentMutator {
     markRemset = new TraceWriteBuffer(global().markTrace);
     //relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
+    //cardBuf = new AddressDeque("cardBuf", ConcurrentRemSetRefinement.cardBufPool);
+  }
+
+  @Inline
+  private Address remSetLogBuffer() {
+    if (remSetLogBuffer.isZero())
+      remSetLogBuffer = Plan.metaDataSpace.acquire(1);
+    return remSetLogBuffer;
+  }
+
+  @Override
+  public void initMutator(int id) {
+    super.initMutator(id);
   }
 
   /****************************************************************************
@@ -97,13 +113,6 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    /*if (VM.objectModel.objectStartRef(object).EQ(Address.fromIntZeroExtend(0x68da4008))) {
-      Log.writeln(Plan.gcInProgress() ? "IN GC" : "NOT IN GC");
-    }
-    VM.assertions._assert(VM.objectModel.objectStartRef(object).NE(Address.fromIntZeroExtend(0x68da4008)));
-    */
-    //Log.write("Post alloc ", VM.objectModel.objectStartRef(object));
-    //Log.writeln(" ~ ", VM.objectModel.getObjectEndAddress(object));
     Region.Card.updateCardMeta(object);
     if (allocator == PureG1.ALLOC_MC) {
       if (VM.VERIFY_ASSERTIONS) {
@@ -112,9 +121,6 @@ public class PureG1Mutator extends ConcurrentMutator {
         VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
       }
       PureG1.regionSpace.postAlloc(object, bytes);
-      //if (barrierActive) Log.writeln("Alloc(Conc Mark) ", object);
-      //else if (Plan.gcInProgress()) Log.writeln("Alloc(STW) ", object);
-      //else Log.writeln("Alloc ", object);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -166,11 +172,6 @@ public class PureG1Mutator extends ConcurrentMutator {
       super.collectionPhase(phaseId, primary);
     }
     if (phaseId == PureG1.REDIRECT_PREPARE) {
-      //flushRememberedSets();
-      //super.collectionPhase(PureG1.PREPARE, primary);
-      //mc.reset();
-      //Log.writeln("Mutator release refinementLock #", getId());
-      //refinementLock.release();
       mc.reset();
       enqueueCurrentRSBuffer(false);
       if (barrierActive) {
@@ -200,6 +201,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //enqueueCurrentRSBuffer();
     currentRemset.flush();
     mc.reset();
+    //cardBuf.flushLocal();
     assertRemsetsFlushed();
   }
 
@@ -222,13 +224,13 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.writeln("done refinementLock.acquire #", getId());
     //refinementInProgress = true;
     //refinementLock.unlock();
-    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer, triggerConcurrentRefinement);
+    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer(), triggerConcurrentRefinement);
     //refinementLock.broadcast();
     //refinementLock.lock();
     // refinementInProgress = false;
     //refinementLock.release();
-    if (remSetLogBufferCursor == 0) return;
-    remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+    //if (remSetLogBufferCursor == 0) return;
+    remSetLogBuffer = Plan.metaDataSpace.acquire(1); //AddressArray.create(REMSET_LOG_BUFFER_SIZE);
     remSetLogBufferCursor = 0;
   }
 
@@ -243,11 +245,11 @@ public class PureG1Mutator extends ConcurrentMutator {
         //Log.writeln(" ", getId());
       //}
       //VM.assertions._assert(!(Plan.gcInProgress() && card.NE(Address.fromIntZeroExtend(0x68019400))));
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < remSetLogBuffer.length());
-      remSetLogBuffer.set(remSetLogBufferCursor, card);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < REMSET_LOG_BUFFER_SIZE);
+      remSetLogBuffer().plus(remSetLogBufferCursor << Constants.LOG_BYTES_IN_ADDRESS).store(card);
       remSetLogBufferCursor += 1;
       // VM.assertions._assert(remSetLogBuffer.get(remSetLogBufferCursor - 1).NE(Address.fromIntZeroExtend(0x601ea600)));
-      if (remSetLogBufferCursor >= remSetLogBuffer.length()) {
+      if (remSetLogBufferCursor >= REMSET_LOG_BUFFER_SIZE) {
         //remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
         //remSetLogBufferCursor = 0;
         enqueueCurrentRSBuffer(true);

@@ -284,11 +284,10 @@ public class Region {
     @Inline
     public static boolean compareAndSwapByteInBuffer(int[] buf, int index, byte oldByte, byte newByte) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldByte != newByte);
-      int intIndex = index >> 2;
+      int intIndex = index >>> 2;
       int byteIndex = index ^ (intIndex << 2);
       if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(intIndex >= 0 && intIndex < buf.length);
-        VM.assertions._assert(byteIndex >= 0 && byteIndex <= 3);
+        VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
       }
       Offset offset = Offset.fromIntZeroExtend(intIndex << 2);
       // Get old int
@@ -310,10 +309,13 @@ public class Region {
 
     @Inline
     public static byte getByte(int[] buf, int index) {
-      int intIndex = index >> 2;
+      int intIndex = index >>> 2;
       int byteIndex = index ^ (intIndex << 2);
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
+      }
       int entry = buf[intIndex];
-      return (byte) ((entry << (byteIndex << 3)) >> 24);
+      return (byte) ((entry << (byteIndex << 3)) >>> 24);
     }
 
     @Inline
@@ -354,12 +356,17 @@ public class Region {
 
     @Inline
     public static void updateCardMeta(ObjectReference ref) {
+      //lock.acquire();
       /*Log.write("Update ");
       Log.write(Space.getSpaceForObject(ref).getName());
       Log.write(" object ", ref);
+      Log.write(" size ", VM.objectModel.getCurrentSize(ref));
       Log.write(" (", VM.objectModel.objectStartRef(ref));
       Log.write("..<", VM.objectModel.getObjectEndAddress(ref));
-      Log.writeln(")");*/
+      Log.writeln(") {");
+      Log.write(" ");
+      Log.flush();
+      VM.objectModel.dumpObject(ref);*/
       //lock.acquire();
       //lock.acquire();
       if (VM.VERIFY_ASSERTIONS)
@@ -393,6 +400,8 @@ public class Region {
           Log.write("  Update card ", card);
           Log.writeln(" start ", newStartOffset);
         }*/
+        //Log.write("  Update card ", card);
+        //Log.writeln(" start ", newStartOffset);
       } while (!compareAndSwapByteInBuffer(anchors, cardIndex, oldStartOffset, newStartOffset));
 
       // set limit value
@@ -421,19 +430,16 @@ public class Region {
         if (newEndOffset != 0 && oldEndOffset >= newEndOffset) break;
         //Log.write("Card ", card);
         //Log.writeln(" end ", endOffset);
-        /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
-          Log.write("  Update card ", card);
-          Log.writeln(" end to ", newEndOffset);
-        }*/
+        //Log.write("  Update card ", card);
+        //Log.writeln(" end to ", newEndOffset);
       } while (!compareAndSwapByteInBuffer(limits, cardIndex, oldEndOffset, newEndOffset));
 
-      /*if (Space.isInSpace(Plan.VM_SPACE, ref)) {
-        Log.write("  Card ", card);
-        Log.write(" range (", getByte(anchors, cardIndex));
-        Log.write(", ", getByte(limits, cardIndex));
-        Log.writeln(")");
-        Log.writeln("}");
-      }*/
+
+      /*Log.write("  Card ", card);
+      Log.write(" range (", getByte(anchors, cardIndex));
+      Log.write(", ", getByte(limits, cardIndex));
+      Log.writeln(")");
+      Log.writeln("}");*/
 
       /*byte b = getByte(limits, hash(Address.fromIntZeroExtend(0x68008200)));
       if (!((b == (byte) 122) || (b == (byte) -1))) {
@@ -511,10 +517,12 @@ public class Region {
     public static void linearScan(LinearScan scan, Address card) {
       linearScan(scan, card, false);
     }
-    //static Lock lock = VM.newLock()
+    static Lock lock2 = VM.newLock("linearScan");
     @Inline
     @Uninterruptible
     public static void linearScan(LinearScan scan, Address card, boolean log) {
+
+      //lock2.acquire();
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
         VM.assertions._assert(Space.isMappedAddress(card));
@@ -546,7 +554,16 @@ public class Region {
         //if (ref.isNull() || !Space.isMappedObject(ref)) break;
 
         if (log) {
-          //VM.objectModel.dumpObject(ref);
+          Log.write(VM.objectModel.objectStartRef(ref));
+          Log.flush();
+          Log.write(" ..< ", VM.objectModel.getObjectEndAddress(ref));
+          Log.flush();
+          Log.write(" size ", VM.objectModel.getCurrentSize(ref));
+          Log.write(" ");
+          Log.flush();
+          VM.objectModel.dumpObject(ref);
+          Log.flush();
+          VM.assertions._assert(VM.debugging.validRef(ref));
         }
         //if (!Space.isMappedAddress(card)) break;
         // Get next object start address, i.e. current object end address
@@ -605,7 +622,12 @@ public class Region {
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
           //if (!Space.isMappedAddress(card)) break;
           ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-          //if (!Space.isMappedAddress(card)) break;
+          if (log) {
+            Log.write("Next: ");
+            Log.flush();
+            VM.objectModel.dumpObject(next);
+            Log.flush();
+          }
           if (!VM.debugging.validRef(next)) {
             Log.write("Linear scan card ", card);
             Log.write(", range ", Region.Card.getCardAnchor(card));
@@ -645,6 +667,8 @@ public class Region {
 
       } while (true);
       //if (log) Log.writeln("Finished scanning card ", card);
+
+      //lock2.release();
     }
   }
 

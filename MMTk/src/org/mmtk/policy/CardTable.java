@@ -57,7 +57,7 @@ public class CardTable {
   @Inline
   @Uninterruptible
   private static int hash(Address card) {
-    return card.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
+    return card.diff(VM.HEAP_START).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
   }
 /*
   @Inline
@@ -91,11 +91,11 @@ public class CardTable {
   @Uninterruptible
   private static boolean attemptBitInBuffer(int[] buf, int index, boolean newBit) {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldBit != newBit);
-    int intIndex = index >> Constants.LOG_BITS_IN_INT;
+    int intIndex = index >>> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(intIndex >= 0 && intIndex < buf.length);
-      VM.assertions._assert(bitIndex >= 0 && bitIndex < Constants.BITS_IN_INT);
+      VM.assertions._assert(intIndex == index / 32);
+      VM.assertions._assert(bitIndex == index % 32);
     }
     Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
     int oldValue, newValue;
@@ -111,7 +111,7 @@ public class CardTable {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(((newValue & (1 << (31 - bitIndex))) != 0) == newBit);
         if (bitIndex != 0) {
-          VM.assertions._assert((oldValue >> (32 - bitIndex)) == (newValue >> (32 - bitIndex)));
+          VM.assertions._assert((oldValue >>> (32 - bitIndex)) == (newValue >>> (32 - bitIndex)));
         }
         if (bitIndex != 31) {
           VM.assertions._assert((oldValue << (1 + bitIndex)) == (newValue << (1 + bitIndex)));
@@ -124,8 +124,9 @@ public class CardTable {
 
   @Inline
   private static boolean getBit(int[] buf, int index) {
-    int intIndex = index >> Constants.LOG_BITS_IN_INT;
+    int intIndex = index >>> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
     int entry = buf[intIndex];
     return (entry & (1 << (31 - bitIndex))) != 0;
     //return ((entry << bitIndex) >> (Constants.LOG_BITS_IN_INT - 1)) > 0;

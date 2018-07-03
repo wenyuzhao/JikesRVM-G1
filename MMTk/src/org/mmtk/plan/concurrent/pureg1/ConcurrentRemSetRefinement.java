@@ -21,8 +21,10 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
@@ -50,7 +52,10 @@ import org.vmmagic.unboxed.Word;
  */
 @Uninterruptible
 public class ConcurrentRemSetRefinement extends CollectorContext {
-  private static final AddressArray[] filledRSBuffers = new AddressArray[16];
+  public static final int REMSET_LOG_BUFFER_SIZE = Constants.BYTES_IN_PAGE >> Constants.LOG_BYTES_IN_ADDRESS;
+  //public static final SharedDeque cardBufPool = new SharedDeque("modBufs", Plan.metaDataSpace, 1);
+  //private static final AddressArray[] filledRSBuffers = new AddressArray[16];
+  private static final AddressArray filledRSBuffers = AddressArray.create(16);
   private static int filledRSBuffersCursor = 0;
   private static final Lock filledRSBuffersLock = VM.newLock("filledRSBuffersLock ");
   private static AddressArray hotCardsBuffer = AddressArray.create(1024);
@@ -65,9 +70,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     super.initCollector(id);
     lock = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock");
     //refineLock = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock-refineLock");
-  }
-  public static boolean bufferIsEmpty() {
-    return filledRSBuffers.length == 0 && hotCardsBufferCursor == 0;
   }
   public static boolean hasWork() {
     return filledRSBuffersCursor != 0 || hotCardsBufferCursor != 0;
@@ -94,13 +96,13 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   /** Runs in mutator threads */
   @Inline
-  @UninterruptibleNoWarn
-  public static void enqueueFilledRSBuffer(AddressArray buf, boolean triggerConcurrentRefinement) {
+  @Uninterruptible
+  public static void enqueueFilledRSBuffer(Address buf, boolean triggerConcurrentRefinement) {
     filledRSBuffersLock.acquire();
-    if (triggerConcurrentRefinement && filledRSBuffersCursor < filledRSBuffers.length) {
-      filledRSBuffers[filledRSBuffersCursor++] = buf;
+    if (triggerConcurrentRefinement && filledRSBuffersCursor < filledRSBuffers.length()) {
+      filledRSBuffers.set(filledRSBuffersCursor++, buf);
       //ObjectReference.fromObject(filledRSBuffers).toAddress().plus()
-      if (filledRSBuffersCursor >= filledRSBuffers.length) {
+      if (filledRSBuffersCursor >= filledRSBuffers.length()) {
         ConcurrentRemSetRefinement.trigger();
       }
       filledRSBuffersLock.release();
@@ -148,18 +150,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Uninterruptible public void scan(ObjectReference object) {
-      //Log.writeln("processCard Scan ", object);
-      //if (!object.isNull() && isLive(object))
-      /*Space space = Space.getSpaceForObject(object);
-      if (Plan.gcInProgress()) {
-
-      } else if (PureG1.concurrentMarkingInProgress) {
-
-      } else {
-        if (!space.isLive(object)) {
-          VM.objectModel.writeAvailableBitsWord(object, Word.zero());
-        }
-      }*/
       VM.scanning.scanObject(scanPointers, object);
     }
   };
@@ -175,10 +165,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   }
 
   @Uninterruptible
-  public static void refineSingleBuffer(AddressArray buffer) {
+  public static void refineSingleBuffer(Address buffer) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(buffer != null);
-    for (int i = 0; i < buffer.length(); i++) {
-      Address card = buffer.get(i);
+    for (int i = 0; i < REMSET_LOG_BUFFER_SIZE; i++) {
+      Address card = buffer.plus(i << Constants.LOG_BYTES_IN_ADDRESS).loadAddress();
       if (!card.isZero()) {
         if (CardTable.cardIsMarked(card) && CardTable.increaseHotness(card)) {
           if (hotCardsBufferCursor >= hotCardsBuffer.length()) {
@@ -200,19 +190,20 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   public static final Lock refineLock = VM.newLock("refineLock");
 
-  @UninterruptibleNoWarn
+  @Uninterruptible
   public static void refine() {
     //refineLock.acquire();
-    if (VM.VERIFY_ASSERTIONS) Log.writeln("CONCURRENT REMSET REFINEMENT");
+    //if (VM.VERIFY_ASSERTIONS) Log.writeln("CONCURRENT REMSET REFINEMENT");
     refinePartial(4/5);
   }
 
-  @UninterruptibleNoWarn
+  @Uninterruptible
   public static void refineAll() {
     refinePartial(1);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(filledRSBuffersCursor == 0);
     }
+    /*
     // Process hot cards
     Log.write("Processing ", hotCardsBufferCursor);
     Log.writeln(" hot cards ", hotCardsBuffer.length());
@@ -228,9 +219,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     hotCardsBufferCursor = 0;
     CardTable.clearAllHotness();
     refineLock.release();
+    */
   }
 
-  @UninterruptibleNoWarn
+  @Uninterruptible
   public static void refineHotCards() {
     //refineLock.acquire();
     int workers = VM.activePlan.collector().parallelWorkerCount();
@@ -261,7 +253,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     //refineLock.release();
   }
 
-  @UninterruptibleNoWarn
+  @Uninterruptible
   public static void finishRefineHotCards() {
     refineLock.acquire();
     hotCardsBufferCursor = 0;
@@ -270,14 +262,14 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     //CardTable.assertAllCardsAreNotMarked();
   }
 
-  @UninterruptibleNoWarn
+  @Uninterruptible
   private static void refinePartial(float ratio) {
     refineLock.acquire();
-    int start = (int) (filledRSBuffers.length - (filledRSBuffers.length * ratio));
-    for (int i = filledRSBuffers.length - 1; i >= start; i--) {
-      AddressArray buf = filledRSBuffers[i];
-      if (buf != null) {
-        filledRSBuffers[i] = null;
+    int start = (int) (filledRSBuffers.length() - (filledRSBuffers.length() * ratio));
+    for (int i = filledRSBuffers.length() - 1; i >= start; i--) {
+      Address buf = filledRSBuffers.get(i);
+      if (!buf.isZero()) {
+        filledRSBuffers.set(i, Address.zero());
         refineSingleBuffer(buf);
       }
     }
