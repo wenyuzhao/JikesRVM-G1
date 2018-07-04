@@ -90,7 +90,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     Address addr = copy.alloc(bytes, align, offset);
-    org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
+    //org.mmtk.utility.Memory.assertIsZeroed(addr, bytes);
     if (VM.VERIFY_ASSERTIONS) {
       Address region = Region.of(addr);
       if (!region.isZero()) {
@@ -161,11 +161,18 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REDIRECT_PREPARE) {
+      // ConcurrentRemSetRefinement.lock is already locked
+
+      ConcurrentRemSetRefinement.refineAll();
+      rendezvous();
       ConcurrentRemSetRefinement.refineHotCards();
+
       if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.finishRefineHotCards();
+        ConcurrentRemSetRefinement.finishCollectorRefinements();
+        ConcurrentRemSetRefinement.lock.release();
       }
       rendezvous();
+
       currentTrace = redirectTrace;
       //redirectTrace.log = true;
       redirectTrace.prepare();
@@ -175,14 +182,35 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REMEMBERED_SETS) {
+
+      ConcurrentRemSetRefinement.refineAll();
+      rendezvous();
+      ConcurrentRemSetRefinement.refineHotCards();
+
+      if (rendezvous() == 0) {
+        ConcurrentRemSetRefinement.finishCollectorRefinements();
+        ConcurrentRemSetRefinement.lock.release();
+      }
+      rendezvous();
+      /*if (rendezvous() == 0) {
+        ConcurrentRemSetRefinement.FilledRSBufferQueue.lock.acquire();
+      }
+      rendezvous();
+      ConcurrentRemSetRefinement.refineAll();
+      if (rendezvous() == 0) {
+        ConcurrentRemSetRefinement.HotCardsQueue.lock.acquire();
+      }
+      rendezvous();
       ConcurrentRemSetRefinement.refineHotCards();
       if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.finishRefineHotCards();
-        //if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
+        ConcurrentRemSetRefinement.finishCollectorRefinements();
+        ConcurrentRemSetRefinement.FilledRSBufferQueue.lock.release();
+        ConcurrentRemSetRefinement.HotCardsQueue.lock.release();
       }
-      //redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
       rendezvous();
-      redirectTrace.remSetsProcessing = true;
+      //redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
+      rendezvous();*/
+      //redirectTrace.remSetsProcessing = true;
       redirectTrace.processRemSets();
       return;
     }
@@ -190,7 +218,7 @@ public class PureG1Collector extends ConcurrentCollector {
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       redirectTrace.completeTrace();
       rendezvous();
-      redirectTrace.remSetsProcessing = false;
+      //redirectTrace.remSetsProcessing = false;
       //redirectTrace.processRoots();
       return;
     }

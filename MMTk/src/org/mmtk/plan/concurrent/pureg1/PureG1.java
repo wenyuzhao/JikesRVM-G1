@@ -265,7 +265,8 @@ public class PureG1 extends Concurrent {
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.enqueueCurrentRSBuffer(false);
       }
-      ConcurrentRemSetRefinement.refineAll();
+      ConcurrentRemSetRefinement.lock.acquire();
+      //ConcurrentRemSetRefinement.refineAll();
       //CardTable.assertAllCardsAreNotMarked();
 
       //super.collectionPhase(PREPARE);
@@ -281,7 +282,8 @@ public class PureG1 extends Concurrent {
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.enqueueCurrentRSBuffer(false);
       }
-      ConcurrentRemSetRefinement.refineAll();
+      ConcurrentRemSetRefinement.lock.acquire();
+      //ConcurrentRemSetRefinement.refineAll();
       //RemSet.noCSet = true;
       //super.collectionPhase(PREPARE);
       //ConcurrentRemSetRefinement.refineAll();

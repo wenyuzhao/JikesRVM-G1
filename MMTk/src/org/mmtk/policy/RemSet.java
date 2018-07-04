@@ -101,10 +101,10 @@ public class RemSet {
   @Inline
   private static void lock(Address region) {
     Address remSetLock = Region.metaDataOf(region, Region.METADATA_REMSET_LOCK_OFFSET);
-    int oldValue;
+    //int oldValue;
     do {
-      oldValue = remSetLock.prepareInt();
-    } while (oldValue != 0 || !remSetLock.attempt(oldValue, 1));
+      //oldValue = remSetLock.prepareInt();
+    } while (!remSetLock.attempt(0, 1));
   }
 
   @Inline
@@ -158,36 +158,17 @@ public class RemSet {
     if (lock) lock(region);
 
     Address prt = preparePRT(region, card, true);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!prt.isZero());
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!prt.isZero());
 
     // Insert card into the target PerRegionTable
     int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
     if (PerRegionTable.insert(prt, card)) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PerRegionTable.contains(prt, card));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PerRegionTable.contains(prt, card));
       //Log.write("Insert card ", card);
       //Log.writeln(" -> ", region);
       // Increase REMSET_SIZE
       Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize + 1);
     }
-
-    /*
-    Address remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
-    int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-    int remSetEntries = (Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE) >> Constants.LOG_BYTES_IN_ADDRESS;
-
-    if (remSet.isZero() || remSetSize >= remSetEntries) {
-      expandRemSetForRegion(region);
-      remSet = Region.metaDataOf(region, Region.METADATA_REMSET_POINTER_OFFSET).loadAddress();
-      remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-      remSetEntries = (Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt() << Constants.LOG_BYTES_IN_PAGE) >> Constants.LOG_BYTES_IN_ADDRESS;
-    }
-
-    if (CardHashSet.insert(remSet, remSetEntries, card)) {
-      // Increase REMSET_SIZE
-      Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize + 1);
-    }
-    */
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(CardHashSet.contains(remSet, remSetEntries, card));
 
     if (lock) unlock(region);
   }
@@ -238,7 +219,8 @@ public class RemSet {
       @Override @Uninterruptible public void scan(ObjectReference object) {
         if (!object.isNull() && redirectPointerTrace.isLive(object)) {
           //VM.scanning.scanObject(redirectPointerTransitiveClosure, object);
-          redirectPointerTrace.traceObject(object, true);
+          //redirectPointerTrace.traceObject(object, true);
+          redirectPointerTrace.processNode(object);
         }
       }
     };
@@ -248,10 +230,11 @@ public class RemSet {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
-      int regionsToVisit = relocationSet.length();
+      int regionsToVisit = ceilDiv(relocationSet.length(), workers);
 
       for (int i = 0; i < regionsToVisit; i++) {
         int cursor = regionsToVisit * id + i;
+        //int cursor = i * workers + id;
         if (cursor >= relocationSet.length()) continue;
         Address region = relocationSet.get(cursor);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
@@ -279,8 +262,6 @@ public class RemSet {
                   continue;
               }
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
-              //Log.writeln("Scan card ", card);
-              //Region.Card.tag = "UP";
               Region.Card.linearScan(cardLinearScan, card, false);
               /*for (int l = 0; l < relocationSet.length(); l++) {
                 Address otherRegion = relocationSet.get(l);
@@ -310,9 +291,15 @@ public class RemSet {
       Address visitedRegion = VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_BLOCK);
       // If this is a relocation region, clear its rem-sets
       if (Space.isInSpace(regionSpace.getDescriptor(), visitedRegion) && Region.of(visitedRegion).NE(EmbeddedMetaData.getMetaDataBase(visitedRegion)) && Region.relocationRequired(visitedRegion)) {
-        Address pages = rememberedSets.get(cursor);
-        if (!pages.isZero()) {
-          Plan.metaDataSpace.release(pages);
+        Address prtList = rememberedSets.get(cursor);
+        if (!prtList.isZero()) {
+          /*for (Address prtPtr = prtList; prtPtr.LT(prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE)); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
+            Address prt = prtPtr.loadAddress();
+            if (!prt.isZero()) {
+              Plan.metaDataSpace.release(prt);
+            }
+          }*/
+          Plan.metaDataSpace.release(prtList);
           rememberedSets.set(cursor, Address.zero());
         }
         continue;

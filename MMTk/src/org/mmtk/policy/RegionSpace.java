@@ -245,9 +245,7 @@ public final class RegionSpace extends Space {
     } else {
       // Clear marking data
       for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
-        //Address base = EmbeddedMetaData.getMetaDataBase(b);
-        //if (b.diff(base).toInt() == Region.BYTES_IN_BLOCK)
-          Region.clearMarkBitMap(b);
+        Region.clearMarkBitMap(b);
       }
     }
   }
@@ -343,11 +341,11 @@ public final class RegionSpace extends Space {
    */
   @Inline
   public void postAlloc(ObjectReference object, int bytes) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
     //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
     //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
 
     //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (allocAsMarked) {
@@ -356,7 +354,7 @@ public final class RegionSpace extends Space {
       VM.objectModel.writeAvailableByte(object, (byte) 0);
     }
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
   }
 
   /**
@@ -500,7 +498,7 @@ public final class RegionSpace extends Space {
       Header.writeMarkState(object);
     else
       MarkBitMap.writeMarkState(object);
-    VM.assertions._assert(isLive(object));
+    // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
   }
 
   private static boolean testAndMark(ObjectReference object) {

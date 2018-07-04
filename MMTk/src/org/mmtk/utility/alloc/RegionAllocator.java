@@ -122,10 +122,10 @@ public class RegionAllocator extends Allocator {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
     limit = ptr.plus(Region.BYTES_IN_BLOCK);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
     return alloc(bytes, align, offset);
   }
 

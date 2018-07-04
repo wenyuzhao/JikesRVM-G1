@@ -15,13 +15,11 @@ import org.vmmagic.unboxed.Offset;
 public class CardTable {
   static final int TOTAL_CARDS;
   static final int HOTNESS_TABLE_PAGES;
-  static final byte HOTNESS_THRESHOLD = 4;
+  static final byte HOTNESS_THRESHOLD = 3;
   static final int[] cardTable;
   static int dirtyCards = 0;
   static final Lock dirtyCardsLock = VM.newLock("dirtyCardsLock");
   static Address cardHotnessTable = Address.zero();
-
-  static int maxHotness = 0;
 
   static {
     int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
@@ -31,16 +29,33 @@ public class CardTable {
   }
 
   @Inline
-  @Uninterruptible
   public static boolean increaseHotness(Address card) {
     if (cardHotnessTable.isZero()) cardHotnessTable = Plan.metaDataSpace.acquire(HOTNESS_TABLE_PAGES);
-    int cardIndex = hash(card);
-    Address hotnessPtr = cardHotnessTable.plus(cardIndex);
-    byte oldHotness = hotnessPtr.loadByte();
-    if (oldHotness > HOTNESS_THRESHOLD) return true; // This is a hot card
-    byte newHotness = (byte) (oldHotness + 1);
-    hotnessPtr.store(newHotness);
-    return newHotness > HOTNESS_THRESHOLD;
+    final int index = hash(card);
+    final int intIndex = index >> 2;
+    final int byteIndex = index ^ (intIndex << 2);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
+    final Address hotnessPtr = cardHotnessTable.plus(intIndex << Constants.LOG_BYTES_IN_INT);
+    int oldValue, newValue;
+    byte newHotness;
+    do {
+      // Get old int
+      oldValue = hotnessPtr.prepareInt();
+      byte oldHotness = (byte) ((oldValue << (byteIndex << 3)) >>> 24);
+      if (oldHotness >= HOTNESS_THRESHOLD) return true; // This is a hot card
+      // Build new int
+      newHotness = (byte) (oldHotness + 1);
+      newValue = oldValue & ~(0xff << ((3 - byteIndex) << 3)); // Drop the target byte
+      newValue |= (newHotness << ((3 - byteIndex) << 3)); // Set new byte
+      if (VM.VERIFY_ASSERTIONS) {
+        if (byteIndex == 0) VM.assertions._assert((oldValue << 8) == (newValue << 8));
+        if (byteIndex == 1) VM.assertions._assert((oldValue << 16) == (newValue << 16) && (oldValue >>> 24) == (newValue >>> 24));
+        if (byteIndex == 2) VM.assertions._assert((oldValue << 24) == (newValue << 24) && (oldValue >>> 16) == (newValue >>> 16));
+        if (byteIndex == 3) VM.assertions._assert((oldValue >>> 8) == (newValue >>> 8));
+        VM.assertions._assert(newHotness == (byte) ((newValue << (byteIndex << 3)) >>> 24));
+      }
+    } while (!hotnessPtr.attempt(oldValue, newValue));
+    return newHotness >= HOTNESS_THRESHOLD;
   }
 
   @Inline
@@ -55,25 +70,11 @@ public class CardTable {
   }
 
   @Inline
-  @Uninterruptible
   private static int hash(Address card) {
     return card.diff(VM.HEAP_START).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
   }
-/*
+
   @Inline
-  public static void markCard(Address card, boolean mark) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(MarkBlock.Card.of(card)));
-    int cardIndex = hash(card);
-    boolean oldValue, newValue;
-    do {
-      oldValue = getBit(cardTable, cardIndex);
-      newValue = mark;
-      if (oldValue == newValue) break;
-    } while (!compareAndSwapBitInBuffer(cardTable, cardIndex, oldValue, newValue));
-  }
-*/
-  @Inline
-  @Uninterruptible
   public static boolean attemptToMarkCard(Address card, boolean mark) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
@@ -88,7 +89,6 @@ public class CardTable {
   }
 
   @Inline
-  @Uninterruptible
   private static boolean attemptBitInBuffer(int[] buf, int index, boolean newBit) {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldBit != newBit);
     int intIndex = index >>> Constants.LOG_BITS_IN_INT;
@@ -133,12 +133,10 @@ public class CardTable {
   }
 
   @Inline
-  @Uninterruptible
   public static boolean cardIsMarked(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
     return getBit(cardTable, cardIndex);
-    //return cardTable[cardIndex] > (int) 0;
   }
 
   public static void assertAllCardsAreNotMarked() {

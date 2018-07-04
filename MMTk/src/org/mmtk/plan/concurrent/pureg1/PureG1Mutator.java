@@ -115,11 +115,11 @@ public class PureG1Mutator extends ConcurrentMutator {
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
     if (allocator == PureG1.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) {
+      /*if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(Space.isInSpace(PureG1.MC, object));
         VM.assertions._assert(Region.allocated(Region.of(VM.objectModel.objectStartRef(object))));
         VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
-      }
+      }*/
       PureG1.regionSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
@@ -168,16 +168,16 @@ public class PureG1Mutator extends ConcurrentMutator {
       return;
     }
     if (phaseId == Simple.WEAK_REFS) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
       super.collectionPhase(phaseId, primary);
     }
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       mc.reset();
       enqueueCurrentRSBuffer(false);
-      if (barrierActive) {
-        Log.writeln("BarrierActive for mutator #", getId());
-      }
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
+      //if (barrierActive) {
+      //  Log.writeln("BarrierActive for mutator #", getId());
+      //}
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
       return;
     }
 
@@ -238,6 +238,10 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Inline
   private void markAndEnqueueCard(Address card) {
+    /*if (VM.VERIFY_ASSERTIONS) {
+      if (Space.isInSpace(PureG1.MC, card))
+        VM.assertions._assert(!Region.relocationRequired(Region.of(card)));
+    }*/
     //lock.lock();
     if (CardTable.attemptToMarkCard(card, true)) {
       //if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
@@ -245,7 +249,7 @@ public class PureG1Mutator extends ConcurrentMutator {
         //Log.writeln(" ", getId());
       //}
       //VM.assertions._assert(!(Plan.gcInProgress() && card.NE(Address.fromIntZeroExtend(0x68019400))));
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < REMSET_LOG_BUFFER_SIZE);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < REMSET_LOG_BUFFER_SIZE);
       remSetLogBuffer().plus(remSetLogBufferCursor << Constants.LOG_BYTES_IN_ADDRESS).store(card);
       remSetLogBufferCursor += 1;
       // VM.assertions._assert(remSetLogBuffer.get(remSetLogBufferCursor - 1).NE(Address.fromIntZeroExtend(0x601ea600)));
@@ -254,8 +258,6 @@ public class PureG1Mutator extends ConcurrentMutator {
         //remSetLogBufferCursor = 0;
         enqueueCurrentRSBuffer(true);
       }
-    } else {
-      //VM.assertions._assert(CardTable.cardIsMarked(card));
     }
 
     //lock.unlock();
@@ -264,12 +266,13 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
-    VM.assertions._assert(src.isNull() || (VM.debugging.validRef(src) && Space.isMappedObject(src)));
-    ObjectReference _oldRef = slot.loadObjectReference();
-    VM.assertions._assert(_oldRef.isNull() || (VM.debugging.validRef(_oldRef) && Space.isMappedObject(_oldRef)));
-    VM.assertions._assert(ref.isNull() || (VM.debugging.validRef(ref) && Space.isMappedObject(ref)));
+    //VM.assertions._assert(src.isNull() || (VM.debugging.validRef(src) && Space.isMappedObject(src)));
+    //ObjectReference _oldRef = slot.loadObjectReference();
+    //VM.assertions._assert(_oldRef.isNull() || (VM.debugging.validRef(_oldRef) && Space.isMappedObject(_oldRef)));
+    //VM.assertions._assert(ref.isNull() || (VM.debugging.validRef(ref) && Space.isMappedObject(ref)));
     Address value = VM.objectModel.objectStartRef(ref);
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
+      //if (ref.isNull()) VM.assertions._assert(value.isZero());
       //VM.assertions._assert(!Plan.gcInProgress());
       if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !Region.allocated(Region.of(value))) {
         Log.write(src);
@@ -282,13 +285,13 @@ public class PureG1Mutator extends ConcurrentMutator {
         Log.writeln(", which is in released block ", Region.of(value));
         VM.assertions._assert(false);
       }
-    }
-    if (PureG1.log) {
+    }*/
+    /*if (PureG1.log) {
       Log.write(src);
       Log.write(".", slot);
       Log.write(" = ");
       Log.writeln(value);
-    }
+    }*/
     //Log.write(src);
     //Log.write(".", slot);
     //Log.write(" = ");
@@ -296,10 +299,9 @@ public class PureG1Mutator extends ConcurrentMutator {
     if (!src.isNull() && !slot.isZero() && !ref.isNull() && !value.isZero()) {
       Word tmp = slot.toWord().xor(value.toWord());
       tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
-      tmp = value.isZero() ? Word.zero() : tmp;
+      tmp = ref.isNull() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isInSpace(PureG1.MC, value)) {
-        //RemSet.addCard(MarkBlock.of(VM.objectModel.objectStartRef(ref)), MarkBlock.Card.of(VM.objectModel.objectStartRef(src)));
         Region.Card.updateCardMeta(src);
         markAndEnqueueCard(Region.Card.of(src));
       }

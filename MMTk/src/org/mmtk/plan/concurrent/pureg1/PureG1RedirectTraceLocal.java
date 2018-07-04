@@ -125,7 +125,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     }
   }
 
-  boolean remSetsProcessing = false;
+  //boolean remSetsProcessing = false;
 
   //@Override
   @Inline
