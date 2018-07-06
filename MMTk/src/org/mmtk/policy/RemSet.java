@@ -293,12 +293,13 @@ public class RemSet {
       if (Space.isInSpace(regionSpace.getDescriptor(), visitedRegion) && Region.of(visitedRegion).NE(EmbeddedMetaData.getMetaDataBase(visitedRegion)) && Region.relocationRequired(visitedRegion)) {
         Address prtList = rememberedSets.get(cursor);
         if (!prtList.isZero()) {
-          /*for (Address prtPtr = prtList; prtPtr.LT(prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE)); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
+          Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
+          for (Address prtPtr = prtList; prtPtr.LT(prtPrtEnd); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
             Address prt = prtPtr.loadAddress();
             if (!prt.isZero()) {
               Plan.metaDataSpace.release(prt);
             }
-          }*/
+          }
           Plan.metaDataSpace.release(prtList);
           rememberedSets.set(cursor, Address.zero());
         }

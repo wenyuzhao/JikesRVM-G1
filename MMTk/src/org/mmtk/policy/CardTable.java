@@ -82,7 +82,7 @@ public class CardTable {
     if (success) {
       dirtyCardsLock.acquire();
       dirtyCards += mark ? 1 : -1;
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length * 32);
       dirtyCardsLock.release();
     }
     return success;

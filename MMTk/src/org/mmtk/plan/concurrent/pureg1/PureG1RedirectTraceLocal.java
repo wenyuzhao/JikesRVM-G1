@@ -66,7 +66,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     VM.assertions._assert(VM.debugging.validRef(object));
     super.scanObject(object);
   }
-
+/*
   @Inline
   public ObjectReference getForwardedReference(ObjectReference object) {
     return traceObject(object, true);
@@ -81,7 +81,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   public ObjectReference retainForFinalize(ObjectReference object) {
     return traceObject(object, true);
   }
-
+*/
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {

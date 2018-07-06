@@ -201,6 +201,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //enqueueCurrentRSBuffer();
     currentRemset.flush();
     mc.reset();
+    enqueueCurrentRSBuffer(false);
     //cardBuf.flushLocal();
     assertRemsetsFlushed();
   }
@@ -321,7 +322,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     else if (Space.isInSpace(PureG1.LARGE_CODE, ref)) PureG1.largeCodeSpace.traceObject(currentRemset, ref);
     //}
 
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       if (!ref.isNull() && !Plan.gcInProgress()) {
         if (Space.isInSpace(PureG1.MC, ref)) VM.assertions._assert(PureG1.regionSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.IMMORTAL, ref)) VM.assertions._assert(PureG1.immortalSpace.isLive(ref));
@@ -330,7 +331,7 @@ public class PureG1Mutator extends ConcurrentMutator {
         else if (Space.isInSpace(PureG1.SMALL_CODE, ref)) VM.assertions._assert(PureG1.smallCodeSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.LARGE_CODE, ref)) VM.assertions._assert(PureG1.largeCodeSpace.isLive(ref));
       }
-    }
+    }*/
   }
 
   @Inline
