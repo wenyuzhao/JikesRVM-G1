@@ -15,6 +15,7 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.concurrent.pureg1.PauseTimePredictor;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
@@ -350,6 +351,7 @@ public final class RegionSpace extends Space {
     //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
     if (allocAsMarked) {
       writeMarkState(object);
+      Region.updateBlockAliveSize(Region.of(object), object);
     } else {
       VM.objectModel.writeAvailableByte(object, (byte) 0);
     }
@@ -448,7 +450,9 @@ public final class RegionSpace extends Space {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         return newObject;
       } else {
+        long time = VM.statistics.nanoTime();
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+        PauseTimePredictor.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(ForwardingWord.isForwarded(object));
           VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(newObject));
@@ -666,21 +670,16 @@ public final class RegionSpace extends Space {
       int size = blockSizes.get(i).toInt();
       Address block = blocks.get(i);
 
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.write("Block ", block);
-        Log.write(": ", Region.usedSize(block));
-        Log.write("/", Region.BYTES_IN_BLOCK);
-      }
       if (currentSize + size > usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
-        if (VM.VERIFY_ASSERTIONS) Log.writeln();
+        //if (VM.VERIFY_ASSERTIONS) Log.writeln();
         break;
       }
 
-      if (VM.VERIFY_ASSERTIONS) Log.writeln(" relocate");
+      //if (VM.VERIFY_ASSERTIONS) Log.writeln(" relocate");
 
       currentSize += size;
-      if (!block.isZero())
-        Region.setRelocationState(block, true);
+      //if (!block.isZero())
+        //Region.setRelocationState(block, true);
       relocationBlocks++;
     }
 
@@ -691,6 +690,15 @@ public final class RegionSpace extends Space {
     }
 
     return relocationSet;
+  }
+
+  @Inline
+  public static void markRegionsAsRelocate(AddressArray regions) {
+    for (int i = 0; i < regions.length(); i++) {
+      Address region = regions.get(i);
+      if (!region.isZero())
+        Region.setRelocationState(region, true);
+    }
   }
 
   @Uninterruptible

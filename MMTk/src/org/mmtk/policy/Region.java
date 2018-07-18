@@ -24,8 +24,8 @@ public class Region {
 
   private static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);// 0..011111111111
   // elements of block metadata table
-  private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
-  private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
+  public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
+  public static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_BYTE;
   public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_BYTE;
   public static final int METADATA_REMSET_LOCK_OFFSET = METADATA_CURSOR_OFFSET + BYTES_IN_ADDRESS;
@@ -523,18 +523,18 @@ public class Region {
     public static void linearScan(LinearScan scan, Address card, boolean log) {
 
       //lock2.acquire();
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
-        VM.assertions._assert(Space.isMappedAddress(card));
-      }
+      //if (VM.VERIFY_ASSERTIONS) {
+        //VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, card));
+        //VM.assertions._assert(Space.isMappedAddress(card));
+      //}
       Address end = getCardLimit(card);
       if (end.isZero()) return;
       Address cursor = Region.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
 
-      VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
-      VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
+      //VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
+      //VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
       if (log) {
         if (tag != null) {
@@ -588,12 +588,12 @@ public class Region {
           currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
           //Log.writeln(" -> ", currentObjectEnd);
         } else {
-          if (VM.VERIFY_ASSERTIONS) {
+          //if (VM.VERIFY_ASSERTIONS) {
             //if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
-            VM.assertions._assert(VM.debugging.validRef(ref));
-          }
+            //VM.assertions._assert(VM.debugging.validRef(ref));
+          //}
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
-          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
+          //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
         }
 
         //VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
@@ -601,11 +601,11 @@ public class Region {
 
         //if (!VM.debugging.validRef(ref)) V(ref);
         //if (!Space.isMappedAddress(card)) break;
-        VM.assertions._assert(VM.debugging.validRef(ref));
-        if (!Space.isMappedAddress(card)) {
-          Log.writeln("Unmapped card ", card);
-        }
-        VM.assertions._assert(Space.isMappedAddress(card));
+        //VM.assertions._assert(VM.debugging.validRef(ref));
+        //if (!Space.isMappedAddress(card)) {
+        //  Log.writeln("Unmapped card ", card);
+        //}
+        //VM.assertions._assert(Space.isMappedAddress(card));
         //if (Space.getSpaceForAddress(card) instanceof RegionSpace) {
         //VM.assertions._assert(Region.relocationRequired(Region.of(card)));
         //}
@@ -619,7 +619,7 @@ public class Region {
           scan.scan(ref);
           break;
         } else {
-          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
+          //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
           //if (!Space.isMappedAddress(card)) break;
           ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
           if (log) {
@@ -628,7 +628,7 @@ public class Region {
             VM.objectModel.dumpObject(next);
             Log.flush();
           }
-          if (!VM.debugging.validRef(next)) {
+          /*if (!VM.debugging.validRef(next)) {
             Log.write("Linear scan card ", card);
             Log.write(", range ", Region.Card.getCardAnchor(card));
             Log.write(" ..< ", Region.Card.getCardLimit(card));
@@ -639,11 +639,11 @@ public class Region {
             Log.write(" in space: ");
             Log.writeln(Space.getSpaceForAddress(card).getName());
             Log.writeln("Invalid Ref ", next);
-          }
+          }*/
           //if (!Space.isMappedAddress(card)) break;
-          VM.assertions._assert(VM.debugging.validRef(next));
+          //VM.assertions._assert(VM.debugging.validRef(next));
           //lock.release();
-          if (!next.toAddress().GT(ref.toAddress())) {
+          /*if (!next.toAddress().GT(ref.toAddress())) {
             Log.write(Space.getSpaceForObject(ref).getName());
             Log.write((Space.getSpaceForAddress(card) instanceof MarkSweepSpace) ? " MS " : " _ ");
             Log.write(" object ", ref.toAddress());
@@ -655,7 +655,7 @@ public class Region {
             Log.write("Ref ", ref.toAddress());
             Log.writeln(" Next ", next.toAddress());
           }
-          VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
+          VM.assertions._assert(next.toAddress().GT(ref.toAddress()));*/
 
           //if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(ref);
 //          if (!Space.isMappedAddress(card)) break;

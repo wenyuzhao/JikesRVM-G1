@@ -213,7 +213,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
       }
+      long time = VM.statistics.nanoTime();
       Region.Card.linearScan(cardLinearScan, card, false);
+      if (Plan.gcInProgress())
+        PauseTimePredictor.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
     }
   }
 

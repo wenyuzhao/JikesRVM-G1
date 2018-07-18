@@ -3,6 +3,7 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.concurrent.pureg1.PauseTimePredictor;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
@@ -142,7 +143,7 @@ public class RemSet {
     return prtEntry.loadAddress();
   }
 
-  public static boolean noCSet = false;
+  private static boolean noCSet = false;
   @Inline
   public static void addCard(Address region, Address card) {
     if (VM.VERIFY_ASSERTIONS) {
@@ -161,13 +162,17 @@ public class RemSet {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!prt.isZero());
 
     // Insert card into the target PerRegionTable
-    int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
     if (PerRegionTable.insert(prt, card)) {
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(PerRegionTable.contains(prt, card));
       //Log.write("Insert card ", card);
       //Log.writeln(" -> ", region);
       // Increase REMSET_SIZE
-      Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize + 1);
+      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
+      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      do {
+        oldSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).prepareInt();
+        newSize = oldSize + 1;
+      } while (!sizePointer.attempt(oldSize, newSize));
     }
 
     if (lock) unlock(region);
@@ -237,7 +242,8 @@ public class RemSet {
         //int cursor = i * workers + id;
         if (cursor >= relocationSet.length()) continue;
         Address region = relocationSet.get(cursor);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
+        if (region.isZero()) continue;
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
         // Iterate all its PRTs
         int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
         Address prtList = rememberedSets.get(regionIndex);
@@ -262,7 +268,9 @@ public class RemSet {
                   continue;
               }
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
+              long time = VM.statistics.nanoTime();
               Region.Card.linearScan(cardLinearScan, card, false);
+              PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
               /*for (int l = 0; l < relocationSet.length(); l++) {
                 Address otherRegion = relocationSet.get(l);
                 if (otherRegion.NE(region)) {

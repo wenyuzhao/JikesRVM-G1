@@ -57,7 +57,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();// = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
   private int remSetLogBufferCursor = 0;
-  private final TraceWriteBuffer markRemset;//, relocateRemset;
+  private final TraceWriteBuffer markRemset, relocateRemset;
   private TraceWriteBuffer currentRemset;
   //private final AddressDeque cardBuf;
   // public final Lock refinementLock = VM.newLock("refinementLock");
@@ -74,7 +74,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   public PureG1Mutator() {
     mc = new RegionAllocator(PureG1.regionSpace, false);
     markRemset = new TraceWriteBuffer(global().markTrace);
-    //relocateRemset = new TraceWriteBuffer(global().redirectTrace);
+    relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
     //cardBuf = new AddressDeque("cardBuf", ConcurrentRemSetRefinement.cardBufPool);
   }
@@ -147,6 +147,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
       //flushRememberedSets();
+      currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
       mc.reset();
       return;
@@ -172,6 +173,7 @@ public class PureG1Mutator extends ConcurrentMutator {
       super.collectionPhase(phaseId, primary);
     }
     if (phaseId == PureG1.REDIRECT_PREPARE) {
+      currentRemset = relocateRemset;
       mc.reset();
       enqueueCurrentRSBuffer(false);
       //if (barrierActive) {
