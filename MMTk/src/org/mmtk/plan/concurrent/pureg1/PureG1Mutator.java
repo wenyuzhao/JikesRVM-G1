@@ -155,7 +155,7 @@ public class PureG1Mutator extends ConcurrentMutator {
 
     if (phaseId == PureG1.RELEASE) {
       mc.reset();
-      //super.collectionPhase(phaseId, primary);
+      super.collectionPhase(phaseId, primary);
       return;
     }
 
@@ -168,14 +168,12 @@ public class PureG1Mutator extends ConcurrentMutator {
       mc.reset();
       return;
     }
-    if (phaseId == Simple.WEAK_REFS) {
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
-      super.collectionPhase(phaseId, primary);
-    }
+
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       currentRemset = relocateRemset;
       mc.reset();
       enqueueCurrentRSBuffer(false);
+      super.collectionPhase(PureG1.PREPARE, primary);
       //if (barrierActive) {
       //  Log.writeln("BarrierActive for mutator #", getId());
       //}
@@ -372,6 +370,12 @@ public class PureG1Mutator extends ConcurrentMutator {
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
     while (cursor.LT(limit)) {
+//      ObjectReference oldValue, newValue;
+//      do {
+//        oldValue = cursor.loadObjectReference();
+//        newValue = srcCursor.loadObjectReference();
+//      } while (!cursor.attempt(oldValue, newValue));
+
       ObjectReference element = srcCursor.loadObjectReference();
       cursor.store(element);
       checkCrossRegionPointer(dst, cursor, element);

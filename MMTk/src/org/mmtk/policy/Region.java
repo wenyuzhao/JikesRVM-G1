@@ -32,7 +32,8 @@ public class Region {
   public static final int METADATA_REMSET_SIZE_OFFSET = METADATA_REMSET_LOCK_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_PAGES_OFFSET = METADATA_REMSET_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_POINTER_OFFSET = METADATA_REMSET_PAGES_OFFSET + BYTES_IN_INT;
-  public static final int METADATA_BYTES = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
+  public static final int METADATA_GENERATION_OFFSET = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
+  public static final int METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
   // Derived constants
   public static final int METADATA_OFFSET_IN_REGION = 0; // 0
   public static final int METADATA_PAGES_PER_REGION;
@@ -80,8 +81,6 @@ public class Region {
   private static int ceilDiv(int a, int b) {
     return (a + b - 1) / b;
   }
-
-  private static int count = 0;
 
   // Metadata setter
 
@@ -137,11 +136,6 @@ public class Region {
   }
 
   @Inline
-  public static int count() {
-    return count;
-  }
-
-  @Inline
   public static void setRelocationState(Address block, boolean relocation) {
     // blockStateLock.acquire();
     set(metaDataOf(block, METADATA_RELOCATE_OFFSET), (byte) (relocation ? 1 : 0));
@@ -175,9 +169,9 @@ public class Region {
   public static void register(Address block, boolean copy) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
     // Handle this block
-    blocksCountLock.acquire();
-    count += 1;
-    blocksCountLock.release();
+    //blocksCountLock.acquire();
+    //count += 1;
+    //blocksCountLock.release();
     clearState(block);
     setAllocated(block, true);
   }
@@ -185,9 +179,9 @@ public class Region {
   @Inline
   public static void unregister(Address block) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
-    blocksCountLock.acquire();
-    count -= 1;
-    blocksCountLock.release();
+    //blocksCountLock.acquire();
+    //count -= 1;
+    //blocksCountLock.release();
     clearState(block);
   }
 

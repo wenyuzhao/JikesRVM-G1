@@ -145,7 +145,8 @@ public class PauseTimePredictor {
         Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
         Log.writeln(" relocate");
       }
-      if (gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
+      boolean isNurseryRegion = Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0;
+      if (!isNurseryRegion && gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
         break;
       } else {
         cursor += 1;

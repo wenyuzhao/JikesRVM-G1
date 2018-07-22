@@ -17,11 +17,8 @@ import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.*;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
-import org.mmtk.utility.options.G1InitiatingHeapOccupancyPercent;
-import org.mmtk.utility.options.G1ReservePercent;
-import org.mmtk.utility.options.Options;
+import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
-import org.mmtk.utility.statistics.Timer;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -67,6 +64,10 @@ public class PureG1 extends Concurrent {
   static {
     Options.g1ReservePercent = new G1ReservePercent();
     Options.g1InitiatingHeapOccupancyPercent = new G1InitiatingHeapOccupancyPercent();
+    Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
+    Options.g1MaxNewSizePercent = new G1MaxNewSizePercent();
+    Options.g1NewSizePercent = new G1NewSizePercent();
+    Options.g1HeapWastePercent = new G1HeapWastePercent();
     Region.Card.enable();
     regionSpace.makeAllocAsMarked();
     smallCodeSpace.makeAllocAsMarked();
@@ -107,6 +108,11 @@ public class PureG1 extends Concurrent {
       Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
       Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));*/
   //public static final short MARK_RELEASE = Phase.createSimple("mark-release");
+  public static final boolean GENERATIONAL = true;
+  public static final short YOUNG_GC = 1;
+  public static final short MIXED_GC = 2;
+  public static final short FULL_GC = 3;
+  public static short currentGCKind = 0;
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleMutator  (REDIRECT_PREPARE),
@@ -173,10 +179,17 @@ public class PureG1 extends Concurrent {
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
     //Phase.scheduleComplex  (refTypeClosurePhase),
-      /*Phase.scheduleCollector  (SOFT_REFS),
-      Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),
-      Phase.scheduleCollector  (WEAK_REFS),
+      //Phase.scheduleComplex  (forwardPhase),
+//      Phase.scheduleCollector  (SOFT_REFS),
+//      Phase.scheduleGlobal     (CLOSURE),
+//      Phase.scheduleCollector  (CLOSURE),
+//      Phase.scheduleCollector(WEAK_REFS),
+//      Phase.scheduleCollector(FINALIZABLE),
+//      Phase.scheduleGlobal   (CLOSURE),
+//      Phase.scheduleCollector(CLOSURE),
+//      Phase.scheduleCollector(PHANTOM_REFS),
+
+      /*Phase.scheduleCollector  (WEAK_REFS),
       //Phase.scheduleCollector  (FINALIZABLE),
       Phase.scheduleGlobal     (CLOSURE),
       Phase.scheduleCollector  (CLOSURE),
@@ -189,6 +202,9 @@ public class PureG1 extends Concurrent {
       //hase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
     //Phase.scheduleCollector(RELEASE),
     //Phase.scheduleGlobal(RELEASE),
+
+      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
+      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
     Phase.scheduleComplex(completeClosurePhase),
 
     Phase.scheduleComplex  (relocationSetSelection),
@@ -220,13 +236,6 @@ public class PureG1 extends Concurrent {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
-    if (phaseId == COMPLETE) {
-      PauseTimePredictor.stopTheWorldEnd();
-      totalSTWTime += VM.statistics.nanoTime() - startTime;
-      //Log.writeln("TotalSTWTime ", totalSTWTime);
-      super.collectionPhase(COMPLETE);
-      return;
-    }
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
@@ -239,26 +248,44 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == RELEASE) {
+      //PureG1.stacksPrepared = false;
+      if (currentGCKind != 0) {
+        // FULL_GC
+        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: FULL_GC]");
+      } else if (!GENERATIONAL || regionSpace.heapWastePercent(true) >= Options.g1HeapWastePercent.getValue()) {
+        currentGCKind = MIXED_GC;
+        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: MIXED_GC]");
+      } else {
+        currentGCKind = YOUNG_GC;
+        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: YOUNG_GC]");
+      }
+
       PauseTimePredictor.stopTheWorldStart();
       //VM.assertions._assert(false);
       //startTime = VM.statistics.nanoTime();
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
-      //markTrace.release();
+      markTrace.release();
+
+      //stacksPrepared = false;
+      //inConcurrentCollection = false;
       //regionSpace.release();
       //super.collectionPhase(phaseId);
       //inConcurrentCollection = false;
+      //VM.assertions._assert(!stacksPrepared);
       return;
     }
 
     if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
-      blocksSnapshot = regionSpace.shapshotBlocks();
+      blocksSnapshot = regionSpace.snapshotBlocks(currentGCKind == YOUNG_GC);
       return;
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      //blocksSnapshot = regionSpace.shapshotBlocks();
+      //blocksSnapshot = regionSpace.snapshotBlocks();
       relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false);
-      PauseTimePredictor.predict(relocationSet);
+      if (currentGCKind == MIXED_GC) {
+        PauseTimePredictor.predict(relocationSet);
+      }
       RegionSpace.markRegionsAsRelocate(relocationSet);
       blocksSnapshot = null;
       return;
@@ -308,11 +335,19 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REDIRECT_RELEASE) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
-      markTrace.release();
+      //markTrace.release();
       redirectTrace.release();
       regionSpace.release();
       super.collectionPhase(RELEASE);
       //ConcurrentRemSetRefinement.cardBufPool.clearDeque(1);
+      return;
+    }
+
+    if (phaseId == COMPLETE) {
+      PauseTimePredictor.stopTheWorldEnd();
+      super.collectionPhase(COMPLETE);
+      currentGCKind = NOT_IN_GC;
+      regionSpace.promoteAllRegionsAsOldGeneration();
       return;
     }
 
@@ -336,7 +371,7 @@ public class PureG1 extends Concurrent {
 
   @Override
   protected boolean concurrentCollectionRequired() {
-    //return false;
+//    return false;
     int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
     int totalPages = getTotalPages() - metaDataSpace.reservedPages();
     return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * Options.g1InitiatingHeapOccupancyPercent.getValue()));

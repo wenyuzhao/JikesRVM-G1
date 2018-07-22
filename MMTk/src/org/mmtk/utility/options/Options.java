@@ -42,6 +42,9 @@ public final class Options {
   public static G1GCLiveThresholdPercent g1GCLiveThresholdPercent;
   public static G1InitiatingHeapOccupancyPercent g1InitiatingHeapOccupancyPercent;
   public static G1ReservePercent g1ReservePercent;
+  public static G1NewSizePercent g1NewSizePercent;
+  public static G1MaxNewSizePercent g1MaxNewSizePercent;
+  public static G1HeapWastePercent g1HeapWastePercent;
   public static GCspyPort gcspyPort;
   public static GCspyTileSize gcspyTileSize;
   public static GCspyWait gcspyWait;

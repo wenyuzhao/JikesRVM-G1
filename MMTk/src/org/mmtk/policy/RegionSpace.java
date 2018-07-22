@@ -57,6 +57,9 @@ public final class RegionSpace extends Space {
   public static final int GC_HEADER_WORDS_REQUIRED = 0;
   private static boolean allocAsMarked = false;
   private static final boolean HEADER_MARK_BIT = false;
+  private Lock regionCounterLock = VM.newLock("regionCounterLock");
+  public int youngRegions = 0;
+  public int committedRegions = 0;
 
   @Uninterruptible
   private static class Header {
@@ -304,6 +307,11 @@ public final class RegionSpace extends Space {
       //}
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.allocated(region));
       Region.register(region, copy);
+
+      regionCounterLock.acquire();
+      youngRegions++;
+      committedRegions++;
+      regionCounterLock.release();
     }
     if (VM.VERIFY_ASSERTIONS) {
       if (!region.isZero()) {
@@ -329,6 +337,12 @@ public final class RegionSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(region));
+    regionCounterLock.acquire();
+    committedRegions--;
+    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+      youngRegions--;
+    }
+    regionCounterLock.release();
     Region.unregister(region);
 
     ((FreeListPageResource) pr).releasePages(region);
@@ -411,7 +425,7 @@ public final class RegionSpace extends Space {
     /*if (ForwardingWord.isForwarded(object)) {
       rtn = getForwardingPointer(object);
     }*/
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       if (ForwardingWord.isForwardedOrBeingForwarded(rtn)) {
         Log.write(rtn);
         Log.write(ForwardingWord.isForwarded(rtn) ? " isForwarded" : " isBeingForwarded");
@@ -420,12 +434,12 @@ public final class RegionSpace extends Space {
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
       //VM.assertions._assert(VM.objectModel.getObjectEndAddress(rtn).LE(MarkBlock.getCursor(MarkBlock.of(rtn.toAddress()))));
 
-    }
+    }*/
 
     if (testAndMark(rtn)) {
       //Log.writeln("Mark ", rtn);
       Address region = Region.of(rtn);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
       /*_lock.acquire();
       MarkBlock.setUsedSize(region, MarkBlock.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
       _lock.release();*/
@@ -434,9 +448,9 @@ public final class RegionSpace extends Space {
     }
 
     // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-    if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
+    //if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
 
-    VM.assertions._assert(isLive(rtn));
+    //VM.assertions._assert(isLive(rtn));
     return rtn;
   }
 
@@ -509,11 +523,26 @@ public final class RegionSpace extends Space {
     return HEADER_MARK_BIT ? Header.testAndMark(object) : MarkBitMap.testAndMark(object);
   }
 
+  public float heapWastePercent(boolean oldGenerationOnly) {
+    int usedSize = 0;
+    int totalRegions = 0;
+    Address block = firstBlock();
+    while (!block.isZero()) {
+      if (!oldGenerationOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() != 0) {
+        usedSize += Region.usedSize(block);
+        totalRegions++;
+      }
+      block = nextBlock(block);
+    }
+    if (totalRegions == 0) return 0;
+    return (1f - usedSize / (totalRegions * Region.BYTES_IN_BLOCK)) * 100;
+  }
+
   // Block iterator
 
   @Inline
   public int allocatedRegionsCount() {
-    return Region.count();
+    return committedRegions;
   }
 
   @Inline
@@ -589,10 +618,10 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  public AddressArray shapshotBlocks() {
+  public AddressArray snapshotBlocks(boolean nurseryOnly) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
-    int blocksCount = Region.count();
+    int blocksCount = nurseryOnly ? youngRegions : committedRegions;
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
 
@@ -600,13 +629,14 @@ public final class RegionSpace extends Space {
     int index = 0;
     Address block = firstBlock();
     while (!block.isZero()) {
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(!block.isZero());
-        VM.assertions._assert(index < blocks.length());
+      //if (VM.VERIFY_ASSERTIONS) {
+        //VM.assertions._assert(index < blocks.length());
+      //}
+      if (!nurseryOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+        blocks.set(index, block);
+        index++;
       }
-      blocks.set(index, block);
       block = nextBlock(block);
-      index++;
     }
     if (VM.VERIFY_ASSERTIONS) {
       if (blocksCount != index) {
@@ -617,6 +647,18 @@ public final class RegionSpace extends Space {
     }
 
     return blocks;
+  }
+
+  @Inline
+  public void promoteAllRegionsAsOldGeneration() {
+    Address block = firstBlock();
+    while (!block.isZero()) {
+      Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(1);
+      block = nextBlock(block);
+    }
+    regionCounterLock.acquire();
+    youngRegions = 0;
+    regionCounterLock.release();
   }
 
 
@@ -630,6 +672,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public static AddressArray computeRelocationBlocks(AddressArray blocks, boolean concurrent) {
+
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
     /*
     int id = concurrent ? VM.activePlan.collector().getId() - VM.activePlan.collector().parallelWorkerCount() : VM.activePlan.collector().getId();
@@ -652,6 +695,7 @@ public final class RegionSpace extends Space {
     for (int i = 0; i < blocksCount; i++) {
       Address block = blocks.get(i);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
+      //if (block.isZero()) continue;
       int size = block.isZero() ? 0 : Region.usedSize(block);
       Address size2 = Address.fromIntZeroExtend(size);
       blockSizes.set(i, size2);

@@ -46,6 +46,9 @@ public class RemSet {
         VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
       }
       Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
+      Address pointer = buf.plus(offset);
+      if (VM.VERIFY_ASSERTIONS)
+        VM.assertions._assert(pointer.LT(buf.plus(Constants.BYTES_IN_PAGE * PAGES_IN_PRT)));
       int oldValue, newValue;
       do {
         // Get old int
@@ -66,7 +69,8 @@ public class RemSet {
           }
         }
         if (oldValue == newValue) return false; // this bit has been set by other threads
-      } while (!VM.objectModel.attemptInt(buf, offset, oldValue, newValue));
+      } while (!pointer.attempt(oldValue, newValue));
+      //} while (!VM.objectModel.attemptInt(buf, offset, oldValue, newValue));
       return true;
     }
 
@@ -135,6 +139,8 @@ public class RemSet {
     }
     // Insert PerRegionTable if necessary
     Address prtEntry = prtList.plus(cardRegionIndex << Constants.LOG_BYTES_IN_ADDRESS);
+    if (VM.VERIFY_ASSERTIONS)
+      VM.assertions._assert(prtEntry.LT(prtList.plus(Constants.BYTES_IN_PAGE * REMSET_PAGES)));
     if (create && prtEntry.loadAddress().isZero()) {
       // prtList[cardRegionIndex] = new int[PER_REGION_TABLE_BYTES];
       prtEntry.store(Plan.metaDataSpace.acquire(PAGES_IN_PRT));
@@ -303,6 +309,8 @@ public class RemSet {
         if (!prtList.isZero()) {
           Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
           for (Address prtPtr = prtList; prtPtr.LT(prtPrtEnd); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
+            if (VM.VERIFY_ASSERTIONS)
+              VM.assertions._assert(prtPtr.LT(prtList.plus(Constants.BYTES_IN_PAGE * REMSET_PAGES)));
             Address prt = prtPtr.loadAddress();
             if (!prt.isZero()) {
               Plan.metaDataSpace.release(prt);

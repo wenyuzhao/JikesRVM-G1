@@ -22,6 +22,7 @@ import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Pure;
@@ -131,6 +132,7 @@ public class PureG1Collector extends ConcurrentCollector {
    * Collection
    */
 
+  public static Lock lock = VM.newLock("collectionPhaseLock");
   /**
    * {@inheritDoc}
    */
@@ -148,6 +150,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.CLOSURE) {
+      PureG1.currentGCKind = PureG1.FULL_GC;
       markTrace.completeTrace();
       return;
     }
@@ -285,14 +288,15 @@ public class PureG1Collector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
+    //lock.acquire();
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
 
     if (phaseId == PureG1.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
-      super.concurrentCollectionPhase(phaseId);
-      return;
     }
+
     super.concurrentCollectionPhase(phaseId);
+    //lock.release();
   }
 
   /****************************************************************************

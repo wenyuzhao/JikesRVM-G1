@@ -51,15 +51,15 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   @Override
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       //if (!VM.debugging.validRef(source)) {
       //  VM.objectModel.dumpObject(source);
       //}
       VM.assertions._assert(VM.debugging.validRef(source));
     }
-    VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));
-    ObjectReference object = slot.loadObjectReference();//VM.activePlan.global().loadObjectReference(slot);
-    if (!object.isNull()) {
+    VM.assertions._assert(!Space.isInSpace(Plan.VM_SPACE, source));*/
+    //ObjectReference object = slot.loadObjectReference();//VM.activePlan.global().loadObjectReference(slot);
+    /*if (!object.isNull()) {
       if (VM.VERIFY_ASSERTIONS) {
         if (!VM.debugging.validRef(object)) {
           VM.objectModel.dumpObject(source);
@@ -67,10 +67,10 @@ public class PureG1MarkTraceLocal extends TraceLocal {
         }
         VM.assertions._assert(VM.debugging.validRef(object));
       }
-    }
-    if (!object.isNull() && Space.isInSpace(PureG1.MC, object)) {
-      if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
-        VM.objectModel.dumpObject(source);
+    }*/
+    //if (!object.isNull() && Space.isInSpace(PureG1.MC, object)) {
+      //if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+        /*VM.objectModel.dumpObject(source);
         VM.objectModel.dumpObject(object);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", source);
@@ -78,12 +78,12 @@ public class PureG1MarkTraceLocal extends TraceLocal {
         Log.write(": ", object);
         Log.write("(");
         Log.write(Space.getSpaceForObject(object).getName());
-        Log.writeln(") is forwarded");
-        VM.assertions._assert(false);
-      }
+        Log.writeln(") is forwarded");*/
+        //VM.assertions._assert(false);
+      //}
 
-      Address block = Region.of(VM.objectModel.objectStartRef(object));
-      if (Region.relocationRequired(block)) {
+      //Address block = Region.of(VM.objectModel.objectStartRef(object));
+      /*if (Region.relocationRequired(block)) {
         //VM.objectModel.dumpObject(source);
         Log.write(Space.getSpaceForObject(source).getName());
         Log.write(" object ", VM.objectModel.objectStartRef(source));
@@ -92,8 +92,8 @@ public class PureG1MarkTraceLocal extends TraceLocal {
         Log.write(": ", object);
         Log.writeln(" is in released block and not forwarded");
         VM.assertions._assert(false);
-      }
-    }
+      }*/
+    //}
     super.processEdge(source, slot);
   }
 
@@ -101,12 +101,13 @@ public class PureG1MarkTraceLocal extends TraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (VM.VERIFY_ASSERTIONS) {
+    //if (VM.VERIFY_ASSERTIONS) {
       //if (!VM.debugging.validRef(object)) {
       //  VM.objectModel.dumpObject(object);
       //}
-      VM.assertions._assert(VM.debugging.validRef(object));
-    }
+      //VM.assertions._assert(VM.debugging.validRef(object));
+    //}
+    //if (!isLive(object))
     Region.Card.updateCardMeta(object);
     if (Space.isInSpace(PureG1.MC, object)) {
       return PureG1.regionSpace.traceMarkObject(this, object);
