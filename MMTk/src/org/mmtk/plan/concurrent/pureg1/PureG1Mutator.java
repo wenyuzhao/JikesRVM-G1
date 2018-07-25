@@ -170,6 +170,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == PureG1.REDIRECT_PREPARE) {
+      VM.collection.prepareMutator(this);
       currentRemset = relocateRemset;
       mc.reset();
       enqueueCurrentRSBuffer(false);

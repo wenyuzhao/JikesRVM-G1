@@ -126,7 +126,7 @@ public class PureG1 extends Concurrent {
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),*/
 
-    Phase.scheduleComplex  (prepareStacks),
+    //Phase.scheduleComplex  (prepareStacks),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
@@ -160,11 +160,12 @@ public class PureG1 extends Concurrent {
 
     //Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     //Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(CLEANUP_BLOCKS),
 
 
+    Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
-    Phase.scheduleGlobal   (REDIRECT_RELEASE),
-    Phase.scheduleMutator  (REDIRECT_RELEASE)
+    Phase.scheduleGlobal   (REDIRECT_RELEASE)
 
 
 
@@ -174,10 +175,11 @@ public class PureG1 extends Concurrent {
 
 
 
-  public static short _collection = Phase.createComplex("_collection", null,
+  public short _collection = Phase.createComplex("_collection", null,
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
+    Phase.scheduleGlobal(RELEASE),
     //Phase.scheduleComplex  (refTypeClosurePhase),
       //Phase.scheduleComplex  (forwardPhase),
 //      Phase.scheduleCollector  (SOFT_REFS),
@@ -202,17 +204,14 @@ public class PureG1 extends Concurrent {
       //hase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
     //Phase.scheduleCollector(RELEASE),
     //Phase.scheduleGlobal(RELEASE),
-
-      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
-      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
-    Phase.scheduleComplex(completeClosurePhase),
+    //Phase.scheduleComplex(completeClosurePhase),
 
     Phase.scheduleComplex  (relocationSetSelection),
 
     Phase.scheduleComplex  (relocationPhase),
 
       //Phase.scheduleGlobal(CLEANUP_BLOCKS),
-      Phase.scheduleCollector(CLEANUP_BLOCKS),
+
 
     Phase.scheduleComplex  (finishPhase)
       //Phase.scheduleMutator(COMPLETE)
@@ -263,8 +262,8 @@ public class PureG1 extends Concurrent {
       PauseTimePredictor.stopTheWorldStart();
       //VM.assertions._assert(false);
       //startTime = VM.statistics.nanoTime();
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
-      markTrace.release();
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
+      //markTrace.release();
 
       //stacksPrepared = false;
       //inConcurrentCollection = false;
@@ -335,7 +334,8 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == REDIRECT_RELEASE) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
-      //markTrace.release();
+      regionSpace.promoteAllRegionsAsOldGeneration();
+      markTrace.release();
       redirectTrace.release();
       regionSpace.release();
       super.collectionPhase(RELEASE);
@@ -347,7 +347,6 @@ public class PureG1 extends Concurrent {
       PauseTimePredictor.stopTheWorldEnd();
       super.collectionPhase(COMPLETE);
       currentGCKind = NOT_IN_GC;
-      regionSpace.promoteAllRegionsAsOldGeneration();
       return;
     }
 

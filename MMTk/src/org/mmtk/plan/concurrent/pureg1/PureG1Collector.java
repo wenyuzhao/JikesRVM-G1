@@ -156,6 +156,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.RELEASE) {
+      VM.assertions.fail("");
       markTrace.completeTrace();
       markTrace.release();
       //markTrace.release();
@@ -164,6 +165,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REDIRECT_PREPARE) {
+      markTrace.completeTrace();
       // ConcurrentRemSetRefinement.lock is already locked
 
       ConcurrentRemSetRefinement.refineAll();
@@ -227,6 +229,7 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REDIRECT_RELEASE) {
+      markTrace.release();
       redirectTrace.completeTrace();
       redirectTrace.release();
       copy.reset();
@@ -289,7 +292,7 @@ public class PureG1Collector extends ConcurrentCollector {
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
     //lock.acquire();
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId), getId());
 
     if (phaseId == PureG1.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;

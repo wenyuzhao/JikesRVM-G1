@@ -36,6 +36,12 @@ public class PureG1MarkTraceLocal extends TraceLocal {
     super(PureG1.SCAN_MARK, trace);
   }
 
+
+  @Override
+  protected boolean overwriteReferenceDuringTrace() {
+    return false;
+  }
+
   /**
    * {@inheritDoc}
    */
@@ -48,9 +54,9 @@ public class PureG1MarkTraceLocal extends TraceLocal {
     return super.isLive(object);
   }
 
-  @Override
-  @Inline
-  public void processEdge(ObjectReference source, Address slot) {
+  //@Override
+  //@Inline
+  //public void processEdge(ObjectReference source, Address slot) {
     /*if (VM.VERIFY_ASSERTIONS) {
       //if (!VM.debugging.validRef(source)) {
       //  VM.objectModel.dumpObject(source);
@@ -94,8 +100,8 @@ public class PureG1MarkTraceLocal extends TraceLocal {
         VM.assertions._assert(false);
       }*/
     //}
-    super.processEdge(source, slot);
-  }
+    //super.processEdge(source, slot);
+  //}
 
   @Override
   @Inline

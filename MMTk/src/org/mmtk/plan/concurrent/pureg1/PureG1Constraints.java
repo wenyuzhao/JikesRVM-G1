@@ -46,12 +46,12 @@ public class PureG1Constraints extends ConcurrentConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.BYTES_IN_BLOCK;
   }
-  @Override
-  public boolean needsObjectReferenceWriteBarrier() {
-    return true;
-  }
-  @Override
-  public boolean objectReferenceBulkCopySupported() {
-    return true;
-  }
+  //@Override
+  //public boolean needsObjectReferenceWriteBarrier() {
+    //return true;
+  //}
+  //@Override
+  //public boolean objectReferenceBulkCopySupported() {
+    //return true;
+  //}
 }
