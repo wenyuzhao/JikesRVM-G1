@@ -34,7 +34,7 @@ public class CardTable {
     final int index = hash(card);
     final int intIndex = index >> 2;
     final int byteIndex = index ^ (intIndex << 2);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
     final Address hotnessPtr = cardHotnessTable.plus(intIndex << Constants.LOG_BYTES_IN_INT);
     int oldValue, newValue;
     byte newHotness;
@@ -47,13 +47,13 @@ public class CardTable {
       newHotness = (byte) (oldHotness + 1);
       newValue = oldValue & ~(0xff << ((3 - byteIndex) << 3)); // Drop the target byte
       newValue |= (newHotness << ((3 - byteIndex) << 3)); // Set new byte
-      if (VM.VERIFY_ASSERTIONS) {
+      /*if (VM.VERIFY_ASSERTIONS) {
         if (byteIndex == 0) VM.assertions._assert((oldValue << 8) == (newValue << 8));
         if (byteIndex == 1) VM.assertions._assert((oldValue << 16) == (newValue << 16) && (oldValue >>> 24) == (newValue >>> 24));
         if (byteIndex == 2) VM.assertions._assert((oldValue << 24) == (newValue << 24) && (oldValue >>> 16) == (newValue >>> 16));
         if (byteIndex == 3) VM.assertions._assert((oldValue >>> 8) == (newValue >>> 8));
         VM.assertions._assert(newHotness == (byte) ((newValue << (byteIndex << 3)) >>> 24));
-      }
+      }*/
     } while (!hotnessPtr.attempt(oldValue, newValue));
     return newHotness >= HOTNESS_THRESHOLD;
   }
@@ -76,13 +76,13 @@ public class CardTable {
 
   @Inline
   public static boolean attemptToMarkCard(Address card, boolean mark) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
     boolean success = attemptBitInBuffer(cardTable, cardIndex, mark);
     if (success) {
       dirtyCardsLock.acquire();
       dirtyCards += mark ? 1 : -1;
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length * 32);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length * 32);
       dirtyCardsLock.release();
     }
     return success;
@@ -93,10 +93,10 @@ public class CardTable {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldBit != newBit);
     int intIndex = index >>> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(intIndex == index / 32);
       VM.assertions._assert(bitIndex == index % 32);
-    }
+    }*/
     Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
     int oldValue, newValue;
     do {
@@ -108,7 +108,7 @@ public class CardTable {
       } else {
         newValue = oldValue & (~(1 << (31 - bitIndex)));
       }
-      if (VM.VERIFY_ASSERTIONS) {
+      /*if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(((newValue & (1 << (31 - bitIndex))) != 0) == newBit);
         if (bitIndex != 0) {
           VM.assertions._assert((oldValue >>> (32 - bitIndex)) == (newValue >>> (32 - bitIndex)));
@@ -116,7 +116,7 @@ public class CardTable {
         if (bitIndex != 31) {
           VM.assertions._assert((oldValue << (1 + bitIndex)) == (newValue << (1 + bitIndex)));
         }
-      }
+      }*/
       if (oldValue == newValue) return false; // this bit has been set by other threads
     } while (!VM.objectModel.attemptInt(buf, offset, oldValue, newValue));
     return true;
@@ -126,7 +126,7 @@ public class CardTable {
   private static boolean getBit(int[] buf, int index) {
     int intIndex = index >>> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
     int entry = buf[intIndex];
     return (entry & (1 << (31 - bitIndex))) != 0;
     //return ((entry << bitIndex) >> (Constants.LOG_BITS_IN_INT - 1)) > 0;
@@ -134,7 +134,7 @@ public class CardTable {
 
   @Inline
   public static boolean cardIsMarked(Address card) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
     return getBit(cardTable, cardIndex);
   }
@@ -144,14 +144,14 @@ public class CardTable {
       if (cardTable[i] != (int) 0) {
         for (int j = 0; j < 32; j++) {
           Address card = VM.HEAP_START.plus((i * 32 + j) << Region.Card.LOG_BYTES_IN_CARD);
-          VM.assertions._assert(Region.Card.isAligned(card));
+          //VM.assertions._assert(Region.Card.isAligned(card));
           if (cardIsMarked(card)) {
             Log.write("Card ", card);
             Log.writeln(" is marked.");
           }
         }
       }
-      VM.assertions._assert(cardTable[i] == (int) 0);
+      //VM.assertions._assert(cardTable[i] == (int) 0);
     }
   }
 }

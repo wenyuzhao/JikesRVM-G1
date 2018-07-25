@@ -56,7 +56,7 @@ public class PauseTimePredictor {
     } while (!count.attempt(oldValue, newValue));
   }
   @Inline public static void updateObjectEvacuationTime(ObjectReference ref, long ns) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ref.isNull());
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ref.isNull());
     Address totalMS = ObjectReference.fromObject(CData).toAddress();
     Address totalBytes = totalMS.plus(Constants.BYTES_IN_INT);
     int oldValue, newValue;
@@ -114,24 +114,24 @@ public class PauseTimePredictor {
     // Calculate rsSize & liveBytes
 
 
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.write("U ");
-      Log.writeln(U);
-      Log.write("S ");
-      Log.writeln(S);
-      Log.write("C ");
-      Log.writeln(C);
-      Log.write("VFixed ");
-      Log.writeln(VFixed);
-      Log.write("dirtyCards ");
-      Log.writeln(dirtyCards);
-      Log.flush();
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      Log.write("U ");
+//      Log.writeln(U);
+//      Log.write("S ");
+//      Log.writeln(S);
+//      Log.write("C ");
+//      Log.writeln(C);
+//      Log.write("VFixed ");
+//      Log.writeln(VFixed);
+//      Log.write("dirtyCards ");
+//      Log.writeln(dirtyCards);
+//      Log.flush();
+//    }
 
     int rsSize = 0, liveBytes = 0, cursor = 0;
     for (int i = 0; i < cset.length(); i++) {
       Address block = cset.get(i);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
       int newLiveBytes = liveBytes + Region.usedSize(block);
       int newRSSize = rsSize + Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
 

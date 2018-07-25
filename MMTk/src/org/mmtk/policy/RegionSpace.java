@@ -66,12 +66,12 @@ public final class RegionSpace extends Space {
     static byte markState = MARK_BASE_VALUE;
     @Inline
     public static boolean isMarked(ObjectReference object) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return isMarked(VM.objectModel.readAvailableByte(object));
     }
     @Inline
     private static boolean isMarked(byte gcByte) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return ((byte) (gcByte & MARK_MASK)) == markState;
     }
     @Inline
@@ -95,7 +95,7 @@ public final class RegionSpace extends Space {
         rtn = (byte) (rtn + MARK_INCREMENT);
         rtn &= MARK_MASK;
       } while (rtn < MARK_BASE_VALUE);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
       markState = rtn;
     }
     @Inline
@@ -109,7 +109,7 @@ public final class RegionSpace extends Space {
       byte newGCByte = (byte) ((oldGCByte & ~MARK_AND_FORWARDING_MASK) | markState);
       if (HeaderByte.NEEDS_UNLOGGED_BIT) newGCByte |= HeaderByte.UNLOGGED_BIT;
       VM.objectModel.writeAvailableByte(object, newGCByte);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((oldGCByte & MARK_MASK) != markState);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((oldGCByte & MARK_MASK) != markState);
     }
     @Inline
     public static void writeMarkState(ObjectReference object) {
@@ -178,7 +178,7 @@ public final class RegionSpace extends Space {
     private static Address getLiveWordAddress(Address address) {
       Address rtn = EmbeddedMetaData.getMetaDataBase(address);
       Address liveWordAddress = rtn.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
       return liveWordAddress;
     }
   }
@@ -221,9 +221,9 @@ public final class RegionSpace extends Space {
     if (newChunk) {
       Address chunk = Conversions.chunkAlign(start.plus(bytes), true);
       if (VM.VERIFY_ASSERTIONS) Log.writeln("New Region ", chunk);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Conversions.chunkAlign(start.plus(bytes), true).EQ(chunk));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Conversions.chunkAlign(start.plus(bytes), true).EQ(chunk));
       // MarkBlock.clearRegionMetadata(chunk);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.EQ(EmbeddedMetaData.getMetaDataBase(chunk)));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.EQ(EmbeddedMetaData.getMetaDataBase(chunk)));
       HeapLayout.mmapper.ensureMapped(chunk, Region.METADATA_PAGES_PER_REGION);
       VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(Region.BLOCKS_START_OFFSET));
     }
@@ -291,10 +291,9 @@ public final class RegionSpace extends Space {
     // Allocate
     Address region = acquire(Region.PAGES_IN_BLOCK);
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
     if (VM.VERIFY_ASSERTIONS) {
-      Log.flush();
       Log.write("Block alloc ", region);
       Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
     }
@@ -305,7 +304,7 @@ public final class RegionSpace extends Space {
       //if (MarkBlock.allocated(region)) {
       //  VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
       //}
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.allocated(region));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.allocated(region));
       Region.register(region, copy);
 
       regionCounterLock.acquire();
@@ -313,7 +312,7 @@ public final class RegionSpace extends Space {
       committedRegions++;
       regionCounterLock.release();
     }
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       if (!region.isZero()) {
         VM.assertions._assert(Region.allocated(region));
         VM.assertions._assert(!Region.relocationRequired(region));
@@ -321,7 +320,7 @@ public final class RegionSpace extends Space {
       } else {
         Log.writeln("ALLOCATED A NULL REGION");
       }
-    }
+    }*/
     return region;
   }
 
@@ -334,9 +333,9 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public void release(Address region) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(region));
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(region));
     regionCounterLock.acquire();
     committedRegions--;
     if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {

@@ -42,13 +42,13 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
-    VM.assertions._assert(VM.debugging.validRef(source));
+    //VM.assertions._assert(VM.debugging.validRef(source));
     super.processEdge(source, slot);
 
     ObjectReference ref = slot.loadObjectReference();
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(ref.isNull() || Space.isMappedObject(ref));
-    }
+    //if (VM.VERIFY_ASSERTIONS) {
+    //  VM.assertions._assert(ref.isNull() || Space.isMappedObject(ref));
+    //  }
     if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
       Address block = Region.of(ref);
       if (block.NE(Region.of(source))) {
@@ -59,13 +59,13 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       }
     }
   }
-
-  @Inline
-  @Override
-  public void scanObject(ObjectReference object) {
-    VM.assertions._assert(VM.debugging.validRef(object));
-    super.scanObject(object);
-  }
+//
+//  @Inline
+//  @Override
+//  public void scanObject(ObjectReference object) {
+//    VM.assertions._assert(VM.debugging.validRef(object));
+//    super.scanObject(object);
+//  }
 /*
   @Inline
   public ObjectReference getForwardedReference(ObjectReference object) {
@@ -95,10 +95,10 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       }
       return object;
     } else {*/
-      if (VM.VERIFY_ASSERTIONS) {
-        if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
-        VM.assertions._assert(VM.debugging.validRef(object));
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
+//        VM.assertions._assert(VM.debugging.validRef(object));
+//      }
       Region.Card.updateCardMeta(object);
       ObjectReference newObject;
       if (Space.isInSpace(PureG1.MC, object)) {
@@ -107,10 +107,10 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
         newObject = super.traceObject(object);
       }
 
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(VM.debugging.validRef(newObject));
-        VM.assertions._assert(isLive(newObject));
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(VM.debugging.validRef(newObject));
+//        VM.assertions._assert(isLive(newObject));
+//      }
       Region.Card.updateCardMeta(newObject);
       return newObject;
     //}

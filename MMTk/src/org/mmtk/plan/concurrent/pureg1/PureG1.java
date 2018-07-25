@@ -333,7 +333,7 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_RELEASE) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       regionSpace.promoteAllRegionsAsOldGeneration();
       markTrace.release();
       redirectTrace.release();

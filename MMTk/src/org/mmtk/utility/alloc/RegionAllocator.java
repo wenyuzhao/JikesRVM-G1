@@ -90,14 +90,14 @@ public class RegionAllocator extends Allocator {
     if (Space.isInSpace(this.space.getDescriptor(), start)) {
       Region.setCursor(Region.of(start), cursor);
     }
-    if (VM.VERIFY_ASSERTIONS) {
+    /*if (VM.VERIFY_ASSERTIONS) {
       if (!Region.allocated(Region.of(start))) {
         Log.writeln("cursor: ", cursor);
         Log.writeln("start: ", start);
         Log.writeln("limit: ", limit);
       }
       VM.assertions._assert(Region.allocated(Region.of(start)));
-    }
+    }*/
     return start;
   }
 

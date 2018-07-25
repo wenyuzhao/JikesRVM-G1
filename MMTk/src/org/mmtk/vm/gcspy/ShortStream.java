@@ -104,7 +104,7 @@ import org.vmmagic.pragma.Uninterruptible;
    * @param value the value to distribute
    */
   public void distribute(int start, short remainder, int blockSize, short value) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remainder <= blockSize);
+    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remainder <= blockSize);
     if (value <= remainder) {  // fits in this tile
       data[start] += value;
       //checkspace(start, value, "scanObject fits in first tile");

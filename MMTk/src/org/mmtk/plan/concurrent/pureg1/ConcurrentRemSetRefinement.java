@@ -158,21 +158,28 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   @Unpreemptible
   public void run() {
     while (true) {
-      monitor.await();
-      refinePartial(1/5);
+      //monitor.await();
+      refinePartial(0);
     }
   }
 
   /** Runs in mutator threads */
   @Inline
   public static void enqueueFilledRSBuffer(Address buf, boolean triggerConcurrentRefinement) {
-    if (FilledRSBufferQueue.enqueue(buf)) {
-      //if (triggerConcurrentRefinement && FilledRSBufferQueue.size() >= FilledRSBufferQueue.CAPACITY * 4 / 5) trigger();
-      if (triggerConcurrentRefinement) trigger();
+    if (triggerConcurrentRefinement) {
+      while (!FilledRSBufferQueue.enqueue(buf)) {}
     } else {
-      Log.writeln("! FilledRSBufferQueue is full");
-      refineSingleBuffer(buf);
+      if (!FilledRSBufferQueue.enqueue(buf)) {
+        refineSingleBuffer(buf);
+      }
     }
+//    if (FilledRSBufferQueue.enqueue(buf)) {
+//      //if (triggerConcurrentRefinement && FilledRSBufferQueue.size() >= FilledRSBufferQueue.CAPACITY * 4 / 5) trigger();
+//      if (triggerConcurrentRefinement) trigger();
+//    } else {
+//      Log.writeln("! FilledRSBufferQueue is full");
+//      refineSingleBuffer(buf);
+//    }
   }
 
   @Inline
