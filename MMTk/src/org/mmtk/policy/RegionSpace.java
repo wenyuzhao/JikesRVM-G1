@@ -670,7 +670,7 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  public static AddressArray computeRelocationBlocks(AddressArray blocks, boolean concurrent) {
+  public static AddressArray computeRelocationBlocks(AddressArray blocks, boolean includeAllNursery, boolean concurrent) {
 
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
     /*
@@ -713,9 +713,12 @@ public final class RegionSpace extends Space {
       int size = blockSizes.get(i).toInt();
       Address block = blocks.get(i);
 
-      if (currentSize + size > usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
+      if (includeAllNursery && Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+        // Include
+      } else if (currentSize + size > usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
         //if (VM.VERIFY_ASSERTIONS) Log.writeln();
-        break;
+        blocks.set(i, Address.zero());
+        continue;
       }
 
       //if (VM.VERIFY_ASSERTIONS) Log.writeln(" relocate");
@@ -728,8 +731,11 @@ public final class RegionSpace extends Space {
 
     // Return relocationSet array
     AddressArray relocationSet = AddressArray.create(relocationBlocks);
-    for (int i = 0; i < relocationBlocks; i++) {
-      relocationSet.set(i, blocks.get(i));
+    int cursor = 0;
+    for (int i = 0; i < blocks.length(); i++) {
+      Address block = blocks.get(i);
+      if (!block.isZero())
+        relocationSet.set(cursor++, block);
     }
 
     return relocationSet;

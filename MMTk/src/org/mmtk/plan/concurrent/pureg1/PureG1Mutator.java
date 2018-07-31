@@ -272,7 +272,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //ObjectReference _oldRef = slot.loadObjectReference();
     //VM.assertions._assert(_oldRef.isNull() || (VM.debugging.validRef(_oldRef) && Space.isMappedObject(_oldRef)));
     //VM.assertions._assert(ref.isNull() || (VM.debugging.validRef(ref) && Space.isMappedObject(ref)));
-    Address value = VM.objectModel.objectStartRef(ref);
+
     /*if (VM.VERIFY_ASSERTIONS) {
       //if (ref.isNull()) VM.assertions._assert(value.isZero());
       //VM.assertions._assert(!Plan.gcInProgress());
@@ -298,15 +298,25 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.write(".", slot);
     //Log.write(" = ");
     //Log.writeln(ref);
-    if (!src.isNull() && !slot.isZero() && !ref.isNull() && !value.isZero()) {
-      Word tmp = slot.toWord().xor(value.toWord());
-      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
-      tmp = ref.isNull() ? Word.zero() : tmp;
-      if (tmp.isZero()) return;
-      if (Space.isInSpace(PureG1.MC, value)) {
-        Region.Card.updateCardMeta(src);
-        markAndEnqueueCard(Region.Card.of(src));
-      }
+//    Address value = VM.objectModel.objectStartRef(ref);
+//    if (!src.isNull() && !slot.isZero() && !ref.isNull() && !value.isZero()) {
+//      Word tmp = slot.toWord().xor(value.toWord());
+//      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
+//      tmp = ref.isNull() ? Word.zero() : tmp;
+//      if (tmp.isZero()) return;
+//      if (Space.isInSpace(PureG1.MC, value)) {
+//        Region.Card.updateCardMeta(src);
+//        markAndEnqueueCard(Region.Card.of(src));
+//      }
+//    }
+    Word x = VM.objectModel.objectStartRef(src).toWord();
+    Word y = VM.objectModel.objectStartRef(ref).toWord();
+    Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
+    //tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
+    tmp = ref.isNull() || src.isNull() ? Word.zero() : tmp;
+    if (!tmp.isZero() && Space.isInSpace(PureG1.MC, ref)) {
+      Region.Card.updateCardMeta(src);
+      markAndEnqueueCard(Region.Card.of(src));
     }
   }
 

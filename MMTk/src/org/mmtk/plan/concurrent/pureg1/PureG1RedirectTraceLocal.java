@@ -43,6 +43,12 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
     //VM.assertions._assert(VM.debugging.validRef(source));
+//    boolean referenceIsRelocated = false;
+//    ObjectReference oldRef = slot.loadObjectReference();
+//    if (!oldRef.isNull() && Space.isInSpace(PureG1.MC, oldRef) && Region.relocationRequired(Region.of(oldRef))) {
+//      referenceIsRelocated = true;
+//    }
+
     super.processEdge(source, slot);
 
     ObjectReference ref = slot.loadObjectReference();
@@ -50,11 +56,11 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     //  VM.assertions._assert(ref.isNull() || Space.isMappedObject(ref));
     //  }
     if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
+//    if (referenceIsRelocated) {
       Address block = Region.of(ref);
       if (block.NE(Region.of(source))) {
         Region.Card.updateCardMeta(source);
         Address card = Region.Card.of(source);
-        //if (remSetsProcessing)
         RemSet.addCard(block, card);
       }
     }

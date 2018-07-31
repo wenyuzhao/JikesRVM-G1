@@ -113,8 +113,8 @@ public class PureG1MarkTraceLocal extends TraceLocal {
       //}
       //VM.assertions._assert(VM.debugging.validRef(object));
     //}
-    //if (!isLive(object))
-    Region.Card.updateCardMeta(object);
+    if (!isLive(object))
+      Region.Card.updateCardMeta(object);
     if (Space.isInSpace(PureG1.MC, object)) {
       return PureG1.regionSpace.traceMarkObject(this, object);
     }

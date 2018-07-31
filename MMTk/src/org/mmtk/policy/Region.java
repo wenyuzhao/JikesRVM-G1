@@ -277,12 +277,12 @@ public class Region {
 
     @Inline
     public static boolean compareAndSwapByteInBuffer(int[] buf, int index, byte oldByte, byte newByte) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldByte != newByte);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldByte != newByte);
       int intIndex = index >>> 2;
       int byteIndex = index ^ (intIndex << 2);
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
+//      }
       Offset offset = Offset.fromIntZeroExtend(intIndex << 2);
       // Get old int
       int oldValue = buf[intIndex];
@@ -290,12 +290,12 @@ public class Region {
       int newValue = oldValue & ~(0xff << ((3 - byteIndex) << 3)); // Drop the target byte
       newValue |= ((((int) newByte) & 0xFF) << ((3 - byteIndex) << 3)); // Set new byte
 
-      if (VM.VERIFY_ASSERTIONS) {
-        if (byteIndex == 0) VM.assertions._assert((newValue << 8) == (oldValue << 8));
-        if (byteIndex == 1) VM.assertions._assert((newValue << 16) == (oldValue << 16) && (newValue >>> 24) == (oldValue >>> 24));
-        if (byteIndex == 2) VM.assertions._assert((newValue << 24) == (oldValue << 24) && (newValue >>> 16) == (oldValue >>> 16));
-        if (byteIndex == 3) VM.assertions._assert((newValue >>> 8) == (oldValue >>> 8));
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        if (byteIndex == 0) VM.assertions._assert((newValue << 8) == (oldValue << 8));
+//        if (byteIndex == 1) VM.assertions._assert((newValue << 16) == (oldValue << 16) && (newValue >>> 24) == (oldValue >>> 24));
+//        if (byteIndex == 2) VM.assertions._assert((newValue << 24) == (oldValue << 24) && (newValue >>> 16) == (oldValue >>> 16));
+//        if (byteIndex == 3) VM.assertions._assert((newValue >>> 8) == (oldValue >>> 8));
+//      }
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldValue != newValue);
       if (oldValue == newValue) return false;
       return VM.objectModel.attemptInt(buf, offset, oldValue, newValue);
@@ -305,9 +305,9 @@ public class Region {
     public static byte getByte(int[] buf, int index) {
       int intIndex = index >>> 2;
       int byteIndex = index ^ (intIndex << 2);
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
+//      }
       int entry = buf[intIndex];
       return (byte) ((entry << (byteIndex << 3)) >>> 24);
     }
@@ -337,7 +337,7 @@ public class Region {
     public static int indexOf(Address card) {
       Address block = Region.of(card);
       int index = card.diff(block).toInt() / BYTES_IN_CARD;
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0);
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0);
       return index;
     }
 
@@ -363,8 +363,8 @@ public class Region {
       VM.objectModel.dumpObject(ref);*/
       //lock.acquire();
       //lock.acquire();
-      if (VM.VERIFY_ASSERTIONS)
-        VM.assertions._assert(VM.debugging.validRef(ref));
+      //if (VM.VERIFY_ASSERTIONS)
+        //VM.assertions._assert(VM.debugging.validRef(ref));
       //lock.release();
       // set anchor value
       final Address objectStartAddress = VM.objectModel.objectStartRef(ref);
@@ -409,16 +409,16 @@ public class Region {
         oldEndOffset = getByte(limits, cardIndex);
         // Build new value
         if (endCard.EQ(card)) {
-          if (VM.VERIFY_ASSERTIONS) {
-            VM.assertions._assert(objectEndAddress.LT(card.plus(BYTES_IN_CARD)));
-            VM.assertions._assert(newStartOffset >= 0);
-          }
+          //if (VM.VERIFY_ASSERTIONS) {
+          //  VM.assertions._assert(objectEndAddress.LT(card.plus(BYTES_IN_CARD)));
+          //  VM.assertions._assert(newStartOffset >= 0);
+          //}
           newEndOffset = (byte) (objectEndAddress.diff(card).toInt() >> Constants.LOG_BYTES_IN_ADDRESS);
         } else {
-          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(endCard.GT(card));
+          //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(endCard.GT(card));
           newEndOffset = (byte) 0;
         }
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(newEndOffset >= 0);
+        //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(newEndOffset >= 0);
         // Break if old >= new or oldEndOffset is already 0
         if (oldEndOffset == 0) break;
         if (newEndOffset != 0 && oldEndOffset >= newEndOffset) break;
@@ -447,7 +447,7 @@ public class Region {
 
     @Inline
     public static Address getCardAnchor(Address card) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Card.of(card)));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Card.of(card)));
       int cardIndex = hash(card);
       byte offset = getByte(anchors, cardIndex);
       if (offset == (byte) -1) return Address.zero();
@@ -456,7 +456,7 @@ public class Region {
 
     @Inline
     public static Address getCardLimit(Address card) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Card.of(card)));
+      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Card.of(card)));
       int cardIndex = hash(card);
       byte offset = getByte(limits, cardIndex);
       if (offset == (byte) -1) return Address.zero(); // limit is unset

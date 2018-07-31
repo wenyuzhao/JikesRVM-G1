@@ -333,7 +333,58 @@ public class RemSet {
           Plan.metaDataSpace.release(prtEntry.loadAddress());
           prtEntry.store(Address.zero());
         }
-      }/*
+      }
+
+
+//      int cursor = regionsToVisit * id + i;
+//      if (cursor >= TOTAL_REGIONS) break;
+//      Address visitedRegion = VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_BLOCK);
+//      if (!Space.isInSpace(regionSpace.getDescriptor(), visitedRegion)) continue;
+//      if (visitedRegion.EQ(EmbeddedMetaData.getMetaDataBase(visitedRegion))) continue;
+//
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(!visitedRegion.isZero());
+//        VM.assertions._assert(Region.isAligned(visitedRegion));
+//        VM.assertions._assert(Space.isInSpace(regionSpace.getDescriptor(), visitedRegion));
+//      }
+//
+//      if (Region.relocationRequired(visitedRegion)) {
+//        // If this is a relocation region, clear its rem-sets
+//        Address prtList = rememberedSets.get(cursor);
+//        if (!prtList.isZero()) {
+//          Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
+//          for (Address prtPtr = prtList; prtPtr.LT(prtPrtEnd); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
+////            if (VM.VERIFY_ASSERTIONS)
+////              VM.assertions._assert(prtPtr.LT(prtList.plus(Constants.BYTES_IN_PAGE * REMSET_PAGES)));
+//            Address prt = prtPtr.loadAddress();
+//            if (!prt.isZero()) {
+//              Plan.metaDataSpace.release(prt);
+//            }
+//          }
+//          Plan.metaDataSpace.release(prtList);
+//          rememberedSets.set(cursor, Address.zero());
+//        }
+//      } else {
+//        // Else, clear all PRT corresponds to CSet
+//        lock(visitedRegion);
+//        Address prtList = rememberedSets.get(cursor);
+//        if (!prtList.isZero()) {
+//          for (int j = 0; j < relocationSet.length(); j++) {
+//            Address cRegion = relocationSet.get(j);
+//            if (cRegion.isZero()) continue;
+//            int index = cRegion.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_BLOCK;
+//            Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
+//            if (!prtEntry.loadAddress().isZero()) {
+//              Plan.metaDataSpace.release(prtEntry.loadAddress());
+//              prtEntry.store(Address.zero());
+//            }
+//          }
+//        }
+//        unlock(visitedRegion);
+//      }
+
+
+      /*
       for (int j = 0; j < remSet.length; j++) {
         Address remSetRegion = VM.HEAP_START.plus(j << Region.LOG_BYTES_IN_BLOCK);
         if (Space.isInSpace(regionSpace.getDescriptor(), remSetRegion) && Region.of(remSetRegion).NE(EmbeddedMetaData.getMetaDataBase(remSetRegion)) && Region.relocationRequired(remSetRegion)) {

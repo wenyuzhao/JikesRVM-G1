@@ -9,6 +9,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.Extent;
+import org.vmmagic.unboxed.ObjectReference;
 import org.vmmagic.unboxed.Offset;
 
 @Uninterruptible
@@ -17,8 +18,7 @@ public class CardTable {
   static final int HOTNESS_TABLE_PAGES;
   static final byte HOTNESS_THRESHOLD = 3;
   static final int[] cardTable;
-  static int dirtyCards = 0;
-  static final Lock dirtyCardsLock = VM.newLock("dirtyCardsLock");
+  static int[] dirtyCards = new int[] { 0 };
   static Address cardHotnessTable = Address.zero();
 
   static {
@@ -66,7 +66,7 @@ public class CardTable {
 
   @Inline
   public static int dirtyCardSize() {
-    return dirtyCards;
+    return dirtyCards[0];
   }
 
   @Inline
@@ -80,10 +80,17 @@ public class CardTable {
     int cardIndex = hash(card);
     boolean success = attemptBitInBuffer(cardTable, cardIndex, mark);
     if (success) {
-      dirtyCardsLock.acquire();
-      dirtyCards += mark ? 1 : -1;
+      Address dirtyCardsPointer = ObjectReference.fromObject(dirtyCards).toAddress();
+      int oldValue, newValue;
+      int delta = mark ? 1 : -1;
+      do {
+        oldValue = dirtyCardsPointer.prepareInt();
+        newValue = oldValue + delta;
+      } while (!dirtyCardsPointer.attempt(oldValue, newValue));
+      //dirtyCardsLock.acquire();
+      //dirtyCards += mark ? 1 : -1;
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length * 32);
-      dirtyCardsLock.release();
+      //dirtyCardsLock.release();
     }
     return success;
   }

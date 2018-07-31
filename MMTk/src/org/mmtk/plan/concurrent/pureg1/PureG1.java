@@ -97,8 +97,17 @@ public class PureG1 extends Concurrent {
   );
   //public static final short EVACUATION = Phase.createSimple("evacuation");
   //public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
+  public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
+
+  protected static final short preemptConcurrentCleanup = Phase.createComplex("preeempt-concurrent-cleanup", null,
+      Phase.scheduleCollector(CLEANUP_BLOCKS));
+
+  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
+      Phase.scheduleComplex(preemptConcurrentCleanup));
+
+
   //public static final short CONCURRENT_LOCK_MUTATORS = Phase.createConcurrent("flush-refinement-thread", Phase.scheduleMutator(FLUSH_MUTATOR));
   /*protected static final short concurrentLockMutators = Phase.createComplex("concurrent-lock-mutators", null,
       Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
@@ -159,8 +168,10 @@ public class PureG1 extends Concurrent {
       Phase.scheduleCollector(REDIRECT_CLOSURE),
 
     //Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-    //Phase.scheduleCollector(REDIRECT_CLOSURE),
+
       Phase.scheduleCollector(CLEANUP_BLOCKS),
+      Phase.scheduleCollector(CLEAR_CARD_META),
+      //Phase.scheduleConcurrent(CONCURRENT_CLEANUP),
 
 
     Phase.scheduleMutator  (REDIRECT_RELEASE),
@@ -281,9 +292,9 @@ public class PureG1 extends Concurrent {
 
     if (phaseId == RELOCATION_SET_SELECTION) {
       //blocksSnapshot = regionSpace.snapshotBlocks();
-      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false);
-      if (currentGCKind == MIXED_GC) {
-        PauseTimePredictor.predict(relocationSet);
+      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, currentGCKind != YOUNG_GC, false);
+      if (currentGCKind == YOUNG_GC || currentGCKind == MIXED_GC) {
+        PauseTimePredictor.predict(relocationSet, currentGCKind);
       }
       RegionSpace.markRegionsAsRelocate(relocationSet);
       blocksSnapshot = null;
