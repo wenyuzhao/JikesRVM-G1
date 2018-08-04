@@ -16,7 +16,7 @@ import org.vmmagic.unboxed.Offset;
 public class CardTable {
   static final int TOTAL_CARDS;
   static final int HOTNESS_TABLE_PAGES;
-  static final byte HOTNESS_THRESHOLD = 3;
+  static final byte HOTNESS_THRESHOLD = 4;
   static final int[] cardTable;
   static int[] dirtyCards = new int[] { 0 };
   static Address cardHotnessTable = Address.zero();
@@ -55,7 +55,7 @@ public class CardTable {
         VM.assertions._assert(newHotness == (byte) ((newValue << (byteIndex << 3)) >>> 24));
       }*/
     } while (!hotnessPtr.attempt(oldValue, newValue));
-    return newHotness >= HOTNESS_THRESHOLD;
+    return newHotness > HOTNESS_THRESHOLD;
   }
 
   @Inline
@@ -104,7 +104,8 @@ public class CardTable {
       VM.assertions._assert(intIndex == index / 32);
       VM.assertions._assert(bitIndex == index % 32);
     }*/
-    Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
+    Address addr = ObjectReference.fromObject(buf).toAddress().plus(intIndex << Constants.LOG_BYTES_IN_INT);
+//    Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
     int oldValue, newValue;
     do {
       // Get old int
@@ -125,7 +126,7 @@ public class CardTable {
         }
       }*/
       if (oldValue == newValue) return false; // this bit has been set by other threads
-    } while (!VM.objectModel.attemptInt(buf, offset, oldValue, newValue));
+    } while (!addr.attempt(oldValue, newValue));
     return true;
   }
 

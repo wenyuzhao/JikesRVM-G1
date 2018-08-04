@@ -14,7 +14,7 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class PauseTimePredictor {
   public static float VFixed, U, S, C; // Milliseconds
-  public static final int EXPECTED_PAUSE_TIME = 800;
+  public static final int EXPECTED_PAUSE_TIME = 400;
 
   public static float gcCost(int d, int rsSize, int liveBytes) {
     float VFixed = liveBytes * a + b;
@@ -75,6 +75,7 @@ public class PauseTimePredictor {
     startTime = VM.statistics.nanoTime();
     // Calculate dirty cards
     dirtyCards = CardTable.dirtyCardSize();
+//    dirtyCards = CardTable.dirtyCardSize();
 
     /*PauseTimePredictor.dirtyCards = dirtyCards;
     totalRSSize = 0;
@@ -107,7 +108,7 @@ public class PauseTimePredictor {
       Log.writeln(" ms]");
     }
   }
-
+  static boolean firstGC = true;
   public static AddressArray predict(AddressArray cset, short gcKind) {
     // Calculate dirty cards
     //int d = CardTable.dirtyCardSize();
@@ -138,16 +139,16 @@ public class PauseTimePredictor {
         int newLiveBytes = liveBytes + Region.usedSize(block);
         int newRSSize = rsSize + Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
 
-        if (VM.VERIFY_ASSERTIONS) {
-          Log.write("Block (", i);
-          Log.write("/", cset.length());
-          Log.write(") ", block);
-          Log.write(": ", Region.usedSize(block));
-          Log.write("/", Region.BYTES_IN_BLOCK);
-          Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
-          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
-          Log.writeln(" relocate");
-        }
+//        if (VM.VERIFY_ASSERTIONS) {
+//          Log.write("Block (", i);
+//          Log.write("/", cset.length());
+//          Log.write(") ", block);
+//          Log.write(": ", Region.usedSize(block));
+//          Log.write("/", Region.BYTES_IN_BLOCK);
+//          Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
+//          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
+//          Log.writeln(" relocate");
+//        }
         if (gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
           break;
         } else {
@@ -156,47 +157,59 @@ public class PauseTimePredictor {
           liveBytes = newLiveBytes;
         }
       }
+      if (firstGC) {
+        if (cursor >= PureG1.parallelWorkers.activeWorkerCount()) {
+          cursor = PureG1.parallelWorkers.activeWorkerCount();
+        }
+        firstGC = false;
+      }
       for (int i = cursor; i < cset.length(); i++) {
         cset.set(i, Address.zero());
       }
     } else {
 
-
+      int cursor = 0;
       for (int i = 0; i < cset.length(); i++) {
         Address block = cset.get(i);
         if (block.isZero()) continue;
         int newLiveBytes = liveBytes + Region.usedSize(block);
         int newRSSize = rsSize + Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
 
-        if (VM.VERIFY_ASSERTIONS) {
-          Log.write("Block (", i);
-          Log.write("/", cset.length());
-          Log.write(") ", block);
-          Log.write(": ", Region.usedSize(block));
-          Log.write("/", Region.BYTES_IN_BLOCK);
-          Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
-          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
-          Log.writeln(" relocate");
-        }
+//        if (VM.VERIFY_ASSERTIONS) {
+//          Log.write("Block (", i);
+//          Log.write("/", cset.length());
+//          Log.write(") ", block);
+//          Log.write(": ", Region.usedSize(block));
+//          Log.write("/", Region.BYTES_IN_BLOCK);
+//          Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
+//          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
+//          Log.writeln(" relocate");
+//        }
         boolean isNurseryRegion = Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0;
-        if (!isNurseryRegion && gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
-          cset.set(i, Address.zero());
+        if (/*!isNurseryRegion &&*/ gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
+//          cset.set(i, Address.zero());
+          break;
         } else {
+          cursor++;
           rsSize = newRSSize;
           liveBytes = newLiveBytes;
         }
-
-        int nonNullCursor = 0;
-        for (int j = 0; j < cset.length(); j++) {
-          Address a = cset.get(j);
-          if (!a.isZero()) {
-            cset.set(nonNullCursor++, a);
-          }
-        }
-        for (int j = nonNullCursor; j < cset.length(); j++) {
-          cset.set(nonNullCursor++, Address.zero());
-        }
       }
+
+      for (int i = cursor; i < cset.length(); i++) {
+        cset.set(i, Address.zero());
+      }
+//        int nonNullCursor = 0;
+//        for (int j = 0; j < cset.length(); j++) {
+//          Address a = cset.get(j);
+//          if (!a.isZero()) {
+//            cset.set(nonNullCursor++, a);
+//          }
+//        }
+//        for (int j = nonNullCursor; j < cset.length(); j++) {
+//          cset.set(nonNullCursor++, Address.zero());
+//        }
+//      }
 
     }
 

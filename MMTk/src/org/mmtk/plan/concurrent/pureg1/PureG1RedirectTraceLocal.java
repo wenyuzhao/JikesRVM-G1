@@ -39,7 +39,11 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
     return newObject;
   }
-
+//  @Inline
+//  public void processEdge(ObjectReference source, Address slot) {
+//    super.processEdge(source, slot);
+//    Region.Card.updateCardMeta(source);
+//  }
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
     //VM.assertions._assert(VM.debugging.validRef(source));
@@ -109,6 +113,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
       ObjectReference newObject;
       if (Space.isInSpace(PureG1.MC, object)) {
         newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+        Region.Card.updateCardMeta(newObject);
       } else {
         newObject = super.traceObject(object);
       }
@@ -117,7 +122,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 //        VM.assertions._assert(VM.debugging.validRef(newObject));
 //        VM.assertions._assert(isLive(newObject));
 //      }
-      Region.Card.updateCardMeta(newObject);
+//      Region.Card.updateCardMeta(newObject);
       return newObject;
     //}
   }

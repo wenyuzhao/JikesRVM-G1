@@ -17,6 +17,7 @@ import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
@@ -63,6 +64,8 @@ public class PureG1Collector extends ConcurrentCollector {
   protected final PureG1RedirectTraceLocal redirectTrace = new PureG1RedirectTraceLocal(global().redirectTrace);
   //protected final Validation validationTrace = new Validation();
   protected TraceLocal currentTrace;
+  protected RemSet.Builder remSetBuilder = new RemSet.Builder(markTrace, PureG1.regionSpace);
+  protected RegionSpace.RegionIterator regionIterator = PureG1.regionSpace.new RegionIterator();
 
   /****************************************************************************
    *
@@ -140,7 +143,7 @@ public class PureG1Collector extends ConcurrentCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+//    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!global().markTrace.hasWork());
       currentTrace = markTrace;
@@ -165,19 +168,59 @@ public class PureG1Collector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == PureG1.EAGER_CLEANUP_BLOCKS) {
+//      if (rendezvous() == 0) {
+        //ConcurrentRemSetRefinement.lock.acquire();
+//      }
+//      rendezvous();
+      long start = VM.statistics.nanoTime();
+      PureG1.regionSpace.releaseZeroRegions(PureG1.relocationSet, false);
+      if (rendezvous() == 0) {
+        int cursor = 0;
+        for (int i = 0; i < PureG1.relocationSet.length(); i++) {
+          Address a = PureG1.relocationSet.get(i);
+          if (!a.isZero()) {
+            PureG1.relocationSet.set(cursor++, a);
+          }
+        }
+        while (cursor < PureG1.relocationSet.length()) {
+          PureG1.relocationSet.set(cursor++, Address.zero());
+        }
+        long delta = VM.statistics.nanoTime() - start;
+        Log.write("releaseZeroRegions: ");
+        Log.write(VM.statistics.nanosToMillis(delta));
+        Log.writeln(" ms");
+      }
+//      if (rendezvous() == 0) {
+        //ConcurrentRemSetRefinement.lock.release();
+//      }
+      rendezvous();
+      return;
+    }
+
+    if (phaseId == PureG1.CONSTRUCT_REMEMBERED_SETS) {
+      Address region;
+      while (!(region = PureG1.regionSpace.regionIterator.next()).isZero()) {
+        if (!Region.relocationRequired(region))
+          remSetBuilder.scanRegionForConstructingRemSets(region);
+      }
+      return;
+    }
+
     if (phaseId == PureG1.REDIRECT_PREPARE) {
       markTrace.completeTrace();
       // ConcurrentRemSetRefinement.lock is already locked
 
-      ConcurrentRemSetRefinement.refineAll();
-      rendezvous();
-      ConcurrentRemSetRefinement.refineHotCards();
+      ConcurrentRemSetRefinement.refineAllDirtyCards();
+//      ConcurrentRemSetRefinement.refineAll();
+//      rendezvous();
+//      ConcurrentRemSetRefinement.refineHotCards();
 
-      if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.finishCollectorRefinements();
-        ConcurrentRemSetRefinement.lock.release();
-      }
-      rendezvous();
+//      if (rendezvous() == 0) {
+//        ConcurrentRemSetRefinement.finishCollectorRefinements();
+//        //ConcurrentRemSetRefinement.lock.release();
+//      }
+//      rendezvous();
 
       currentTrace = redirectTrace;
       //redirectTrace.log = true;
@@ -189,34 +232,15 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.REMEMBERED_SETS) {
 
-      ConcurrentRemSetRefinement.refineAll();
-      rendezvous();
-      ConcurrentRemSetRefinement.refineHotCards();
+      ConcurrentRemSetRefinement.refineAllDirtyCards();
+//      ConcurrentRemSetRefinement.refineAll();
+//      rendezvous();
+//      ConcurrentRemSetRefinement.refineHotCards();
 
-      if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.finishCollectorRefinements();
-        ConcurrentRemSetRefinement.lock.release();
-      }
-      rendezvous();
-      /*if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.FilledRSBufferQueue.lock.acquire();
-      }
-      rendezvous();
-      ConcurrentRemSetRefinement.refineAll();
-      if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.HotCardsQueue.lock.acquire();
-      }
-      rendezvous();
-      ConcurrentRemSetRefinement.refineHotCards();
-      if (rendezvous() == 0) {
-        ConcurrentRemSetRefinement.finishCollectorRefinements();
-        ConcurrentRemSetRefinement.FilledRSBufferQueue.lock.release();
-        ConcurrentRemSetRefinement.HotCardsQueue.lock.release();
-      }
-      rendezvous();
-      //redirectTrace.processor.unionRemSets(PureG1.regionSpace, PureG1.relocationSet, false);
-      rendezvous();*/
-      //redirectTrace.remSetsProcessing = true;
+//      if (rendezvous() == 0) {
+//        ConcurrentRemSetRefinement.finishCollectorRefinements();
+//      }
+//      rendezvous();
       redirectTrace.processRemSets();
       return;
     }
@@ -308,6 +332,36 @@ public class PureG1Collector extends ConcurrentCollector {
   public void concurrentCollectionPhase(short phaseId) {
     //lock.acquire();
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId), getId());
+
+    if (phaseId == PureG1.CONCURRENT_CONSTRUCT_REMEMBERED_SETS) {
+      Address region;
+      while (!(region = PureG1.regionSpace.regionIterator.next()).isZero()) {
+        if (!Region.relocationRequired(region))
+          remSetBuilder.scanRegionForConstructingRemSets(region);
+        if (group.isAborted()) {
+          break;
+        }
+      }
+      if (rendezvous() == 0) {
+        continueCollecting = false;
+        if (!group.isAborted()) {
+          /* We are responsible for ensuring termination. */
+          if (Options.verbose.getValue() >= 2) Log.writeln("< requesting mutator flush >");
+          VM.collection.requestMutatorFlush();
+
+          if (Options.verbose.getValue() >= 2) Log.writeln("< mutators flushed >");
+
+          if (concurrentTraceComplete()) {
+            continueCollecting = Phase.notifyConcurrentPhaseComplete();
+          } else {
+            continueCollecting = true;
+            Phase.notifyConcurrentPhaseIncomplete();
+          }
+        }
+      }
+      rendezvous();
+      return;
+    }
 
     if (phaseId == PureG1.CONCURRENT_CLEANUP) {
       CONCURRENT_CLEANUP_TRIGGERED = true;

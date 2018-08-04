@@ -99,7 +99,9 @@ public class PureG1 extends Concurrent {
   //public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
   public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+  public static final short EAGER_CLEANUP_BLOCKS = Phase.createSimple("eager-cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
+  public static final short CONSTRUCT_REMEMBERED_SETS = Phase.createSimple("construct-remembered-sets");
 
   protected static final short preemptConcurrentCleanup = Phase.createComplex("preeempt-concurrent-cleanup", null,
       Phase.scheduleCollector(CLEANUP_BLOCKS));
@@ -107,6 +109,8 @@ public class PureG1 extends Concurrent {
   public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
       Phase.scheduleComplex(preemptConcurrentCleanup));
 
+  public static final short CONCURRENT_CONSTRUCT_REMEMBERED_SETS = Phase.createConcurrent("concurrent-construct-remembered-sets",
+      Phase.scheduleCollector(CONSTRUCT_REMEMBERED_SETS));
 
   //public static final short CONCURRENT_LOCK_MUTATORS = Phase.createConcurrent("flush-refinement-thread", Phase.scheduleMutator(FLUSH_MUTATOR));
   /*protected static final short concurrentLockMutators = Phase.createComplex("concurrent-lock-mutators", null,
@@ -127,6 +131,20 @@ public class PureG1 extends Concurrent {
     Phase.scheduleMutator  (REDIRECT_PREPARE),
     Phase.scheduleGlobal   (REDIRECT_PREPARE),
     Phase.scheduleCollector(REDIRECT_PREPARE),
+
+
+//      Phase.scheduleMutator(CONSTRUCT_REMEMBERED_SETS),
+      Phase.scheduleCollector(FINALIZABLE),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(EAGER_CLEANUP_BLOCKS),
+//      Phase.scheduleCollector(FINALIZABLE),
+//      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+////      Phase.scheduleCollector(REDIRECT_CLOSURE),
+//      Phase.scheduleCollector(EAGER_CLEANUP_BLOCKS),
+//      Phase.scheduleGlobal(CONSTRUCT_REMEMBERED_SETS),
+//      Phase.scheduleConcurrent(CONCURRENT_CONSTRUCT_REMEMBERED_SETS),
+
 
 
       /*Phase.scheduleMutator  (REMEMBERED_SETS),
@@ -151,7 +169,7 @@ public class PureG1 extends Concurrent {
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
+//    Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
@@ -190,18 +208,19 @@ public class PureG1 extends Concurrent {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleGlobal(RELEASE),
+
     //Phase.scheduleComplex  (refTypeClosurePhase),
       //Phase.scheduleComplex  (forwardPhase),
-//      Phase.scheduleCollector  (SOFT_REFS),
-//      Phase.scheduleGlobal     (CLOSURE),
-//      Phase.scheduleCollector  (CLOSURE),
-//      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector  (SOFT_REFS),
+      Phase.scheduleGlobal     (CLOSURE),
+      Phase.scheduleCollector  (CLOSURE),
+      Phase.scheduleCollector(WEAK_REFS),
 //      Phase.scheduleCollector(FINALIZABLE),
-//      Phase.scheduleGlobal   (CLOSURE),
-//      Phase.scheduleCollector(CLOSURE),
-//      Phase.scheduleCollector(PHANTOM_REFS),
-
+      Phase.scheduleGlobal   (CLOSURE),
+      Phase.scheduleCollector(CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleGlobal(RELEASE),
+      //Phase.scheduleGlobal(PAUSE_REFINEMENT_THREADS),
       /*Phase.scheduleCollector  (WEAK_REFS),
       //Phase.scheduleCollector  (FINALIZABLE),
       Phase.scheduleGlobal     (CLOSURE),
@@ -217,7 +236,10 @@ public class PureG1 extends Concurrent {
     //Phase.scheduleGlobal(RELEASE),
     //Phase.scheduleComplex(completeClosurePhase),
 
+//    Phase.scheduleGlobal(CONSTRUCT_REMEMBERED_SETS),
+//    Phase.scheduleConcurrent(CONCURRENT_CONSTRUCT_REMEMBERED_SETS),
     Phase.scheduleComplex  (relocationSetSelection),
+
 
     Phase.scheduleComplex  (relocationPhase),
 
@@ -246,6 +268,13 @@ public class PureG1 extends Concurrent {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.write("Global ");
+      Log.write(Phase.getName(phaseId));
+      Log.write(" total ");
+      Log.write(VM.statistics.nanosToMillis( VM.statistics.nanoTime() - startTime));
+      Log.writeln(" ms");
+    }
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
@@ -271,6 +300,9 @@ public class PureG1 extends Concurrent {
       }
 
       PauseTimePredictor.stopTheWorldStart();
+      startTime = VM.statistics.nanoTime();
+      ConcurrentRemSetRefinement.pause();
+      ConcurrentRemSetRefinement.relocationSetOnly = true;
       //VM.assertions._assert(false);
       //startTime = VM.statistics.nanoTime();
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
@@ -301,18 +333,25 @@ public class PureG1 extends Concurrent {
       return;
     }
 
+    if (phaseId == CONSTRUCT_REMEMBERED_SETS) {
+      regionSpace.regionIterator.reset();
+      return;
+    }
+
     if (phaseId == REDIRECT_PREPARE) {
-      startTime = VM.statistics.nanoTime();
+
 
 
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!stacksPrepared);
       //stacksPrepared = false;
+      ConcurrentRemSetRefinement.resume();
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.enqueueCurrentRSBuffer(false);
+        m.enqueueCurrentRSBuffer(true);
       }
-      ConcurrentRemSetRefinement.lock.acquire();
+      ConcurrentRemSetRefinement.pause();
+      //ConcurrentRemSetRefinement.lock.acquire();
       //ConcurrentRemSetRefinement.refineAll();
       //CardTable.assertAllCardsAreNotMarked();
 
@@ -329,7 +368,7 @@ public class PureG1 extends Concurrent {
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.enqueueCurrentRSBuffer(false);
       }
-      ConcurrentRemSetRefinement.lock.acquire();
+      //ConcurrentRemSetRefinement.lock.acquire();
       //ConcurrentRemSetRefinement.refineAll();
       //RemSet.noCSet = true;
       //super.collectionPhase(PREPARE);
@@ -355,6 +394,8 @@ public class PureG1 extends Concurrent {
     }
 
     if (phaseId == COMPLETE) {
+      ConcurrentRemSetRefinement.relocationSetOnly = false;
+      ConcurrentRemSetRefinement.resume();
       PauseTimePredictor.stopTheWorldEnd();
       super.collectionPhase(COMPLETE);
       currentGCKind = NOT_IN_GC;
@@ -401,7 +442,12 @@ public class PureG1 extends Concurrent {
   @Interruptible
   protected void spawnCollectorThreads(int numThreads) {
     super.spawnCollectorThreads(numThreads);
-    VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement());
+
+    //ConcurrentRemSetRefinement.NUM_WORKERS = numThreads;
+    int refineThreads = numThreads;// <= 2 ? 1 : numThreads >> 1;
+    for (int i = 0; i < refineThreads; i++) {
+      VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement(refineThreads));
+    }
   }
 
   @Override

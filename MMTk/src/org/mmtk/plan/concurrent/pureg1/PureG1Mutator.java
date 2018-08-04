@@ -146,7 +146,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == PureG1.PREPARE) {
-      //flushRememberedSets();
+//      enqueueCurrentRSBuffer(true);
       currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
       mc.reset();
@@ -173,12 +173,19 @@ public class PureG1Mutator extends ConcurrentMutator {
       VM.collection.prepareMutator(this);
       currentRemset = relocateRemset;
       mc.reset();
-      enqueueCurrentRSBuffer(false);
+//      enqueueCurrentRSBuffer(false);
       super.collectionPhase(PureG1.PREPARE, primary);
       //if (barrierActive) {
       //  Log.writeln("BarrierActive for mutator #", getId());
       //}
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
+      return;
+    }
+
+    if (phaseId == PureG1.CONSTRUCT_REMEMBERED_SETS) {
+      VM.collection.prepareMutator(this);
+//      currentRemset = relocateRemset;
+      mc.reset();
       return;
     }
 
@@ -202,7 +209,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     //enqueueCurrentRSBuffer();
     currentRemset.flush();
     mc.reset();
-    enqueueCurrentRSBuffer(false);
+//    enqueueCurrentRSBuffer(false);
     //cardBuf.flushLocal();
     assertRemsetsFlushed();
   }
@@ -226,20 +233,24 @@ public class PureG1Mutator extends ConcurrentMutator {
     //Log.writeln("done refinementLock.acquire #", getId());
     //refinementInProgress = true;
     //refinementLock.unlock();
-    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(remSetLogBuffer(), triggerConcurrentRefinement);
+//    Log.writeln("enqueueCurrentRSBuffer");
+    Address buf = remSetLogBuffer;
+    remSetLogBuffer = Address.zero();
+    remSetLogBufferCursor = 0;
+    ConcurrentRemSetRefinement.enqueueFilledRSBuffer(buf, triggerConcurrentRefinement);
     //refinementLock.broadcast();
     //refinementLock.lock();
     // refinementInProgress = false;
     //refinementLock.release();
     //if (remSetLogBufferCursor == 0) return;
-    remSetLogBuffer = Plan.metaDataSpace.acquire(1); //AddressArray.create(REMSET_LOG_BUFFER_SIZE);
-    remSetLogBufferCursor = 0;
+//    remSetLogBuffer = Plan.metaDataSpace.acquire(1); //AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+//    remSetLogBufferCursor = 0;
   }
 
   //static Monitor lock = VM.newLock("awewwenyu");
 
   @Inline
-  private void markAndEnqueueCard(Address card) {
+  public void markAndEnqueueCard(Address card) {
     /*if (VM.VERIFY_ASSERTIONS) {
       if (Space.isInSpace(PureG1.MC, card))
         VM.assertions._assert(!Region.relocationRequired(Region.of(card)));
@@ -309,14 +320,17 @@ public class PureG1Mutator extends ConcurrentMutator {
 //        markAndEnqueueCard(Region.Card.of(src));
 //      }
 //    }
-    Word x = VM.objectModel.objectStartRef(src).toWord();
-    Word y = VM.objectModel.objectStartRef(ref).toWord();
-    Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
+    if (!ref.isNull() && !src.isNull()) {
+      Word x = VM.objectModel.objectStartRef(src).toWord();
+      Word y = VM.objectModel.objectStartRef(ref).toWord();
+      Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
     //tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
-    tmp = ref.isNull() || src.isNull() ? Word.zero() : tmp;
-    if (!tmp.isZero() && Space.isInSpace(PureG1.MC, ref)) {
-      Region.Card.updateCardMeta(src);
-      markAndEnqueueCard(Region.Card.of(src));
+      //tmp = ref.isNull() || src.isNull() ? Word.zero() : tmp;
+      if (!tmp.isZero() && Space.isInSpace(PureG1.MC, ref)) {
+//      if (Space.isInSpace())
+//      Region.Card.updateCardMeta(src);
+        markAndEnqueueCard(Region.Card.of(src));
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
+import org.mmtk.plan.concurrent.pureg1.PureG1;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
@@ -167,7 +168,7 @@ public class Region {
 
   @Inline
   public static void register(Address block, boolean copy) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
     // Handle this block
     //blocksCountLock.acquire();
     //count += 1;
@@ -178,7 +179,7 @@ public class Region {
 
   @Inline
   public static void unregister(Address block) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
     //blocksCountLock.acquire();
     //count -= 1;
     //blocksCountLock.release();
@@ -542,7 +543,13 @@ public class Region {
         Log.write(", offsets ", Region.Card.getByte(Region.Card.anchors, Region.Card.hash(card)));
         Log.write(" ..< ", Region.Card.getByte(Region.Card.limits, Region.Card.hash(card)));
         Log.write(" in space: ");
-        Log.writeln(Space.getSpaceForAddress(card).getName());
+        Log.write(Space.getSpaceForAddress(card).getName());
+        if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
+          RegionSpace space = (RegionSpace)Space.getSpaceForAddress(card);
+          Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : " x ");
+          Log.write(Region.allocated(Region.of(card)) ? " alloc " : " x ");
+        }
+        Log.writeln();
       }
       do {
         //if (ref.isNull() || !Space.isMappedObject(ref)) break;
@@ -582,10 +589,17 @@ public class Region {
           currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
           //Log.writeln(" -> ", currentObjectEnd);
         } else {
-          //if (VM.VERIFY_ASSERTIONS) {
-            //if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
-            //VM.assertions._assert(VM.debugging.validRef(ref));
-          //}
+          if (VM.VERIFY_ASSERTIONS) {
+            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
+//              if (Region.relocationRequired(Region.of(card))) {
+//                VM.objectModel.dumpObject(ref);
+//              }
+//              Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : " x ");
+//              Log.write(Region.allocated(Region.of(card)) ? " alloc " : " x ");
+            }
+            if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
+            VM.assertions._assert(VM.debugging.validRef(ref));
+          }
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
           //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());
         }
@@ -668,7 +682,7 @@ public class Region {
 
   @Inline
   public static void linearScan(LinearScan scan, Address block) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
 
     Address end = getCursor(block);
 
@@ -689,12 +703,12 @@ public class Region {
         break;
       }
       /* Find the next object from the start address (dealing with alignment gaps, etc.) */
-      ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-      if (VM.VERIFY_ASSERTIONS) {
+      //ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+//      if (VM.VERIFY_ASSERTIONS) {
         /* Must be monotonically increasing */
-        VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
-      }
-      ref = next;
+//        VM.assertions._assert(next.toAddress().GT(ref.toAddress()));
+//      }
+      ref = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
     } while (true);
   }
 }

@@ -58,8 +58,14 @@ public final class RegionSpace extends Space {
   private static boolean allocAsMarked = false;
   private static final boolean HEADER_MARK_BIT = false;
   private Lock regionCounterLock = VM.newLock("regionCounterLock");
-  public int youngRegions = 0;
-  public int committedRegions = 0;
+  private int[] youngRegions = new int[] { 0 };
+  private int[] committedRegions = new int[] { 0 };
+
+  @Inline
+  public int youngRegions() { return youngRegions[0]; }
+
+  @Inline
+  public int committedRegions() { return committedRegions[0]; }
 
   @Uninterruptible
   private static class Header {
@@ -220,7 +226,7 @@ public final class RegionSpace extends Space {
   public void growSpace(Address start, Extent bytes, boolean newChunk) {
     if (newChunk) {
       Address chunk = Conversions.chunkAlign(start.plus(bytes), true);
-      if (VM.VERIFY_ASSERTIONS) Log.writeln("New Region ", chunk);
+//      if (VM.VERIFY_ASSERTIONS) Log.writeln("New Region ", chunk);
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Conversions.chunkAlign(start.plus(bytes), true).EQ(chunk));
       // MarkBlock.clearRegionMetadata(chunk);
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.EQ(EmbeddedMetaData.getMetaDataBase(chunk)));
@@ -293,10 +299,10 @@ public final class RegionSpace extends Space {
 
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.write("Block alloc ", region);
-      Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      Log.write("Block alloc ", region);
+//      Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
+//    }
 
     if (!region.isZero()) {
       if (Region.Card.isEnabled()) Region.Card.clearCardMetaForBlock(region);
@@ -307,10 +313,29 @@ public final class RegionSpace extends Space {
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.allocated(region));
       Region.register(region, copy);
 
-      regionCounterLock.acquire();
-      youngRegions++;
-      committedRegions++;
-      regionCounterLock.release();
+      /// youngRegions++;
+      {
+        Address youngRegionsPointer = ObjectReference.fromObject(youngRegions).toAddress();
+        int oldValue, newValue;
+        do {
+          oldValue = youngRegionsPointer.prepareInt();
+          newValue = oldValue + 1;
+        } while (!youngRegionsPointer.attempt(oldValue, newValue));
+      }
+      /// committedRegions++;
+      {
+        Address committedRegionsPointer = ObjectReference.fromObject(committedRegions).toAddress();
+        int oldValue, newValue;
+        do {
+          oldValue = committedRegionsPointer.prepareInt();
+          newValue = oldValue + 1;
+        } while (!committedRegionsPointer.attempt(oldValue, newValue));
+      }
+
+//      regionCounterLock.acquire();
+//      youngRegions++;
+//      committedRegions++;
+//      regionCounterLock.release();
     }
     /*if (VM.VERIFY_ASSERTIONS) {
       if (!region.isZero()) {
@@ -336,12 +361,31 @@ public final class RegionSpace extends Space {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(region));
-    regionCounterLock.acquire();
-    committedRegions--;
-    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
-      youngRegions--;
+    /// committedRegions--;
+    {
+      Address committedRegionsPointer = ObjectReference.fromObject(committedRegions).toAddress();
+      int oldValue, newValue;
+      do {
+        oldValue = committedRegionsPointer.prepareInt();
+        newValue = oldValue - 1;
+      } while (!committedRegionsPointer.attempt(oldValue, newValue));
     }
-    regionCounterLock.release();
+
+    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+      /// youngRegions--;
+      Address youngRegionsPointer = ObjectReference.fromObject(youngRegions).toAddress();
+      int oldValue, newValue;
+      do {
+        oldValue = youngRegionsPointer.prepareInt();
+        newValue = oldValue + 1;
+      } while (!youngRegionsPointer.attempt(oldValue, newValue));
+    }
+//    regionCounterLock.acquire();
+//    committedRegions--;
+//    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+//      youngRegions--;
+//    }
+//    regionCounterLock.release();
     Region.unregister(region);
 
     ((FreeListPageResource) pr).releasePages(region);
@@ -541,7 +585,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public int allocatedRegionsCount() {
-    return committedRegions;
+    return committedRegions();
   }
 
   @Inline
@@ -616,11 +660,40 @@ public final class RegionSpace extends Space {
     //}
   }
 
+  @Uninterruptible
+  public class RegionIterator {
+    Address region = Address.zero();
+    Lock lock = VM.newLock("RegionIteratorLock");
+    boolean completed = false;
+    public void reset() {
+      region = Address.zero();
+      completed = false;
+    }
+    public Address next() {
+      lock.acquire();
+      if (completed) {
+        region = Address.zero();
+      } else if (region.isZero()) {
+        region = firstBlock();
+      } else {
+        region = nextBlock(region);
+      }
+      if (region.isZero()) {
+        completed = true;
+      }
+      Address rtn = region;
+      lock.release();
+      return rtn;
+    }
+  }
+
+  public final RegionIterator regionIterator = new RegionIterator();
+
   @Inline
   public AddressArray snapshotBlocks(boolean nurseryOnly) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
-    int blocksCount = nurseryOnly ? youngRegions : committedRegions;
+    int blocksCount = nurseryOnly ? youngRegions() : committedRegions();
     if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
 
@@ -655,9 +728,11 @@ public final class RegionSpace extends Space {
       Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(1);
       block = nextBlock(block);
     }
-    regionCounterLock.acquire();
-    youngRegions = 0;
-    regionCounterLock.release();
+    /// youngRegions = 0;
+    youngRegions[0] = 0;
+//    regionCounterLock.acquire();
+//    youngRegions = 0;
+//    regionCounterLock.release();
   }
 
 
@@ -705,29 +780,46 @@ public final class RegionSpace extends Space {
 
     // select relocation blocks
     int availBlocks = ((int) (VM.activePlan.global().getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * Region.BLOCKS_IN_REGION;
-    final int usableBytesForCopying = availBlocks * Region.BYTES_IN_BLOCK;
+    int usableBytesForCopying = (int) (availBlocks * Region.BYTES_IN_BLOCK * 0.9);
+    int metaBytesPerRegion = 0;
+//    if (Region.Card.isEnabled()) {
+//      int metaPagesPerRegion = RemSet.PAGES_IN_PRT * RemSet.TOTAL_REGIONS + RemSet.REMSET_PAGES;
+//      metaBytesPerRegion = metaPagesPerRegion << Constants.LOG_BYTES_IN_PAGE;
+//      Log.writeln("metaBytesPerRegion=",metaBytesPerRegion);
+//    }
     int currentSize = 0;
     int relocationBlocks = 0;
 
     for (int i = 0; i < blocks.length(); i++) {
       int size = blockSizes.get(i).toInt();
       Address block = blocks.get(i);
-
       if (includeAllNursery && Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
         // Include
-      } else if (currentSize + size > usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
+        if (currentSize + size + metaBytesPerRegion >= usableBytesForCopying) {
+          blocks.set(i, Address.zero());
+          currentSize += metaBytesPerRegion;
+          continue;
+        }
+        currentSize += size + metaBytesPerRegion;
+        relocationBlocks++;
+      }
+    }
+    for (int i = 0; i < blocks.length(); i++) {
+      int size = blockSizes.get(i).toInt();
+      Address block = blocks.get(i);
+      if (block.isZero()) continue;
+      if (includeAllNursery && Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+        // Include
+        continue;
+      } else if (currentSize + size + metaBytesPerRegion >= usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
         //if (VM.VERIFY_ASSERTIONS) Log.writeln();
         blocks.set(i, Address.zero());
         continue;
       }
-
-      //if (VM.VERIFY_ASSERTIONS) Log.writeln(" relocate");
-
-      currentSize += size;
-      //if (!block.isZero())
-        //Region.setRelocationState(block, true);
+      currentSize += size + metaBytesPerRegion;
       relocationBlocks++;
     }
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(currentSize < usableBytesForCopying);
 
     // Return relocationSet array
     AddressArray relocationSet = AddressArray.create(relocationBlocks);
@@ -737,6 +829,10 @@ public final class RegionSpace extends Space {
       if (!block.isZero())
         relocationSet.set(cursor++, block);
     }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(cursor == relocationSet.length());
+//      Log.writeln("# of selected regions = ", cursor);
+//    }
 
     return relocationSet;
   }
@@ -798,6 +894,69 @@ public final class RegionSpace extends Space {
   @Inline
   private static int ceilDiv(int x, int y) {
     return (x + y - 1) / y;
+  }
+
+  @Inline
+  public void releaseZeroRegions(AddressArray relocationSet, boolean concurrent) {
+    int workers = VM.activePlan.collector().parallelWorkerCount();
+    int id = VM.activePlan.collector().getId();
+    if (concurrent) id -= workers;
+    int blocksToRelease = ceilDiv(relocationSet.length(), workers);
+
+    for (int i = 0; i < blocksToRelease; i++) {
+      int cursor = blocksToRelease * id + i;
+      if (cursor >= relocationSet.length()) break;
+      Address block = relocationSet.get(cursor);
+      if (block.isZero() || Region.usedSize(block) != 0 || Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt() != 0) {
+        continue;
+      }
+      relocationSet.set(cursor, Address.zero());
+      if (!block.isZero()) {
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(Region.relocationRequired(block));
+          Log.write("Block ", block);
+          Log.write(": ", Region.usedSize(block));
+          Log.write("/", Region.BYTES_IN_BLOCK);
+          Log.writeln(" released");
+        }
+        if (Region.Card.isEnabled()) {
+          Region.Card.clearCardMetaForBlock(block);
+          RemSet.removeRemsetForRegion(this, block);
+        }
+        this.release(block);
+      }
+    }
+
+//    int cursor = 0;
+//    for (int i = 0; i < relocationSet.length(); i++) {
+//      Address block = relocationSet.get(i);
+//      if (block.isZero() || Region.usedSize(block) != 0) {
+//        break;
+//      }
+//      relocationSet.set(cursor, Address.zero());
+//      if (!block.isZero()) {
+//        if (VM.VERIFY_ASSERTIONS) {
+//          //VM.assertions._assert(Region.relocationRequired(block));
+//          Log.write("Block ", block);
+//          Log.write(": ", Region.usedSize(block));
+//          Log.write("/", Region.BYTES_IN_BLOCK);
+//          Log.writeln(" released");
+//        }
+//        if (Region.Card.isEnabled()) {
+//          Region.Card.clearCardMetaForBlock(block);
+//          RemSet.removeRemsetForRegion(this, block);
+//        }
+//        this.release(block);
+//      }
+//      cursor += 1;
+//    }
+//    int cursor2 = 0;
+//    while (cursor < relocationSet.length()) {
+//      relocationSet.set(cursor2++, relocationSet.get(cursor++));
+//    }
+//    while (cursor2 < relocationSet.length()) {
+//      relocationSet.set(cursor2++, Address.zero());
+//    }
   }
 
   @Inline
