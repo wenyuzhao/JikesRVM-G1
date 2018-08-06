@@ -163,11 +163,11 @@ public class PureG1 extends Concurrent {
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),*/
-    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-    Phase.scheduleCollector(REDIRECT_CLOSURE),
+//    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+//    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-    Phase.scheduleCollector(REDIRECT_CLOSURE),
+//    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+//    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(WEAK_REFS),
 //    Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
@@ -268,13 +268,13 @@ public class PureG1 extends Concurrent {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.write("Global ");
-      Log.write(Phase.getName(phaseId));
-      Log.write(" total ");
-      Log.write(VM.statistics.nanosToMillis( VM.statistics.nanoTime() - startTime));
-      Log.writeln(" ms");
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      Log.write("Global ");
+//      Log.write(Phase.getName(phaseId));
+//      Log.write(" total ");
+//      Log.write(VM.statistics.nanosToMillis( VM.statistics.nanoTime() - startTime));
+//      Log.writeln(" ms");
+//    }
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
@@ -290,13 +290,13 @@ public class PureG1 extends Concurrent {
       //PureG1.stacksPrepared = false;
       if (currentGCKind != 0) {
         // FULL_GC
-        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: FULL_GC]");
+//        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: FULL_GC]");
       } else if (!GENERATIONAL || regionSpace.heapWastePercent(true) >= Options.g1HeapWastePercent.getValue()) {
         currentGCKind = MIXED_GC;
-        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: MIXED_GC]");
+//        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: MIXED_GC]");
       } else {
         currentGCKind = YOUNG_GC;
-        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: YOUNG_GC]");
+//        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: YOUNG_GC]");
       }
 
       PauseTimePredictor.stopTheWorldStart();
@@ -348,7 +348,8 @@ public class PureG1 extends Concurrent {
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.enqueueCurrentRSBuffer(true);
+        m.dropCurrentRSBuffer();
+//        m.enqueueCurrentRSBuffer(true);
       }
       ConcurrentRemSetRefinement.pause();
       //ConcurrentRemSetRefinement.lock.acquire();
@@ -366,7 +367,8 @@ public class PureG1 extends Concurrent {
       VM.activePlan.resetMutatorIterator();
       PureG1Mutator m;
       while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.enqueueCurrentRSBuffer(false);
+        m.dropCurrentRSBuffer();
+//        m.enqueueCurrentRSBuffer(false);
       }
       //ConcurrentRemSetRefinement.lock.acquire();
       //ConcurrentRemSetRefinement.refineAll();
@@ -448,6 +450,8 @@ public class PureG1 extends Concurrent {
     for (int i = 0; i < refineThreads; i++) {
       VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement(refineThreads));
     }
+
+//    Region.dumpMeta();
   }
 
   @Override

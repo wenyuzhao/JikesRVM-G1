@@ -136,7 +136,6 @@ public abstract class ConcurrentCollector extends SimpleCollector {
       return;
     }
 
-    Log.writeln("###Conc Phase ", phaseId);
     Log.write("Concurrent phase ");
     Log.write(Phase.getName(phaseId));
     Log.writeln(" not handled.");

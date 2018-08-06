@@ -440,10 +440,10 @@ public abstract class Phase {
 
     if (primary) {
       /* Only allow concurrent collection if we are not collecting due to resource exhaustion */
-      if (VM.VERIFY_ASSERTIONS) {
-        if (!Plan.isInternalTriggeredCollection()) Log.writeln("[isInternalTriggeredCollection=true]");
-        if (Plan.isEmergencyCollection()) Log.writeln("[isEmergencyCollection=true]");
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        if (!Plan.isInternalTriggeredCollection()) Log.writeln("[isInternalTriggeredCollection=true]");
+//        if (Plan.isEmergencyCollection()) Log.writeln("[isEmergencyCollection=true]");
+//      }
       allowConcurrentPhase = Plan.isInternalTriggeredCollection() && !Plan.isEmergencyCollection();
 
       /* First phase will be even, so we say we are odd here so that the next phase set is even*/
@@ -484,13 +484,7 @@ public abstract class Phase {
           if (logDetails) Log.writeln(" as Global...");
           if (primary) {
             if (VM.DEBUG) VM.debugging.globalPhase(phaseId,true);
-            long start = VM.statistics.nanoTime();
             plan.collectionPhase(phaseId);
-            Log.write("Global    ");
-            Log.write(getName(phaseId));
-            Log.write(" ");
-            Log.write(VM.statistics.nanosToMillis(VM.statistics.nanoTime() - start));
-            Log.writeln(" ms");
             if (VM.DEBUG) VM.debugging.globalPhase(phaseId,false);
           }
           break;
@@ -500,15 +494,7 @@ public abstract class Phase {
         case SCHEDULE_COLLECTOR: {
           if (logDetails) Log.writeln(" as Collector...");
           if (VM.DEBUG) VM.debugging.collectorPhase(phaseId,order,true);
-          long start = VM.statistics.nanoTime();
           collector.collectionPhase(phaseId, primary);
-
-            Log.write("Collector ");
-            Log.write(getName(phaseId));
-            Log.write(" ");
-            Log.write(VM.statistics.nanosToMillis(VM.statistics.nanoTime() - start));
-            Log.writeln(" ms");
-
           if (VM.DEBUG) VM.debugging.collectorPhase(phaseId,order,false);
           break;
         }
@@ -520,13 +506,7 @@ public abstract class Phase {
           MutatorContext mutator;
           while ((mutator = VM.activePlan.getNextMutator()) != null) {
             if (VM.DEBUG) VM.debugging.mutatorPhase(phaseId,mutator.getId(),true);
-            long start = VM.statistics.nanoTime();
             mutator.collectionPhase(phaseId, primary);
-            Log.write("[Mutator]   ");
-            Log.write(getName(phaseId));
-            Log.write(" ");
-            Log.write(VM.statistics.nanosToMillis(VM.statistics.nanoTime() - start));
-            Log.writeln(" ms");
             if (VM.DEBUG) VM.debugging.mutatorPhase(phaseId,mutator.getId(),false);
           }
           break;

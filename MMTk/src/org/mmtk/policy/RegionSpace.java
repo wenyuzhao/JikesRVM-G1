@@ -155,6 +155,13 @@ public final class RegionSpace extends Space {
     private static boolean setLiveBit(Address address, boolean set, boolean atomic) {
       Word oldValue, newValue;
       Address liveWord = getLiveWordAddress(address);
+//      if (VM.VERIFY_ASSERTIONS) {
+//        Address chunk = EmbeddedMetaData.getMetaDataBase(address);
+//        Address markMetaStart = chunk.plus(Region.MARKING_METADATA_START);
+//        Address markMetaEnd = markMetaStart.plus(Region.MARKING_METADATA_EXTENT);
+//        VM.assertions._assert(liveWord.GE(markMetaStart));
+//        VM.assertions._assert(liveWord.LT(markMetaEnd));
+//      }
       Word mask = getMask(address, true);
       if (atomic) {
         do {
@@ -182,8 +189,10 @@ public final class RegionSpace extends Space {
     }
     @Inline
     private static Address getLiveWordAddress(Address address) {
-      Address rtn = EmbeddedMetaData.getMetaDataBase(address);
-      Address liveWordAddress = rtn.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
+      Address chunk = EmbeddedMetaData.getMetaDataBase(address);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.NE(Region.of(address)));
+      address = address.minus(Region.BYTES_IN_BLOCK * Region.METADATA_BLOCKS_PER_REGION);
+      Address liveWordAddress = chunk.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
       //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
       return liveWordAddress;
     }
@@ -223,6 +232,7 @@ public final class RegionSpace extends Space {
   }
 
   @Override
+  @Inline
   public void growSpace(Address start, Extent bytes, boolean newChunk) {
     if (newChunk) {
       Address chunk = Conversions.chunkAlign(start.plus(bytes), true);
@@ -251,7 +261,7 @@ public final class RegionSpace extends Space {
   private void prepare() {
     if (HEADER_MARK_BIT) {
       Header.increaseMarkState();
-      Log.writeln("MarkState ", Header.markState);
+//      Log.writeln("MarkState ", Header.markState);
     } else {
       // Clear marking data
       for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
@@ -293,6 +303,7 @@ public final class RegionSpace extends Space {
    * @return the pointer into the alloc table containing usable blocks, {@code null}
    *  if no usable blocks are available
    */
+  @Inline
   public Address getSpace(boolean copy) {
     // Allocate
     Address region = acquire(Region.PAGES_IN_BLOCK);
@@ -377,7 +388,7 @@ public final class RegionSpace extends Space {
       int oldValue, newValue;
       do {
         oldValue = youngRegionsPointer.prepareInt();
-        newValue = oldValue + 1;
+        newValue = oldValue - 1;
       } while (!youngRegionsPointer.attempt(oldValue, newValue));
     }
 //    regionCounterLock.acquire();
@@ -430,10 +441,10 @@ public final class RegionSpace extends Space {
     //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
     writeMarkState(object);
     //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-      if (HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+//      if (HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
+//    }
   }
 
   /**
@@ -499,38 +510,34 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean processNode) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
+//        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         return newObject;
       } else {
         long time = VM.statistics.nanoTime();
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
         PauseTimePredictor.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
-        if (VM.VERIFY_ASSERTIONS) {
-          VM.assertions._assert(ForwardingWord.isForwarded(object));
-          VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(newObject));
-          if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
-        }
-        if (VM.VERIFY_ASSERTIONS) {
-          //Log.write("Forward ", object);
-          //Log.writeln(" => ", newObject);
-        }
+//        if (VM.VERIFY_ASSERTIONS) {
+//          VM.assertions._assert(ForwardingWord.isForwarded(object));
+//          VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(newObject));
+//          if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
+//        }
         writeMarkState(newObject);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         trace.processNode(newObject);
         return newObject;
       }
     } else {
-      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-      if (testAndMark(object)) {
-        //Log.writeln("EvaMark ", object);
-        if (processNode) trace.processNode(object);
+//      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+      if (processNode && testAndMark(object)) {
+//        //Log.writeln("EvaMark ", object);
+        trace.processNode(object);
       }
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
+//      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;
     }
   }
@@ -554,6 +561,7 @@ public final class RegionSpace extends Space {
     return HEADER_MARK_BIT ? Header.isMarked(object) : MarkBitMap.isMarked(object);
   }
 
+  @Inline
   private void writeMarkState(ObjectReference object) {
     if (HEADER_MARK_BIT)
       Header.writeMarkState(object);
@@ -562,10 +570,12 @@ public final class RegionSpace extends Space {
     // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
   }
 
+  @Inline
   private static boolean testAndMark(ObjectReference object) {
     return HEADER_MARK_BIT ? Header.testAndMark(object) : MarkBitMap.testAndMark(object);
   }
 
+  @Inline
   public float heapWastePercent(boolean oldGenerationOnly) {
     int usedSize = 0;
     int totalRegions = 0;
@@ -610,16 +620,16 @@ public final class RegionSpace extends Space {
 
   @Inline
   public Address nextBlock(Address block) {
-    if (VM.VERIFY_ASSERTIONS) {
-      //VM.assertions._assert(!contiguous);
-      if (!(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (Region.indexOf(block) >= 0 && Region.indexOf(block) < Region.BLOCKS_IN_REGION))) {
-        Log.write("Invalid block ", block);
-        Log.write(" at region ", EmbeddedMetaData.getMetaDataBase(block));
-        Log.write(" with index ", Region.indexOf(block));
-        Log.writeln(Region.isAligned(block) ? " aligned" : " not aligned");
-      }
-      VM.assertions._assert(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (Region.indexOf(block) >= 0 && Region.indexOf(block) < Region.BLOCKS_IN_REGION));
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      //VM.assertions._assert(!contiguous);
+//      if (!(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (Region.indexOf(block) >= 0 && Region.indexOf(block) < Region.BLOCKS_IN_REGION))) {
+//        Log.write("Invalid block ", block);
+//        Log.write(" at region ", EmbeddedMetaData.getMetaDataBase(block));
+//        Log.write(" with index ", Region.indexOf(block));
+//        Log.writeln(Region.isAligned(block) ? " aligned" : " not aligned");
+//      }
+//      VM.assertions._assert(block.EQ(EmbeddedMetaData.getMetaDataBase(block)) || (Region.indexOf(block) >= 0 && Region.indexOf(block) < Region.BLOCKS_IN_REGION));
+//    }
     int i = block.EQ(EmbeddedMetaData.getMetaDataBase(block)) ? 0 : Region.indexOf(block) + 1;
     Address region = EmbeddedMetaData.getMetaDataBase(block);
     if (i >= Region.BLOCKS_IN_REGION) {
@@ -646,10 +656,10 @@ public final class RegionSpace extends Space {
 
   @Inline
   private Address getNextRegion(Address region) {
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(!region.isZero());
-      VM.assertions._assert(EmbeddedMetaData.getMetaDataBase(region).EQ(region));
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(!region.isZero());
+//      VM.assertions._assert(EmbeddedMetaData.getMetaDataBase(region).EQ(region));
+//    }
     /*if (contiguous) {
       Address nextRegion = region.plus(EmbeddedMetaData.BYTES_IN_REGION);
       Address end = ((FreeListPageResource) pr).getHighWater();
@@ -665,10 +675,12 @@ public final class RegionSpace extends Space {
     Address region = Address.zero();
     Lock lock = VM.newLock("RegionIteratorLock");
     boolean completed = false;
+    @Inline
     public void reset() {
       region = Address.zero();
       completed = false;
     }
+    @Inline
     public Address next() {
       lock.acquire();
       if (completed) {
@@ -694,7 +706,7 @@ public final class RegionSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
     int blocksCount = nurseryOnly ? youngRegions() : committedRegions();
-    if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
+//    if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
 
     // Initialize blocks array
@@ -853,6 +865,7 @@ public final class RegionSpace extends Space {
       sort(blocks, blockSizes, 0, blocks.length() - 1);
     }
 
+    @Inline
     private static void sort(AddressArray blocks, AddressArray blockSizes, int lo, int hi) {
       if (hi <= lo) return;
       int j = partition(blocks, blockSizes, lo, hi);
@@ -907,17 +920,17 @@ public final class RegionSpace extends Space {
       int cursor = blocksToRelease * id + i;
       if (cursor >= relocationSet.length()) break;
       Address block = relocationSet.get(cursor);
-      if (block.isZero() || Region.usedSize(block) != 0 || Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt() != 0) {
+      if (block.isZero() || Region.usedSize(block) != 0) {
         continue;
       }
       relocationSet.set(cursor, Address.zero());
       if (!block.isZero()) {
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(Region.relocationRequired(block));
-          Log.write("Block ", block);
-          Log.write(": ", Region.usedSize(block));
-          Log.write("/", Region.BYTES_IN_BLOCK);
-          Log.writeln(" released");
+//          Log.write("Block ", block);
+//          Log.write(": ", Region.usedSize(block));
+//          Log.write("/", Region.BYTES_IN_BLOCK);
+//          Log.writeln(" released");
         }
         if (Region.Card.isEnabled()) {
           Region.Card.clearCardMetaForBlock(block);
@@ -974,10 +987,10 @@ public final class RegionSpace extends Space {
       if (!block.isZero()) {
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(Region.relocationRequired(block));
-          Log.write("Block ", block);
-          Log.write(": ", Region.usedSize(block));
-          Log.write("/", Region.BYTES_IN_BLOCK);
-          Log.writeln(" released");
+//          Log.write("Block ", block);
+//          Log.write(": ", Region.usedSize(block));
+//          Log.write("/", Region.BYTES_IN_BLOCK);
+//          Log.writeln(" released");
         }
         if (Region.Card.isEnabled()) {
           Region.Card.clearCardMetaForBlock(block);

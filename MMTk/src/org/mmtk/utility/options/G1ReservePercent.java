@@ -19,7 +19,7 @@ public class G1ReservePercent extends org.vmutil.options.FloatOption {
   public G1ReservePercent() {
     super(Options.set, "G1 Reserve Percent",
           "Sets the percentage of reserve memory to keep free so as to reduce the risk of to-space overflows. The default is 10 percent.",
-          20f);
+          10f);
   }
 
   /**

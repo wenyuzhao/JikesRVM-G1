@@ -92,6 +92,8 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     return traceObject(object, true);
   }
 */
+  boolean traceFinalizables = false;
+
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
@@ -110,12 +112,23 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 //        VM.assertions._assert(VM.debugging.validRef(object));
 //      }
       Region.Card.updateCardMeta(object);
-      ObjectReference newObject;
+      ObjectReference newObject = object;
+
+
+
       if (Space.isInSpace(PureG1.MC, object)) {
-        newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+        if (traceFinalizables && !isLive(object)) {
+          Address region = Region.of(object);
+          Region.updateBlockAliveSize(region, object);
+          newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+        } else {
+          newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+        }
         Region.Card.updateCardMeta(newObject);
       } else {
-        newObject = super.traceObject(object);
+        if (traceFinalizables) {
+          newObject = super.traceObject(object);
+        }
       }
 
 //      if (VM.VERIFY_ASSERTIONS) {

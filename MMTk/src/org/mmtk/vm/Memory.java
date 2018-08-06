@@ -37,7 +37,8 @@ import org.vmmagic.pragma.*;
    *
    * @return The high bound of the memory that MMTk can allocate.
    */
-
+  @Inline
+  public abstract boolean attemptLong(Object object, Offset offset, long oldValue, long newValue);
   /**
    * Return the space associated with/reserved for the VM.  In the
    * case of Jikes RVM this is the boot image space.<p>

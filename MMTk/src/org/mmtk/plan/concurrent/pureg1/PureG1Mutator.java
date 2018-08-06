@@ -225,110 +225,47 @@ public class PureG1Mutator extends ConcurrentMutator {
   }
 
   @Inline
-  @Uninterruptible
+  public void dropCurrentRSBuffer() {
+    if (remSetLogBufferCursor != 0) {
+      remSetLogBufferCursor = 0;
+    }
+    if (!remSetLogBuffer.isZero()) {
+      Plan.metaDataSpace.release(remSetLogBuffer);
+      remSetLogBuffer = Address.zero();
+    }
+  }
+
+  @Inline
   public void enqueueCurrentRSBuffer(boolean triggerConcurrentRefinement) {
     if (remSetLogBufferCursor == 0) return;
-    //Log.writeln("try refinementLock.acquire #", getId());
-    //refinementLock.acquire();
-    //Log.writeln("done refinementLock.acquire #", getId());
-    //refinementInProgress = true;
-    //refinementLock.unlock();
-//    Log.writeln("enqueueCurrentRSBuffer");
+
     Address buf = remSetLogBuffer;
     remSetLogBuffer = Address.zero();
     remSetLogBufferCursor = 0;
     ConcurrentRemSetRefinement.enqueueFilledRSBuffer(buf, triggerConcurrentRefinement);
-    //refinementLock.broadcast();
-    //refinementLock.lock();
-    // refinementInProgress = false;
-    //refinementLock.release();
-    //if (remSetLogBufferCursor == 0) return;
-//    remSetLogBuffer = Plan.metaDataSpace.acquire(1); //AddressArray.create(REMSET_LOG_BUFFER_SIZE);
-//    remSetLogBufferCursor = 0;
   }
 
   //static Monitor lock = VM.newLock("awewwenyu");
 
   @Inline
   public void markAndEnqueueCard(Address card) {
-    /*if (VM.VERIFY_ASSERTIONS) {
-      if (Space.isInSpace(PureG1.MC, card))
-        VM.assertions._assert(!Region.relocationRequired(Region.of(card)));
-    }*/
-    //lock.lock();
     if (CardTable.attemptToMarkCard(card, true)) {
-      //if (card.EQ(Address.fromIntZeroExtend(0x68019200))) {
-        //Log.writeln("Mark card ", card);
-        //Log.writeln(" ", getId());
-      //}
-      //VM.assertions._assert(!(Plan.gcInProgress() && card.NE(Address.fromIntZeroExtend(0x68019400))));
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(remSetLogBufferCursor < REMSET_LOG_BUFFER_SIZE);
       remSetLogBuffer().plus(remSetLogBufferCursor << Constants.LOG_BYTES_IN_ADDRESS).store(card);
       remSetLogBufferCursor += 1;
-      // VM.assertions._assert(remSetLogBuffer.get(remSetLogBufferCursor - 1).NE(Address.fromIntZeroExtend(0x601ea600)));
       if (remSetLogBufferCursor >= REMSET_LOG_BUFFER_SIZE) {
-        //remSetLogBuffer = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
-        //remSetLogBufferCursor = 0;
         enqueueCurrentRSBuffer(true);
       }
     }
-
-    //lock.unlock();
-
   }
 
   @Inline
   private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
-    //VM.assertions._assert(src.isNull() || (VM.debugging.validRef(src) && Space.isMappedObject(src)));
-    //ObjectReference _oldRef = slot.loadObjectReference();
-    //VM.assertions._assert(_oldRef.isNull() || (VM.debugging.validRef(_oldRef) && Space.isMappedObject(_oldRef)));
-    //VM.assertions._assert(ref.isNull() || (VM.debugging.validRef(ref) && Space.isMappedObject(ref)));
-
-    /*if (VM.VERIFY_ASSERTIONS) {
-      //if (ref.isNull()) VM.assertions._assert(value.isZero());
-      //VM.assertions._assert(!Plan.gcInProgress());
-      if (!value.isZero() && Space.isInSpace(PureG1.MC, value) && !Region.allocated(Region.of(value))) {
-        Log.write(src);
-        Log.write(".", slot);
-        Log.write(" = ");
-        Log.writeln(value);
-        //VM.objectModel.dumpObject(src);
-        //VM.objectModel.dumpObject(ref);
-        Log.write("Use of dead object ", ref);
-        Log.writeln(", which is in released block ", Region.of(value));
-        VM.assertions._assert(false);
-      }
-    }*/
-    /*if (PureG1.log) {
-      Log.write(src);
-      Log.write(".", slot);
-      Log.write(" = ");
-      Log.writeln(value);
-    }*/
-    //Log.write(src);
-    //Log.write(".", slot);
-    //Log.write(" = ");
-    //Log.writeln(ref);
-//    Address value = VM.objectModel.objectStartRef(ref);
-//    if (!src.isNull() && !slot.isZero() && !ref.isNull() && !value.isZero()) {
-//      Word tmp = slot.toWord().xor(value.toWord());
-//      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
-//      tmp = ref.isNull() ? Word.zero() : tmp;
-//      if (tmp.isZero()) return;
-//      if (Space.isInSpace(PureG1.MC, value)) {
-//        Region.Card.updateCardMeta(src);
-//        markAndEnqueueCard(Region.Card.of(src));
-//      }
-//    }
     if (!ref.isNull() && !src.isNull()) {
       Word x = VM.objectModel.objectStartRef(src).toWord();
       Word y = VM.objectModel.objectStartRef(ref).toWord();
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
-    //tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
-      //tmp = ref.isNull() || src.isNull() ? Word.zero() : tmp;
       if (!tmp.isZero() && Space.isInSpace(PureG1.MC, ref)) {
-//      if (Space.isInSpace())
-//      Region.Card.updateCardMeta(src);
+        Region.Card.updateCardMeta(src);
         markAndEnqueueCard(Region.Card.of(src));
       }
     }
@@ -394,6 +331,7 @@ public class PureG1Mutator extends ConcurrentMutator {
     Address srcCursor = src.toAddress().plus(srcOffset);
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
+    boolean containsCrossRegionPointer = false;
     while (cursor.LT(limit)) {
 //      ObjectReference oldValue, newValue;
 //      do {
@@ -403,9 +341,21 @@ public class PureG1Mutator extends ConcurrentMutator {
 
       ObjectReference element = srcCursor.loadObjectReference();
       cursor.store(element);
-      checkCrossRegionPointer(dst, cursor, element);
+      if (!containsCrossRegionPointer) {
+        if (!element.isNull()) {
+          Word x = VM.objectModel.objectStartRef(dst).toWord();
+          Word y = VM.objectModel.objectStartRef(element).toWord();
+          Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
+          if (!tmp.isZero() && Space.isInSpace(PureG1.MC, element)) {
+            containsCrossRegionPointer = true;
+          }
+        }
+      }
       cursor = cursor.plus(BYTES_IN_ADDRESS);
       srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
+    }
+    if (containsCrossRegionPointer) {
+      markAndEnqueueCard(Region.Card.of(dst));
     }
     return true;
   }

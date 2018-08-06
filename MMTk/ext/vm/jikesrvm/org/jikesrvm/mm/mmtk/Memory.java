@@ -47,6 +47,12 @@ import org.vmmagic.unboxed.Offset;
   private static final int LOG_BYTES_IN_PAGE_LIE = 12;
 
   @Override
+  @Inline
+  public boolean attemptLong(Object object, Offset offset, long oldValue, long newValue) {
+    return Magic.attemptLong(object, offset, oldValue, newValue);
+  }
+
+  @Override
   protected boolean getHeapLayout32Bit() {
     return HeapLayoutConstants.HEAP_LAYOUT == HeapLayoutConstants.HEAP_LAYOUT_32BIT;
   }

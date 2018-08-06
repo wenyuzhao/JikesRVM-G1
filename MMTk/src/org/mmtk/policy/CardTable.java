@@ -23,8 +23,8 @@ public class CardTable {
 
   static {
     int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
-    TOTAL_CARDS = memorySize >> Region.Card.LOG_BYTES_IN_CARD;
-    cardTable = new int[TOTAL_CARDS >> Constants.LOG_BITS_IN_INT];
+    TOTAL_CARDS = memorySize >>> Region.Card.LOG_BYTES_IN_CARD;
+    cardTable = new int[TOTAL_CARDS >>> Constants.LOG_BITS_IN_INT];
     HOTNESS_TABLE_PAGES = RemSet.ceilDiv(TOTAL_CARDS, Constants.BYTES_IN_PAGE);
   }
 
@@ -32,7 +32,7 @@ public class CardTable {
   public static boolean increaseHotness(Address card) {
     if (cardHotnessTable.isZero()) cardHotnessTable = Plan.metaDataSpace.acquire(HOTNESS_TABLE_PAGES);
     final int index = hash(card);
-    final int intIndex = index >> 2;
+    final int intIndex = index >>> 2;
     final int byteIndex = index ^ (intIndex << 2);
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
     final Address hotnessPtr = cardHotnessTable.plus(intIndex << Constants.LOG_BYTES_IN_INT);
@@ -159,7 +159,7 @@ public class CardTable {
           }
         }
       }
-      //VM.assertions._assert(cardTable[i] == (int) 0);
+      VM.assertions._assert(cardTable[i] == (int) 0);
     }
   }
 }

@@ -31,8 +31,8 @@ public class RemSet {
     TOTAL_REGIONS = heapSize.rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
     rememberedSets = AddressArray.create(TOTAL_REGIONS);//new int[TOTAL_REGIONS][][];
     REMSET_PAGES = ceilDiv(TOTAL_REGIONS << Constants.LOG_BYTES_IN_ADDRESS, Constants.BYTES_IN_PAGE);
-    int cardsPerRegion = Region.BYTES_IN_BLOCK >> Region.Card.LOG_BYTES_IN_CARD;
-    int bytesInPRT = cardsPerRegion >> Constants.LOG_BITS_IN_BYTE;
+    int cardsPerRegion = Region.BYTES_IN_BLOCK >>> Region.Card.LOG_BYTES_IN_CARD;
+    int bytesInPRT = cardsPerRegion >>> Constants.LOG_BITS_IN_BYTE;
     INTS_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_INT);
     PAGES_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_PAGE);
   }
@@ -87,20 +87,19 @@ public class RemSet {
 
     @Inline
     static boolean contains(Address prt, Address card) {
-      int index = card.diff(Region.of(card)).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
+      int index = card.diff(Region.of(card)).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
       return getBit(prt, index);
     }
 
     @Inline
     static boolean insert(Address prt, Address card) {
-      int index = card.diff(Region.of(card)).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
-      //Address ptr = ObjectReference.fromObject(prt).toAddress().plus(index << Constants.LOG_BYTES_IN_INT);
+      int index = card.diff(Region.of(card)).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
       return attemptBitInBuffer(prt, index, true);
     }
 
     @Inline
     static boolean remove(Address prt, Address card) {
-      int index = card.diff(Region.of(card)).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
+      int index = card.diff(Region.of(card)).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
       return attemptBitInBuffer(prt, index, false);
     }
   }
@@ -193,21 +192,22 @@ public class RemSet {
     if (lock) unlock(region);
   }
 
-  /*
+
   @Inline
   private static void removeCard(Address region, Address card) {
-    int[] prt = preparePRT(region, card, false);
+    Address prt = preparePRT(region, card, false);
     if (prt == null) return;
-
-    // Insert card into the target PerRegionTable
-    int remSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-    if (PerRegionTable.remove(prt, card)) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!PerRegionTable.contains(prt, card));
-      // Decrease REMSET_SIZE
-      Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).store(remSetSize - 1);
-    }
+    PerRegionTable.remove(prt, card);
+//    if (PerRegionTable.remove(prt, card)) {
+//      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
+//      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+//      do {
+//        oldSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).prepareInt();
+//        newSize = oldSize + 1;
+//      } while (!sizePointer.attempt(oldSize, newSize));
+//    }
   }
-  */
+
 
 
   @Inline
@@ -236,7 +236,7 @@ public class RemSet {
     };
 
     LinearScan cardLinearScan = new LinearScan() {
-      @Override @Uninterruptible public void scan(ObjectReference object) {
+      @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
         if (!object.isNull() && redirectPointerTrace.isLive(object)) {
           //VM.scanning.scanObject(redirectPointerTransitiveClosure, object);
           //redirectPointerTrace.traceObject(object, true);
@@ -246,6 +246,7 @@ public class RemSet {
     };
 
     /** Scan all cards in remsets of collection regions */
+    @Inline
     public void processRemSets(AddressArray relocationSet, boolean concurrent, RegionSpace regionSpace) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
@@ -260,7 +261,7 @@ public class RemSet {
         if (region.isZero()) continue;
         final int totalRemSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
         if (totalRemSetSize == 0) continue;
-        int visitedCards = 0;
+//        int visitedCards = 0;
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
         // Iterate all its PRTs
         int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
@@ -273,27 +274,27 @@ public class RemSet {
           // Iterate all entries in prt
           for (int k = 0; k < INTS_IN_PRT; k++) {
             if (prt.plus(k << Constants.LOG_BYTES_IN_INT).loadInt() == 0) continue;
-            int cardIndexStart = (k << Constants.LOG_BITS_IN_INT);
-            for (int cardIndex = cardIndexStart; cardIndex < (cardIndexStart + Constants.BITS_IN_INT); cardIndex++) {
+            int cardIndexStart = k << Constants.LOG_BITS_IN_INT;
+            int cardIndexEnd = cardIndexStart + Constants.BITS_IN_INT;
+
+            for (int cardIndex = cardIndexStart; cardIndex < cardIndexEnd; cardIndex++) {
               if (!PerRegionTable.getBit(prt, cardIndex)) continue;
               Address card = currentRegion.plus(cardIndex << Region.Card.LOG_BYTES_IN_CARD);
               // This `card` is in rem-set of `region`
               if (!Space.isMappedAddress(card)) continue;
-              if (Space.isInSpace(regionSpace.getDescriptor(), card)) {
-//                if (VM.VERIFY_ASSERTIONS)
-//                  VM.assertions._assert(Region.of(card).NE(EmbeddedMetaData.getMetaDataBase(card)));
-                if (Region.relocationRequired(Region.of(card)))
-                  continue;
+              if (Space.isInSpace(regionSpace.getDescriptor(), card) && Region.relocationRequired(Region.of(card))) {
+                continue;
               }
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
-              visitedCards++;
+//              visitedCards++;
               long time = VM.statistics.nanoTime();
               Region.Card.linearScan(cardLinearScan, card, false);
-              PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
+              PauseTimePredictor.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
 //              if (visitedCards == totalRemSetSize) {
 //                Log.write("Region ", region);
 //                Log.write(" rsSize ", totalRemSetSize);
 //                Log.writeln(" visited ", visitedCards);
+//                return;
 //              }
 //              VM.assertions._assert(visitedCards <= totalRemSetSize);
               //if (visitedCards >= totalRemSetSize) {
@@ -301,7 +302,7 @@ public class RemSet {
               //}
               /*for (int l = 0; l < relocationSet.length(); l++) {
                 Address otherRegion = relocationSet.get(l);
-                if (otherRegion.NE(region)) {
+                if (!otherRegion.isZero() && otherRegion.NE(region)) {
                   removeCard(otherRegion, card);
                 }
               }*/
@@ -368,7 +369,7 @@ public class RemSet {
       for (int j = 0; j < relocationSet.length(); j++) {
         Address cRegion = relocationSet.get(j);
         if (cRegion.isZero()) continue;
-        int index = cRegion.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_BLOCK;
+        int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_BLOCK;
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {
           Plan.metaDataSpace.release(prtEntry.loadAddress());
@@ -452,6 +453,7 @@ public class RemSet {
 
     TransitiveClosure rsBuilderTC = new TransitiveClosure() {
       @Uninterruptible
+      @Inline
       public void processEdge(ObjectReference src, Address slot) {
         ObjectReference ref = slot.loadObjectReference();
         if (!ref.isNull() && Space.isInSpace(REGION_SPACE, ref)) {

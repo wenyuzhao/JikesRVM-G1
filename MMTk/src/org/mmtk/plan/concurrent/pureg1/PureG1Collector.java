@@ -168,12 +168,18 @@ public class PureG1Collector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == PureG1.FINALIZABLE) {
+      redirectTrace.traceFinalizables = true;
+      super.collectionPhase(phaseId, primary);
+      return;
+    }
+
     if (phaseId == PureG1.EAGER_CLEANUP_BLOCKS) {
 //      if (rendezvous() == 0) {
         //ConcurrentRemSetRefinement.lock.acquire();
 //      }
 //      rendezvous();
-      long start = VM.statistics.nanoTime();
+//      long start = VM.statistics.nanoTime();
       PureG1.regionSpace.releaseZeroRegions(PureG1.relocationSet, false);
       if (rendezvous() == 0) {
         int cursor = 0;
@@ -186,10 +192,10 @@ public class PureG1Collector extends ConcurrentCollector {
         while (cursor < PureG1.relocationSet.length()) {
           PureG1.relocationSet.set(cursor++, Address.zero());
         }
-        long delta = VM.statistics.nanoTime() - start;
-        Log.write("releaseZeroRegions: ");
-        Log.write(VM.statistics.nanosToMillis(delta));
-        Log.writeln(" ms");
+//        long delta = VM.statistics.nanoTime() - start;
+//        Log.write("releaseZeroRegions: ");
+//        Log.write(VM.statistics.nanosToMillis(delta));
+//        Log.writeln(" ms");
       }
 //      if (rendezvous() == 0) {
         //ConcurrentRemSetRefinement.lock.release();
@@ -247,7 +253,8 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       redirectTrace.completeTrace();
-      rendezvous();
+
+      redirectTrace.traceFinalizables = false;
       //redirectTrace.remSetsProcessing = false;
       //redirectTrace.processRoots();
       return;
@@ -331,7 +338,7 @@ public class PureG1Collector extends ConcurrentCollector {
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
     //lock.acquire();
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId), getId());
+//    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId), getId());
 
     if (phaseId == PureG1.CONCURRENT_CONSTRUCT_REMEMBERED_SETS) {
       Address region;

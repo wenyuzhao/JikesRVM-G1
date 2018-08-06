@@ -164,7 +164,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   }
   */
 
-  public static final int REMSET_LOG_BUFFER_SIZE = Constants.BYTES_IN_PAGE >> Constants.LOG_BYTES_IN_ADDRESS;
+  public static final int REMSET_LOG_BUFFER_SIZE = Constants.BYTES_IN_PAGE >>> Constants.LOG_BYTES_IN_ADDRESS;
   public static Monitor monitor;
   public static Lock lock = VM.newLock("RefineLock");
   public final int NUM_WORKERS;
@@ -285,7 +285,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       long time = VM.statistics.nanoTime();
       Region.Card.linearScan(cardLinearScan, card, false);
       if (Plan.gcInProgress())
-        PauseTimePredictor.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
+        PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
     }
   }
 
@@ -300,6 +300,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         } else {
           if (CardTable.attemptToMarkCard(card, false)) {
             processCard(card);
+//            Region.Card.clearCardMeta(card);
           }
         }
       }
@@ -312,7 +313,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
 //    if (concurrent) id -= workers;
-    int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >> Region.Card.LOG_BYTES_IN_CARD;
+    int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
     int cardsToClear = RemSet.ceilDiv(totalCards, workers);
 
     for (int i = 0; i < cardsToClear; i++) {
@@ -324,6 +325,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 //      if (!CardTable.cardIsMarked(c)) {
         if (CardTable.attemptToMarkCard(c, false)) {
           processCard(c);
+//          Region.Card.clearCardMeta(c);
         }
 //      };
     }
@@ -433,7 +435,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       pauseMonitor.unlock();
     }
     void pause() {
-      Log.writeln("=== PAUSE ===");
+//      Log.writeln("=== PAUSE ===");
       // Request a block
       pauseMonitor.lock();
       paused = 0;
@@ -441,13 +443,13 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       //pauseMonitor.broadcast();
       pauseMonitor.unlock();
       // Wait for all thread blocked
-      Log.writeln("Wait for blocked");
+//      Log.writeln("Wait for blocked");
       pausedMonitor.lock();
       while (paused < NUM_WORKERS) {
         pausedMonitor.await();
       }
       pausedMonitor.unlock();
-      Log.writeln("All refine threads blocked");
+//      Log.writeln("All refine threads blocked");
       //VM.assertions.fail("");
     }
     void resume() {
