@@ -1930,8 +1930,11 @@ public final class RVMThread extends ThreadContext {
       if (!isBlocked()) {
         break;
       }
+      if (!hadReallyBlocked)
+        org.mmtk.utility.statistics.LatencyTimer.mutatorPause(getId());
+      hadReallyBlocked = true;
       if (traceReallyBlock) {
-        hadReallyBlocked = true;
+//        hadReallyBlocked = true;
         VM.sysWriteln("Thread #", threadSlot,
                       " is really blocked with status ",
                       READABLE_EXEC_STATUS[getExecStatus()]);
@@ -1958,6 +1961,7 @@ public final class RVMThread extends ThreadContext {
     // we're about to unblock, so indicate to the world that we're running
     // again.
     setExecStatus(IN_JAVA);
+    if (hadReallyBlocked) org.mmtk.utility.statistics.LatencyTimer.mutatorResume(getId());
     // let everyone know that we're back to executing code
     isBlocking = false;
     // deal with requests that came up while we were blocked.

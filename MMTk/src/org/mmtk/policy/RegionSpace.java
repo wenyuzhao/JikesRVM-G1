@@ -853,8 +853,10 @@ public final class RegionSpace extends Space {
   public static void markRegionsAsRelocate(AddressArray regions) {
     for (int i = 0; i < regions.length(); i++) {
       Address region = regions.get(i);
-      if (!region.isZero())
+      if (!region.isZero()) {
+//        Log.writeln("Relocate ", region);
         Region.setRelocationState(region, true);
+      }
     }
   }
 
@@ -925,13 +927,13 @@ public final class RegionSpace extends Space {
       }
       relocationSet.set(cursor, Address.zero());
       if (!block.isZero()) {
-        if (VM.VERIFY_ASSERTIONS) {
-          VM.assertions._assert(Region.relocationRequired(block));
+//        if (VM.VERIFY_ASSERTIONS) {
+//          VM.assertions._assert(Region.relocationRequired(block));
 //          Log.write("Block ", block);
 //          Log.write(": ", Region.usedSize(block));
 //          Log.write("/", Region.BYTES_IN_BLOCK);
 //          Log.writeln(" released");
-        }
+//        }
         if (Region.Card.isEnabled()) {
           Region.Card.clearCardMetaForBlock(block);
           RemSet.removeRemsetForRegion(this, block);

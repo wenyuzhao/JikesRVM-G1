@@ -29,6 +29,7 @@ import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.utility.statistics.LatencyTimer;
 import org.mmtk.utility.statistics.Timer;
 import org.mmtk.utility.statistics.Stats;
 import org.mmtk.vm.VM;
@@ -783,6 +784,8 @@ public abstract class Plan {
     // Start statistics
     insideHarness = true;
     Stats.startAll();
+
+    if (LatencyTimer.ENABLED) LatencyTimer.start();
   }
 
   /**
@@ -794,6 +797,10 @@ public abstract class Plan {
    */
   @Interruptible
   public static void harnessEnd()  {
+    if (LatencyTimer.ENABLED) {
+      LatencyTimer.stop();
+      LatencyTimer.dump();
+    }
     Stats.stopAll();
     insideHarness = false;
   }

@@ -196,7 +196,7 @@ public class RemSet {
   @Inline
   private static void removeCard(Address region, Address card) {
     Address prt = preparePRT(region, card, false);
-    if (prt == null) return;
+    if (prt.isZero()) return;
     PerRegionTable.remove(prt, card);
 //    if (PerRegionTable.remove(prt, card)) {
 //      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);

@@ -237,8 +237,11 @@ public class PureG1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == PureG1.REMEMBERED_SETS) {
-
+//      Region.Card.LOG = true;
+      Region.Card.DISABLE_DYNAMIC_HASH_OFFSET = true;
       ConcurrentRemSetRefinement.refineAllDirtyCards();
+      Region.Card.DISABLE_DYNAMIC_HASH_OFFSET = false;
+//      Region.Card.LOG = false;
 //      ConcurrentRemSetRefinement.refineAll();
 //      rendezvous();
 //      ConcurrentRemSetRefinement.refineHotCards();

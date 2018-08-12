@@ -336,7 +336,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       HotCardsQueue.clear();
     }
     if (rendezvousID == 1 || workers == 1) {
-
       CardTable.clearAllHotness();
     }
     VM.activePlan.collector().rendezvous();
