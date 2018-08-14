@@ -4,6 +4,7 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.options.MaxGCPauseMillis;
 import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -16,7 +17,14 @@ import org.vmmagic.unboxed.Offset;
 @Uninterruptible
 public class PauseTimePredictor {
   public static float VFixed = 100000000f, U = 24536f, S = 729f, C = 42f; // Nanoseconds
-  public static final int EXPECTED_PAUSE_TIME = 200 * 1000000; // Nanoseconds
+  @Inline
+  private static final int EXPECTED_PAUSE_TIME() {
+    return Options.maxGCPauseMillis.getValue() * 1000000; // Nanoseconds
+  }
+
+  static {
+    Options.maxGCPauseMillis = new MaxGCPauseMillis();
+  }
 
   public static float gcCost(int d, int rsSize, int liveBytes) {
 //    float VFixed = liveBytes * a + b;
@@ -153,6 +161,7 @@ public class PauseTimePredictor {
 //      Log.flush();
 //    }
     int rsSize = 0, liveBytes = 0;
+    int expectedPauseTime = EXPECTED_PAUSE_TIME();
 
     if (gcKind == PureG1.YOUNG_GC) {
       // cset only contains young regions
@@ -173,7 +182,7 @@ public class PauseTimePredictor {
 //          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
 //          Log.writeln(" relocate");
 //        }
-        if (gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
+        if (gcCost(dirtyCards, newRSSize, newLiveBytes) > expectedPauseTime) {
           break;
         } else {
           cursor += 1;
@@ -216,7 +225,7 @@ public class PauseTimePredictor {
 //          Log.writeln(" relocate");
 //        }
 //        boolean isNurseryRegion = Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0;
-        if (/*!isNurseryRegion &&*/ gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
+        if (/*!isNurseryRegion &&*/ gcCost(dirtyCards, newRSSize, newLiveBytes) > expectedPauseTime) {
 //          cset.set(i, Address.zero());
           break;
         } else {

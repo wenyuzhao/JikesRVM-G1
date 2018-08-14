@@ -18,8 +18,9 @@ public class CardTable {
   static final int HOTNESS_TABLE_PAGES;
   static final byte HOTNESS_THRESHOLD = 4;
   static final int[] cardTable;
-  static int[] dirtyCards = new int[] { 0 };
+  static final int[] dirtyCards = new int[] { 0 };
   static Address cardHotnessTable = Address.zero();
+  static final Lock cardHotnessTableLock = VM.newLock("cardHotnessTableLock");
 
   static {
     int memorySize = VM.HEAP_END.diff(VM.HEAP_START).toInt();
@@ -30,11 +31,16 @@ public class CardTable {
 
   @Inline
   public static boolean increaseHotness(Address card) {
-    if (cardHotnessTable.isZero()) cardHotnessTable = Plan.metaDataSpace.acquire(HOTNESS_TABLE_PAGES);
+    if (cardHotnessTable.isZero()) {
+      cardHotnessTableLock.acquire();
+      if (cardHotnessTable.isZero()) {
+        cardHotnessTable = Plan.metaDataSpace.acquire(HOTNESS_TABLE_PAGES);
+      }
+      cardHotnessTableLock.release();
+    }
     final int index = hash(card);
     final int intIndex = index >>> 2;
     final int byteIndex = index ^ (intIndex << 2);
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 4 && byteIndex == index % 4);
     final Address hotnessPtr = cardHotnessTable.plus(intIndex << Constants.LOG_BYTES_IN_INT);
     int oldValue, newValue;
     byte newHotness;
@@ -47,13 +53,6 @@ public class CardTable {
       newHotness = (byte) (oldHotness + 1);
       newValue = oldValue & ~(0xff << ((3 - byteIndex) << 3)); // Drop the target byte
       newValue |= (newHotness << ((3 - byteIndex) << 3)); // Set new byte
-      /*if (VM.VERIFY_ASSERTIONS) {
-        if (byteIndex == 0) VM.assertions._assert((oldValue << 8) == (newValue << 8));
-        if (byteIndex == 1) VM.assertions._assert((oldValue << 16) == (newValue << 16) && (oldValue >>> 24) == (newValue >>> 24));
-        if (byteIndex == 2) VM.assertions._assert((oldValue << 24) == (newValue << 24) && (oldValue >>> 16) == (newValue >>> 16));
-        if (byteIndex == 3) VM.assertions._assert((oldValue >>> 8) == (newValue >>> 8));
-        VM.assertions._assert(newHotness == (byte) ((newValue << (byteIndex << 3)) >>> 24));
-      }*/
     } while (!hotnessPtr.attempt(oldValue, newValue));
     return newHotness > HOTNESS_THRESHOLD;
   }
@@ -71,7 +70,7 @@ public class CardTable {
 
   @Inline
   private static int hash(Address card) {
-    return card.diff(VM.HEAP_START).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
+    return card.diff(VM.HEAP_START).toWord().rsha(Region.Card.LOG_BYTES_IN_CARD).toInt();
   }
 
   @Inline

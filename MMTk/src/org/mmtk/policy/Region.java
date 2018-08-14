@@ -3,6 +3,7 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.concurrent.pureg1.PureG1;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
@@ -238,9 +239,9 @@ public class Region {
 //      VM.assertions._assert(isAligned(block));
 //    }
     Address region = EmbeddedMetaData.getMetaDataBase(block);
-    double index = block.diff(region.plus(BLOCKS_START_OFFSET)).toInt() / BYTES_IN_BLOCK;
+    int index = block.diff(region.plus(BLOCKS_START_OFFSET)).toWord().rshl(LOG_BYTES_IN_BLOCK).toInt();
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index == (int) index);
-    return (int) index;
+    return index;
   }
 
   @Inline
@@ -573,29 +574,30 @@ public class Region {
       Address cursor = Region.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
+      int currentSpace = Space.getSpaceForAddress(card).getDescriptor();
 
       //VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
       //VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
-      if (LOG) {
-        lock.acquire();
-        Log.write("Linear scan card ", card);
-        Log.write(", range ", Region.Card.getCardAnchor(card));
-        Log.write(" ..< ", Region.Card.getCardLimit(card));
-        Log.write(", offsets ", Region.Card.getByte(Region.Card.anchors, Region.Card.hash(card)));
-        Log.write(" ..< ", Region.Card.getByte(Region.Card.limits, Region.Card.hash(card)));
-        Log.write(" in space: ");
-        Log.writeln(Space.getSpaceForAddress(card).getName());
-        if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
-          Log.write("G1 Region ", Region.of(card));
-          Log.writeln(" limit=", Region.getCursor(Region.of(card)));
-//          RegionSpace space = (RegionSpace)Space.getSpaceForAddress(card);
-//          Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : " x ");
-//          Log.write(Region.allocated(Region.of(card)) ? " alloc " : " x ");
-        }
-//        Log.writeln();
-        lock.release();
-      }
+//      if (LOG) {
+//        lock.acquire();
+//        Log.write("Linear scan card ", card);
+//        Log.write(", range ", Region.Card.getCardAnchor(card));
+//        Log.write(" ..< ", Region.Card.getCardLimit(card));
+//        Log.write(", offsets ", Region.Card.getByte(Region.Card.anchors, Region.Card.hash(card)));
+//        Log.write(" ..< ", Region.Card.getByte(Region.Card.limits, Region.Card.hash(card)));
+//        Log.write(" in space: ");
+//        Log.writeln(Space.getSpaceForAddress(card).getName());
+//        if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
+//          Log.write("G1 Region ", Region.of(card));
+//          Log.writeln(" limit=", Region.getCursor(Region.of(card)));
+////          RegionSpace space = (RegionSpace)Space.getSpaceForAddress(card);
+////          Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : " x ");
+////          Log.write(Region.allocated(Region.of(card)) ? " alloc " : " x ");
+//        }
+////        Log.writeln();
+//        lock.release();
+//      }
       do {
         //if (ref.isNull() || !Space.isMappedObject(ref)) break;
 
@@ -634,42 +636,56 @@ public class Region {
           currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
           //Log.writeln(" -> ", currentObjectEnd);
         } else {
-          if (!VM.debugging.validRef(ref)) {
-            lock.acquire();
-            Log.write(Space.getSpaceForAddress(card).getName());
-            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
-              Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : "  _ ");
-              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
-            }
-            VM.objectModel.dumpObject(ref);
-            Log.flush();
-            lock.release();
-            VM.assertions.fail("");
-          }
+//          if (!VM.debugging.validRef(ref)) {
+//            lock.acquire();
+//            Log.write(Space.getSpaceForAddress(card).getName());
+//            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
+//              Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : "  _ ");
+//              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
+//            }
+//            VM.objectModel.dumpObject(ref);
+//            Log.flush();
+//            lock.release();
+//            VM.assertions.fail("");
+//          }
           Word oldStatus = VM.objectModel.readAvailableBitsWord(ref);
           //if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC && Region.relocationRequired(Region.of(card))) {
           //  Word oldStatus = VM.objectModel.prepareAvailableBits(ref);
           //}
-          if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC && DISABLE_DYNAMIC_HASH_OFFSET) {
+
+          if (currentSpace == PureG1.MC && ForwardingWord.isForwardedOrBeingForwarded(ref) && DISABLE_DYNAMIC_HASH_OFFSET) {
             VM.objectModel.writeAvailableBitsWord(ref, Word.zero());
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
           }
-          if (LOG) {
-            lock.acquire();
-
-            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
-              Log.write(Region.relocationRequired(Region.of(card)) ? "G1 reloc " : "G1  _ ");
-              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
-            }
-            VM.objectModel.dumpObject(ref);
-            Log.flush();
+//          if (LOG) {
+//            lock.acquire();
+//
+//            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
+//              Log.write(Region.relocationRequired(Region.of(card)) ? "G1 reloc " : "G1  _ ");
+//              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
+//            }
 //            VM.objectModel.dumpObject(ref);
-            if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
-            VM.assertions._assert(VM.debugging.validRef(ref));
-            lock.release();
-          }
+//            Log.flush();
+//            VM.objectModel.dumpObject(ref);
+//            if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
+//            VM.assertions._assert(VM.debugging.validRef(ref));
+//            lock.release();
+//          }
+//          if (!VM.debugging.validRef(ref)) {
+//            lock.acquire();
+//            Log.write(Space.getSpaceForAddress(card).getName());
+//            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC) {
+//              Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : "  _ ");
+//              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
+//            }
+//            Log.flush();
+//            VM.objectModel.dumpObject(ref);
+//            Log.flush();
+//            lock.release();
+//            VM.assertions.fail("");
+//          }
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
-          if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.MC && DISABLE_DYNAMIC_HASH_OFFSET) {
+          if (currentSpace == PureG1.MC && ForwardingWord.isForwardedOrBeingForwarded(ref) && DISABLE_DYNAMIC_HASH_OFFSET) {
             VM.objectModel.writeAvailableBitsWord(ref, oldStatus);
           }
           //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());

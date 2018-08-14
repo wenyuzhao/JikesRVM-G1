@@ -63,9 +63,10 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 //    if (referenceIsRelocated) {
       Address block = Region.of(ref);
       if (block.NE(Region.of(source))) {
-        Region.Card.updateCardMeta(source);
+        //Region.Card.updateCardMeta(source);
         Address card = Region.Card.of(source);
         RemSet.addCard(block, card);
+//        ((PureG1Mutator) VM.activePlan.mutator()).checkCrossRegionPointer(source, slot, ref);
       }
     }
   }
@@ -111,24 +112,25 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 //        if (!VM.debugging.validRef(object)) Log.writeln(isLive(object) ? " live" : " dead");
 //        VM.assertions._assert(VM.debugging.validRef(object));
 //      }
-      Region.Card.updateCardMeta(object);
-      ObjectReference newObject = object;
+      if (!isLive(object)) Region.Card.updateCardMeta(object);
+      ObjectReference newObject;// = object;
 
 
 
       if (Space.isInSpace(PureG1.MC, object)) {
-        if (traceFinalizables && !isLive(object)) {
-          Address region = Region.of(object);
-          Region.updateBlockAliveSize(region, object);
+//        if (traceFinalizables) {
+          //Address region = Region.of(object);
+          //Region.updateBlockAliveSize(region, object);
           newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
-        } else {
-          newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
-        }
-        Region.Card.updateCardMeta(newObject);
+//        } else {
+//          newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
+//        }
+        if (newObject.toAddress().NE(object.toAddress()))
+          Region.Card.updateCardMeta(newObject);
       } else {
-        if (traceFinalizables) {
+//        if (traceFinalizables) {
           newObject = super.traceObject(object);
-        }
+//        }
       }
 
 //      if (VM.VERIFY_ASSERTIONS) {

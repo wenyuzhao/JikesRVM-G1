@@ -256,7 +256,6 @@ public class PureG1Collector extends ConcurrentCollector {
 
     if (phaseId == PureG1.REDIRECT_CLOSURE) {
       redirectTrace.completeTrace();
-
       redirectTrace.traceFinalizables = false;
       //redirectTrace.remSetsProcessing = false;
       //redirectTrace.processRoots();

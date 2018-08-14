@@ -18,8 +18,8 @@ import org.vmmagic.unboxed.*;
 
 @Uninterruptible
 public class RemSet {
-  private static Space space = Plan.metaDataSpace;
-  private static AddressArray rememberedSets; // Array<RemSet: Array<PRT>>
+  private final static Space space = Plan.metaDataSpace;
+  private final static AddressArray rememberedSets; // Array<RemSet: Array<PRT>>
   // private final static int PER_REGION_TABLE_BYTES;
   public final static int TOTAL_REGIONS;
   public final static int REMSET_PAGES;

@@ -259,7 +259,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   }
 
   @Inline
-  private void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
+  public void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
     if (!ref.isNull() && !src.isNull()) {
       Word x = VM.objectModel.objectStartRef(src).toWord();
       Word y = VM.objectModel.objectStartRef(ref).toWord();

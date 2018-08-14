@@ -55,6 +55,7 @@ public final class Options {
   public static IgnoreSystemGC ignoreSystemGC;
   public static LineReuseRatio lineReuseRatio;
   public static MarkSweepMarkBits markSweepMarkBits;
+  public static MaxGCPauseMillis maxGCPauseMillis;
   public static MetaDataLimit metaDataLimit;
   public static NoFinalizer noFinalizer;
   public static NoReferenceTypes noReferenceTypes;

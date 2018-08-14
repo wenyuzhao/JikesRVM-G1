@@ -416,7 +416,7 @@ public class PureG1 extends Concurrent {
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
     int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    if ((totalPages - usedPages) < (totalPages * Options.g1ReservePercent.getValue() / 100)) {
+    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);
@@ -424,11 +424,15 @@ public class PureG1 extends Concurrent {
 
   @Override
   protected boolean concurrentCollectionRequired() {
-//    return false;
     int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
     int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * Options.g1InitiatingHeapOccupancyPercent.getValue()));
+    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
   }
+
+  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
+  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
+
+  //public static final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
 
   /**
    * Return the number of pages reserved for copying.
@@ -473,6 +477,7 @@ public class PureG1 extends Concurrent {
    * copying.
    */
   @Override
+  @Inline
   public int getPagesUsed() {
     return super.getPagesUsed() + regionSpace.reservedPages();
   }
