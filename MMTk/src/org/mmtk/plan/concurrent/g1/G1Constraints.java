@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.pureg1;
+package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.concurrent.ConcurrentConstraints;
 import org.mmtk.policy.Region;
@@ -21,7 +21,7 @@ import org.vmmagic.pragma.Uninterruptible;
  * SemiSpace common constants.
  */
 @Uninterruptible
-public class PureG1Constraints extends ConcurrentConstraints {
+public class G1Constraints extends ConcurrentConstraints {
   @Override
   public boolean movesObjects() {
     return true;

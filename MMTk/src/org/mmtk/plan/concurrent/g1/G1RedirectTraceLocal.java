@@ -1,29 +1,26 @@
-package org.mmtk.plan.concurrent.pureg1;
+package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.*;
-import org.mmtk.utility.Log;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
-public class PureG1RedirectTraceLocal extends TraceLocal {
-  RemSet.Processor processor = new RemSet.Processor(this, PureG1.regionSpace);
+public class G1RedirectTraceLocal extends TraceLocal {
+  RemSet.Processor processor = new RemSet.Processor(this, G1.regionSpace);
 
-  public PureG1RedirectTraceLocal(Trace trace) {
-    super(PureG1.SCAN_REDIRECT, trace);
+  public G1RedirectTraceLocal(Trace trace) {
+    super(G1.SCAN_REDIRECT, trace);
   }
 
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(PureG1.MC, object)) {
-      return PureG1.regionSpace.isLive(object);
+    if (Space.isInSpace(G1.G1, object)) {
+      return G1.regionSpace.isLive(object);
     }
     return super.isLive(object);
   }
@@ -49,7 +46,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     //VM.assertions._assert(VM.debugging.validRef(source));
 //    boolean referenceIsRelocated = false;
 //    ObjectReference oldRef = slot.loadObjectReference();
-//    if (!oldRef.isNull() && Space.isInSpace(PureG1.MC, oldRef) && Region.relocationRequired(Region.of(oldRef))) {
+//    if (!oldRef.isNull() && Space.isInSpace(PureG1.G1, oldRef) && Region.relocationRequired(Region.of(oldRef))) {
 //      referenceIsRelocated = true;
 //    }
 
@@ -59,7 +56,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     //if (VM.VERIFY_ASSERTIONS) {
     //  VM.assertions._assert(ref.isNull() || Space.isMappedObject(ref));
     //  }
-    if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(PureG1.MC, ref)) {
+    if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(G1.G1, ref)) {
 //    if (referenceIsRelocated) {
       Address block = Region.of(ref);
       if (block.NE(Region.of(source))) {
@@ -101,7 +98,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
     if (object.isNull()) return object;
 
     /*if (remSetsProcessing) {
-      if (Space.isInSpace(PureG1.MC, object)) {
+      if (Space.isInSpace(PureG1.G1, object)) {
         // Mark only, not tracing children
         ObjectReference newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
         return newObject;
@@ -117,11 +114,11 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
 
 
-      if (Space.isInSpace(PureG1.MC, object)) {
+      if (Space.isInSpace(G1.G1, object)) {
 //        if (traceFinalizables) {
           //Address region = Region.of(object);
           //Region.updateBlockAliveSize(region, object);
-          newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, true);
+          newObject = G1.regionSpace.traceEvacuateObject(this, object, G1.ALLOC_MC, PauseTimePredictor.evacuationTimer);
 //        } else {
 //          newObject = PureG1.regionSpace.traceEvacuateObject(this, object, PureG1.ALLOC_MC, false);
 //        }
@@ -144,7 +141,7 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
 
   @Override
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
-    if (Space.isInSpace(PureG1.MC, object)) {
+    if (Space.isInSpace(G1.G1, object)) {
       return false;
     } else {
       return super.willNotMoveInCurrentCollection(object);
@@ -156,6 +153,6 @@ public class PureG1RedirectTraceLocal extends TraceLocal {
   //@Override
   @Inline
   public void processRemSets() {
-    processor.processRemSets(PureG1.relocationSet, false, PureG1.regionSpace);
+    processor.processRemSets(G1.relocationSet, false, G1.regionSpace, PauseTimePredictor.remSetCardScanningTimer);
   }
 }

@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.pureg1;
+package org.mmtk.plan.concurrent.g1;
 
 
 import org.mmtk.plan.*;
@@ -39,10 +39,10 @@ import org.vmmagic.unboxed.Word;
  * (through <code>trace</code> and the <code>collectionPhase</code>
  * method), and collection-time allocation (copying of objects).<p>
  *
- * See {@link PureG1} for an overview of the semi-space algorithm.
+ * See {@link G1} for an overview of the semi-space algorithm.
  *
- * @see PureG1
- * @see PureG1Mutator
+ * @see G1
+ * @see G1Mutator
  * @see StopTheWorldCollector
  * @see CollectorContext
  */
@@ -231,7 +231,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
       //tmp = ref.isNull() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
-      if (Space.isMappedAddress(value) && Space.isInSpace(PureG1.MC, value) && Region.allocated(Region.of(value))) {
+      if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {
         Address foreignBlock = Region.of(value);
         //if (Region.relocationRequired(foreignBlock) && Region.usedSize(foreignBlock) == 0) {
         //  return;
@@ -241,11 +241,11 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 //            processCard(card);
 //          }
 //        } else {
-//        if (!Space.isInSpace(PureG1.MC, source) ||
+//        if (!Space.isInSpace(PureG1.G1, source) ||
 //            (!relocationSetOnly && Region.metaDataOf(foreignBlock, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) ||
 //            (relocationSetOnly && (Region.relocationRequired(foreignBlock) || Region.relocationRequired(Region.of(source))))
 //        ) {
-//          if (Space.isInSpace(PureG1.MC, source) && relocationSetOnly && Region.relocationRequired(Region.of(source))) return;
+//          if (Space.isInSpace(PureG1.G1, source) && relocationSetOnly && Region.relocationRequired(Region.of(source))) return;
           RemSet.addCard(foreignBlock, card);
 //        }
 //        }
@@ -264,10 +264,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   @Inline
   public static void processCard(Address card) {
     Address region = Region.of(card);
-    if (!Space.isMappedAddress(card) || (Space.isInSpace(PureG1.MC, card) && !Region.allocated(region))) {
+    if (!Space.isMappedAddress(card) || (Space.isInSpace(G1.G1, card) && !Region.allocated(region))) {
       return;
     }
-//    if (relocationSetOnly && Space.isInSpace(PureG1.MC, card) && (!Region.allocated(region) || Region.relocationRequired(region))) {
+//    if (relocationSetOnly && Space.isInSpace(PureG1.G1, card) && (!Region.allocated(region) || Region.relocationRequired(region))) {
 //      return;
 //    }
     if (!Space.isInSpace(Plan.VM_SPACE, card)) {
@@ -275,7 +275,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 //        if (Region.Card.getCardAnchor(card).isZero()) {
 //          Log.write("Space ");
 //          Log.writeln(Space.getSpaceForAddress(card).getName());
-//          if (Space.isInSpace(PureG1.MC, card)) {
+//          if (Space.isInSpace(PureG1.G1, card)) {
 //            Log.writeln(Region.relocationRequired(region) ? "relocationRequired=true" : "relocationRequired=false");
 //            Log.writeln("Used size: ", Region.usedSize(region));
 //          }
@@ -283,7 +283,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 //        VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
 //      }
       long time = VM.statistics.nanoTime();
-      Region.Card.linearScan(cardLinearScan, card, false);
+      Region.Card.linearScan(cardLinearScan, G1.regionSpace, card, false);
       if (Plan.gcInProgress())
         PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
     }
@@ -522,7 +522,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   }
 
   @Inline
-  private static PureG1 global() {
-    return (PureG1) VM.activePlan.global();
+  private static G1 global() {
+    return (G1) VM.activePlan.global();
   }
 }

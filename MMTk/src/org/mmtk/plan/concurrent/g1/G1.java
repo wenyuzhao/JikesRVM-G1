@@ -10,12 +10,11 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.pureg1;
+package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.*;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
@@ -45,7 +44,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * performance properties of this plan.
  */
 @Uninterruptible
-public class PureG1 extends Concurrent {
+public class G1 extends Concurrent {
 
   /****************************************************************************
    *
@@ -54,7 +53,7 @@ public class PureG1 extends Concurrent {
 
   /** One of the two semi spaces that alternate roles at each collection */
   public static final RegionSpace regionSpace = new RegionSpace("g1", VMRequest.discontiguous());
-  public static final int MC = regionSpace.getDescriptor();
+  public static final int G1 = regionSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace redirectTrace = new Trace(metaDataSpace);
@@ -68,7 +67,7 @@ public class PureG1 extends Concurrent {
     Options.g1MaxNewSizePercent = new G1MaxNewSizePercent();
     Options.g1NewSizePercent = new G1NewSizePercent();
     Options.g1HeapWastePercent = new G1HeapWastePercent();
-    Region.Card.enable();
+    Region.USE_CARDS = true;
     regionSpace.makeAllocAsMarked();
     smallCodeSpace.makeAllocAsMarked();
     nonMovingSpace.makeAllocAsMarked();
@@ -253,7 +252,7 @@ public class PureG1 extends Concurrent {
   /**
    * Constructor
    */
-  public PureG1() {
+  public G1() {
     collection = _collection;
   }
   /****************************************************************************
@@ -346,8 +345,8 @@ public class PureG1 extends Concurrent {
       //stacksPrepared = false;
       ConcurrentRemSetRefinement.resume();
       VM.activePlan.resetMutatorIterator();
-      PureG1Mutator m;
-      while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+      G1Mutator m;
+      while ((m = (G1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.dropCurrentRSBuffer();
 //        m.enqueueCurrentRSBuffer(true);
       }
@@ -365,8 +364,8 @@ public class PureG1 extends Concurrent {
     if (phaseId == REMEMBERED_SETS) {
 
       VM.activePlan.resetMutatorIterator();
-      PureG1Mutator m;
-      while ((m = (PureG1Mutator) VM.activePlan.getNextMutator()) != null) {
+      G1Mutator m;
+      while ((m = (G1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.dropCurrentRSBuffer();
 //        m.enqueueCurrentRSBuffer(false);
       }
@@ -463,7 +462,7 @@ public class PureG1 extends Concurrent {
     Space space = Space.getSpaceForObject(object);
     // Nursery
     if (space == regionSpace) {
-      // We are never sure about objects in MC.
+      // We are never sure about objects in G1.
       // This is not very satisfying but allows us to use the sanity checker to
       // detect dangling pointers.
       return SanityChecker.UNSURE;
@@ -493,15 +492,15 @@ public class PureG1 extends Concurrent {
 
   @Override
   public boolean willNeverMove(ObjectReference object) {
-    if (Space.isInSpace(MC, object)) return false;
+    if (Space.isInSpace(G1, object)) return false;
     return super.willNeverMove(object);
   }
 
   @Override
   @Interruptible
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_MARK, PureG1MarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_REDIRECT, PureG1RedirectTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, G1MarkTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_REDIRECT, G1RedirectTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

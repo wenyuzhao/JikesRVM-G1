@@ -15,10 +15,8 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.plan.concurrent.pureg1.PauseTimePredictor;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
-import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.vm.Lock;
@@ -316,7 +314,7 @@ public final class RegionSpace extends Space {
 //    }
 
     if (!region.isZero()) {
-      if (Region.Card.isEnabled()) Region.Card.clearCardMetaForBlock(region);
+      if (Region.USE_CARDS) Region.Card.clearCardMetaForBlock(region);
       //int oldCount = MarkBlock.count();
       //if (MarkBlock.allocated(region)) {
       //  VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
@@ -476,76 +474,45 @@ public final class RegionSpace extends Space {
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
     ObjectReference rtn = object;
 
-    /*if (ForwardingWord.isForwarded(object)) {
-      rtn = getForwardingPointer(object);
-    }*/
-    /*if (VM.VERIFY_ASSERTIONS) {
-      if (ForwardingWord.isForwardedOrBeingForwarded(rtn)) {
-        Log.write(rtn);
-        Log.write(ForwardingWord.isForwarded(rtn) ? " isForwarded" : " isBeingForwarded");
-        Log.writeln(" -> ", getForwardingPointer(rtn));
-      }
-      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(rtn));
-      //VM.assertions._assert(VM.objectModel.getObjectEndAddress(rtn).LE(MarkBlock.getCursor(MarkBlock.of(rtn.toAddress()))));
-
-    }*/
-
     if (testAndMark(rtn)) {
-      //Log.writeln("Mark ", rtn);
       Address region = Region.of(rtn);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!rtn.isNull());
-      /*_lock.acquire();
-      MarkBlock.setUsedSize(region, MarkBlock.usedSize(region) + VM.objectModel.getSizeWhenCopied(rtn));
-      _lock.release();*/
       Region.updateBlockAliveSize(region, rtn);
       trace.processNode(rtn);
     }
 
-    // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-    //if (VM.VERIFY_ASSERTIONS  && HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(rtn));
-
-    //VM.assertions._assert(isLive(rtn));
     return rtn;
   }
 
+  @Uninterruptible
+  static public abstract class EvacuationTimer {
+    @Inline
+    public abstract void updateObjectEvacuationTime(ObjectReference ref, long time);
+  }
+
   @Inline
-  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, boolean processNode) {
+  public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationTimer evacuationTimer) {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-//        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         return newObject;
       } else {
         long time = VM.statistics.nanoTime();
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
-        PauseTimePredictor.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
-//        if (VM.VERIFY_ASSERTIONS) {
-//          VM.assertions._assert(ForwardingWord.isForwarded(object));
-//          VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(newObject));
-//          if (Plan.NEEDS_LOG_BIT_IN_HEADER) VM.assertions._assert(HeaderByte.isUnlogged(newObject));
-//        }
+        if (evacuationTimer != null) {
+          evacuationTimer.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
+        }
         writeMarkState(newObject);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
         trace.processNode(newObject);
         return newObject;
       }
     } else {
-//      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-      if (processNode && testAndMark(object)) {
-//        //Log.writeln("EvaMark ", object);
+      if (testAndMark(object)) {
         trace.processNode(object);
       }
-//      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
       return object;
     }
-  }
-
-  @Inline
-  public static ObjectReference getForwardingPointer(ObjectReference object) {
-    Word statusWord = VM.objectModel.readAvailableBitsWord(object);
-    return statusWord.and(Word.fromIntZeroExtend(ForwardingWord.FORWARDING_MASK).not()).toAddress().toObjectReference();
   }
 
   /**
@@ -567,7 +534,6 @@ public final class RegionSpace extends Space {
       Header.writeMarkState(object);
     else
       MarkBitMap.writeMarkState(object);
-    // if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(object));
   }
 
   @Inline
@@ -927,51 +893,13 @@ public final class RegionSpace extends Space {
       }
       relocationSet.set(cursor, Address.zero());
       if (!block.isZero()) {
-//        if (VM.VERIFY_ASSERTIONS) {
-//          VM.assertions._assert(Region.relocationRequired(block));
-//          Log.write("Block ", block);
-//          Log.write(": ", Region.usedSize(block));
-//          Log.write("/", Region.BYTES_IN_BLOCK);
-//          Log.writeln(" released");
-//        }
-        if (Region.Card.isEnabled()) {
+        if (Region.USE_CARDS) {
           Region.Card.clearCardMetaForBlock(block);
           RemSet.removeRemsetForRegion(this, block);
         }
         this.release(block);
       }
     }
-
-//    int cursor = 0;
-//    for (int i = 0; i < relocationSet.length(); i++) {
-//      Address block = relocationSet.get(i);
-//      if (block.isZero() || Region.usedSize(block) != 0) {
-//        break;
-//      }
-//      relocationSet.set(cursor, Address.zero());
-//      if (!block.isZero()) {
-//        if (VM.VERIFY_ASSERTIONS) {
-//          //VM.assertions._assert(Region.relocationRequired(block));
-//          Log.write("Block ", block);
-//          Log.write(": ", Region.usedSize(block));
-//          Log.write("/", Region.BYTES_IN_BLOCK);
-//          Log.writeln(" released");
-//        }
-//        if (Region.Card.isEnabled()) {
-//          Region.Card.clearCardMetaForBlock(block);
-//          RemSet.removeRemsetForRegion(this, block);
-//        }
-//        this.release(block);
-//      }
-//      cursor += 1;
-//    }
-//    int cursor2 = 0;
-//    while (cursor < relocationSet.length()) {
-//      relocationSet.set(cursor2++, relocationSet.get(cursor++));
-//    }
-//    while (cursor2 < relocationSet.length()) {
-//      relocationSet.set(cursor2++, Address.zero());
-//    }
   }
 
   @Inline
@@ -994,9 +922,8 @@ public final class RegionSpace extends Space {
 //          Log.write("/", Region.BYTES_IN_BLOCK);
 //          Log.writeln(" released");
         }
-        if (Region.Card.isEnabled()) {
+        if (Region.USE_CARDS) {
           Region.Card.clearCardMetaForBlock(block);
-          //RemSet.clearRemsetMedaForBlock(block);
         }
         this.release(block);
       }

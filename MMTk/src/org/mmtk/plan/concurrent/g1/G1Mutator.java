@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.pureg1;
+package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
@@ -18,13 +18,8 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.RegionAllocator;
-import org.mmtk.utility.deque.AddressDeque;
-import org.mmtk.vm.Lock;
-import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -41,15 +36,15 @@ import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
  * and per-mutator thread collection semantics (flushing and restoring
  * per-mutator allocator state).<p>
  *
- * See {@link PureG1} for an overview of the semi-space algorithm.
+ * See {@link G1} for an overview of the semi-space algorithm.
  *
- * @see PureG1
- * @see PureG1Collector
+ * @see G1
+ * @see G1Collector
  * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class PureG1Mutator extends ConcurrentMutator {
+public class G1Mutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
@@ -71,8 +66,8 @@ public class PureG1Mutator extends ConcurrentMutator {
   /**
    * Constructor
    */
-  public PureG1Mutator() {
-    mc = new RegionAllocator(PureG1.regionSpace, false);
+  public G1Mutator() {
+    mc = new RegionAllocator(G1.regionSpace, false);
     markRemset = new TraceWriteBuffer(global().markTrace);
     relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
@@ -102,7 +97,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == PureG1.ALLOC_MC) {
+    if (allocator == G1.ALLOC_MC) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return mc.alloc(bytes, align, offset);
     } else {
@@ -114,13 +109,13 @@ public class PureG1Mutator extends ConcurrentMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
-    if (allocator == PureG1.ALLOC_MC) {
+    if (allocator == G1.ALLOC_MC) {
       /*if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(Space.isInSpace(PureG1.MC, object));
+        VM.assertions._assert(Space.isInSpace(PureG1.G1, object));
         VM.assertions._assert(Region.allocated(Region.of(VM.objectModel.objectStartRef(object))));
         VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
       }*/
-      PureG1.regionSpace.postAlloc(object, bytes);
+      G1.regionSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -128,7 +123,7 @@ public class PureG1Mutator extends ConcurrentMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == PureG1.regionSpace) return mc;
+    if (space == G1.regionSpace) return mc;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -145,7 +140,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   public void collectionPhase(short phaseId, boolean primary) {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
-    if (phaseId == PureG1.PREPARE) {
+    if (phaseId == G1.PREPARE) {
 //      enqueueCurrentRSBuffer(true);
       currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
@@ -153,28 +148,28 @@ public class PureG1Mutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == PureG1.RELEASE) {
+    if (phaseId == G1.RELEASE) {
       mc.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == PureG1.REMEMBERED_SETS) {
+    if (phaseId == G1.REMEMBERED_SETS) {
       //Log.writeln("Mutator #", getId());
       return;
     }
 
-    if (phaseId == PureG1.RELOCATION_SET_SELECTION_PREPARE) {
+    if (phaseId == G1.RELOCATION_SET_SELECTION_PREPARE) {
       mc.reset();
       return;
     }
 
-    if (phaseId == PureG1.REDIRECT_PREPARE) {
+    if (phaseId == G1.REDIRECT_PREPARE) {
       VM.collection.prepareMutator(this);
       currentRemset = relocateRemset;
       mc.reset();
 //      enqueueCurrentRSBuffer(false);
-      super.collectionPhase(PureG1.PREPARE, primary);
+      super.collectionPhase(G1.PREPARE, primary);
       //if (barrierActive) {
       //  Log.writeln("BarrierActive for mutator #", getId());
       //}
@@ -182,20 +177,20 @@ public class PureG1Mutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == PureG1.CONSTRUCT_REMEMBERED_SETS) {
+    if (phaseId == G1.CONSTRUCT_REMEMBERED_SETS) {
       VM.collection.prepareMutator(this);
 //      currentRemset = relocateRemset;
       mc.reset();
       return;
     }
 
-    if (phaseId == PureG1.REDIRECT_RELEASE) {
+    if (phaseId == G1.REDIRECT_RELEASE) {
       mc.reset();
-      super.collectionPhase(PureG1.RELEASE, primary);
+      super.collectionPhase(G1.RELEASE, primary);
       return;
     }
 
-    if (phaseId == PureG1.COMPLETE) {
+    if (phaseId == G1.COMPLETE) {
       mc.reset();
 //      super.collectionPhase(PureG1.COMPLETE, primary);
       return;
@@ -264,7 +259,7 @@ public class PureG1Mutator extends ConcurrentMutator {
       Word x = VM.objectModel.objectStartRef(src).toWord();
       Word y = VM.objectModel.objectStartRef(ref).toWord();
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
-      if (!tmp.isZero() && Space.isInSpace(PureG1.MC, ref)) {
+      if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
         Region.Card.updateCardMeta(src);
         markAndEnqueueCard(Region.Card.of(src));
       }
@@ -276,17 +271,17 @@ public class PureG1Mutator extends ConcurrentMutator {
     if (ref.isNull()) return;
     //if (barrierActive) {
 
-    if (Space.isInSpace(PureG1.MC, ref)) PureG1.regionSpace.traceMarkObject(currentRemset, ref);
-    else if (Space.isInSpace(PureG1.IMMORTAL, ref)) PureG1.immortalSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(PureG1.LOS, ref)) PureG1.loSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(PureG1.NON_MOVING, ref)) PureG1.nonMovingSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(PureG1.SMALL_CODE, ref)) PureG1.smallCodeSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(PureG1.LARGE_CODE, ref)) PureG1.largeCodeSpace.traceObject(currentRemset, ref);
+    if (Space.isInSpace(G1.G1, ref)) G1.regionSpace.traceMarkObject(currentRemset, ref);
+    else if (Space.isInSpace(G1.IMMORTAL, ref)) G1.immortalSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(G1.LOS, ref)) G1.loSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(G1.NON_MOVING, ref)) G1.nonMovingSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(G1.SMALL_CODE, ref)) G1.smallCodeSpace.traceObject(currentRemset, ref);
+    else if (Space.isInSpace(G1.LARGE_CODE, ref)) G1.largeCodeSpace.traceObject(currentRemset, ref);
     //}
 
     /*if (VM.VERIFY_ASSERTIONS) {
       if (!ref.isNull() && !Plan.gcInProgress()) {
-        if (Space.isInSpace(PureG1.MC, ref)) VM.assertions._assert(PureG1.regionSpace.isLive(ref));
+        if (Space.isInSpace(PureG1.G1, ref)) VM.assertions._assert(PureG1.regionSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.IMMORTAL, ref)) VM.assertions._assert(PureG1.immortalSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.LOS, ref)) VM.assertions._assert(PureG1.loSpace.isLive(ref));
         else if (Space.isInSpace(PureG1.NON_MOVING, ref)) VM.assertions._assert(PureG1.nonMovingSpace.isLive(ref));
@@ -346,7 +341,7 @@ public class PureG1Mutator extends ConcurrentMutator {
           Word x = VM.objectModel.objectStartRef(dst).toWord();
           Word y = VM.objectModel.objectStartRef(element).toWord();
           Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
-          if (!tmp.isZero() && Space.isInSpace(PureG1.MC, element)) {
+          if (!tmp.isZero() && Space.isInSpace(G1.G1, element)) {
             containsCrossRegionPointer = true;
           }
         }
@@ -369,7 +364,7 @@ public class PureG1Mutator extends ConcurrentMutator {
   }
 
   @Inline
-  PureG1 global() {
-    return (PureG1) VM.activePlan.global();
+  G1 global() {
+    return (G1) VM.activePlan.global();
   }
 }

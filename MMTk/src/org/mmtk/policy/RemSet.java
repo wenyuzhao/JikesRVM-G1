@@ -1,16 +1,11 @@
 package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
-import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.plan.concurrent.pureg1.PauseTimePredictor;
-import org.mmtk.plan.concurrent.pureg1.PureG1Mutator;
 import org.mmtk.utility.Constants;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
-import org.mmtk.vm.Scanning;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -20,7 +15,6 @@ import org.vmmagic.unboxed.*;
 public class RemSet {
   private final static Space space = Plan.metaDataSpace;
   private final static AddressArray rememberedSets; // Array<RemSet: Array<PRT>>
-  // private final static int PER_REGION_TABLE_BYTES;
   public final static int TOTAL_REGIONS;
   public final static int REMSET_PAGES;
   public final static int PAGES_IN_PRT;
@@ -216,6 +210,12 @@ public class RemSet {
   }
 
   @Uninterruptible
+  static public abstract class RemSetCardScanningTimer {
+    @Inline
+    public abstract void updateRemSetCardScanningTime(long time);
+  }
+
+  @Uninterruptible
   public static class Processor {
     RegionSpace regionSpace;
     TraceLocal redirectPointerTrace;
@@ -247,7 +247,7 @@ public class RemSet {
 
     /** Scan all cards in remsets of collection regions */
     @Inline
-    public void processRemSets(AddressArray relocationSet, boolean concurrent, RegionSpace regionSpace) {
+    public void processRemSets(AddressArray relocationSet, boolean concurrent, RegionSpace regionSpace, RemSetCardScanningTimer remSetCardScanningTimer) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -288,24 +288,8 @@ public class RemSet {
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
 //              visitedCards++;
               long time = VM.statistics.nanoTime();
-              Region.Card.linearScan(cardLinearScan, card, false);
-              PauseTimePredictor.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
-//              if (visitedCards == totalRemSetSize) {
-//                Log.write("Region ", region);
-//                Log.write(" rsSize ", totalRemSetSize);
-//                Log.writeln(" visited ", visitedCards);
-//                return;
-//              }
-//              VM.assertions._assert(visitedCards <= totalRemSetSize);
-              //if (visitedCards >= totalRemSetSize) {
-              //  return;
-              //}
-              /*for (int l = 0; l < relocationSet.length(); l++) {
-                Address otherRegion = relocationSet.get(l);
-                if (!otherRegion.isZero() && otherRegion.NE(region)) {
-                  removeCard(otherRegion, card);
-                }
-              }*/
+              Region.Card.linearScan(cardLinearScan, regionSpace, card, false);
+              remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
             }
           }
         }

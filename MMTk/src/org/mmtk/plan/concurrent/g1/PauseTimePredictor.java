@@ -1,9 +1,9 @@
-package org.mmtk.plan.concurrent.pureg1;
+package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
-import org.mmtk.utility.Constants;
-import org.mmtk.utility.Log;
+import org.mmtk.policy.RegionSpace;
+import org.mmtk.policy.RemSet;
 import org.mmtk.utility.options.MaxGCPauseMillis;
 import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
@@ -28,7 +28,7 @@ public class PauseTimePredictor {
 
   public static float gcCost(int d, int rsSize, int liveBytes) {
 //    float VFixed = liveBytes * a + b;
-    return VFixed + (U * d) / (PureG1.parallelWorkers.activeWorkerCount()) + S * rsSize + C * liveBytes;
+    return VFixed + (U * d) / (G1.parallelWorkers.activeWorkerCount()) + S * rsSize + C * liveBytes;
   }
 
   /** Runtime information of current pause */
@@ -71,6 +71,25 @@ public class PauseTimePredictor {
       newValue = oldValue + VM.objectModel.getSizeWhenCopied(ref);
     } while (!VM.memory.attemptLong(CData, Offset.fromIntZeroExtend(8), oldValue, newValue));
   }
+
+  public static final RegionSpace.EvacuationTimer evacuationTimer = new RegionSpace.EvacuationTimer() {
+    @Override
+    @Inline
+    @Uninterruptible
+    public void updateObjectEvacuationTime(ObjectReference ref, long ns) {
+      PauseTimePredictor.updateObjectEvacuationTime(ref, ns);
+    }
+  };
+
+  public static final RemSet.RemSetCardScanningTimer remSetCardScanningTimer = new RemSet.RemSetCardScanningTimer() {
+    @Override
+    @Inline
+    @Uninterruptible
+    public void updateRemSetCardScanningTime(long ns) {
+      PauseTimePredictor.updateRemSetCardScanningTime(ns);
+    }
+  };
+
 //  private static int[] UData = new int[] { 0, 0 };
 //  private static int[] SData = new int[] { 0, 0 };
 //  private static int[] CData = new int[] { 0, 0 };
@@ -130,7 +149,7 @@ public class PauseTimePredictor {
     U = UData[1] == 0 ? U : (UData[0] / UData[1]);
     S = SData[1] == 0 ? S : (SData[0] / SData[1]);
     C = CData[1] == 0 ? C : (CData[0] / CData[1]);
-    float newFixedTime = totalTime - (U * dirtyCards) / (PureG1.parallelWorkers.activeWorkerCount()) - S * totalRSSize - C * totalLiveBytes;
+    float newFixedTime = totalTime - (U * dirtyCards) / (G1.parallelWorkers.activeWorkerCount()) - S * totalRSSize - C * totalLiveBytes;
 //    a = (float) fixedTime / totalLiveBytes;
     VFixed = (VFixed * 0.2f + newFixedTime * 0.8f);
     if (VFixed < 0) VFixed = 0;
@@ -163,7 +182,7 @@ public class PauseTimePredictor {
     int rsSize = 0, liveBytes = 0;
     int expectedPauseTime = EXPECTED_PAUSE_TIME();
 
-    if (gcKind == PureG1.YOUNG_GC) {
+    if (gcKind == G1.YOUNG_GC) {
       // cset only contains young regions
       // choose young regions
       int cursor = 0;
