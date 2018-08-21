@@ -3,9 +3,13 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.concurrent.g1.G1;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -157,6 +161,13 @@ public class RemSet {
 
   @Inline
   private static void addCard(Address region, Address card, boolean lock) {
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(G1.regionSpace.contains(region));
+//      VM.assertions._assert(!card.isZero());
+//      VM.assertions._assert(Space.isMappedAddress(card));
+//      if (Space.isInSpace(G1.G1, card))
+//        VM.assertions._assert(G1.regionSpace.contains(card));
+//    }
     if (lock) lock(region);
 
 //    if (Plan.metaDataSpace.availablePhysicalPages() < 2) {
@@ -188,21 +199,37 @@ public class RemSet {
 
 
   @Inline
-  private static void removeCard(Address region, Address card) {
+  public static void removeCard(Address region, Address card) {
+//    Log.writeln("Remove card ");
+    lock(region);
+//    Log.writeln("Remove card enter");
     Address prt = preparePRT(region, card, false);
-    if (prt.isZero()) return;
-    PerRegionTable.remove(prt, card);
-//    if (PerRegionTable.remove(prt, card)) {
-//      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
-//      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-//      do {
-//        oldSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).prepareInt();
-//        newSize = oldSize + 1;
-//      } while (!sizePointer.attempt(oldSize, newSize));
-//    }
+    if (prt.isZero()) {
+      unlock(region);
+      return;
+    }
+//    Log.writeln("Remove card attempt to remove");
+//    PerRegionTable.remove(prt, card);
+    if (PerRegionTable.remove(prt, card)) {
+//      Log.writeln("Remove card decrease rs size");
+      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
+      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      do {
+        oldSize = sizePointer.prepareInt();
+        if (oldSize == 0) break;
+        newSize = oldSize - 1;
+      } while (!sizePointer.attempt(oldSize, newSize));
+    }
+    unlock(region);
+//    Log.writeln("Remove card end");
   }
 
-
+  @Inline
+  public static boolean contains(Address region, Address card) {
+    Address prt = preparePRT(region, card, false);
+    if (prt.isZero()) return false;
+    return PerRegionTable.contains(prt, card);
+  }
 
   @Inline
   public static int ceilDiv(int a, int b) {
@@ -235,12 +262,55 @@ public class RemSet {
       }
     };
 
+    public TransitiveClosure validateTC = new TransitiveClosure() {
+      @Uninterruptible
+      public void processEdge(ObjectReference source, Address slot) {
+        ObjectReference ref = slot.loadObjectReference();
+        if (G1.regionSpace.contains(ref)) {
+          if ((VM.objectModel.readAvailableByte(ref) & 3) == 1) {
+            VM.objectModel.dumpObject(source);
+            VM.objectModel.dumpObject(ref);
+          }
+          VM.assertions._assert((VM.objectModel.readAvailableByte(ref) & 3) != 1);
+        }
+      }
+    };
+
+    static final Lock lock = VM.newLock("Testtdolc");
+
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
-        if (!object.isNull() && redirectPointerTrace.isLive(object)) {
-          //VM.scanning.scanObject(redirectPointerTransitiveClosure, object);
-          //redirectPointerTrace.traceObject(object, true);
-          redirectPointerTrace.processNode(object);
+//        if (object.isNull()) return;
+//        G1 g1p = (G1) VM.activePlan.global();
+//        if (g1p.nurseryGC()) {
+//          if (G1.regionSpace.contains(object)) {
+//            if ((VM.objectModel.readAvailableByte(object) & 3) == 1) {
+//              return;
+//            }
+//          }
+//        }
+//
+//        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//
+//        if (redirectPointerTrace.isLive(object)) {
+////          redirectPointerTrace.traceObject(object, true);
+//          redirectPointerTrace.processNode(object);
+//        } else if (!g1p.nurseryGC() && G1.regionSpace.contains(object)) {
+//          Word status = VM.objectModel.readAvailableBitsWord(object);
+//          if (VM.VERIFY_ASSERTIONS) {
+//            Log log = VM.activePlan.mutator().getLog();
+//            int s = status.toInt() & 3;
+//            if (!(s == 1 || s == 0)) {
+//              log.writeln(Space.getSpaceForObject(object).getName());
+//              VM.objectModel.dumpObject(object);
+//            }
+//            VM.assertions._assert(s == 1 || s == 0);
+//          }
+//          VM.objectModel.writeAvailableBitsWord(object, status.or(Word.one()));
+//        }
+
+        if (!object.isNull()) {
+          redirectPointerTrace.traceObject(object, true);
         }
       }
     };
@@ -252,6 +322,7 @@ public class RemSet {
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
       int regionsToVisit = ceilDiv(relocationSet.length(), workers);
+      final int REGION_SPACE = regionSpace.getDescriptor();
 
       for (int i = 0; i < regionsToVisit; i++) {
         //int cursor = regionsToVisit * id + i;
@@ -282,8 +353,9 @@ public class RemSet {
               Address card = currentRegion.plus(cardIndex << Region.Card.LOG_BYTES_IN_CARD);
               // This `card` is in rem-set of `region`
               if (!Space.isMappedAddress(card)) continue;
-              if (Space.isInSpace(regionSpace.getDescriptor(), card) && Region.relocationRequired(Region.of(card))) {
-                continue;
+              if (Space.isInSpace(REGION_SPACE, card)) {
+                if (Region.relocationRequired(Region.of(card))) continue;
+//                if (card.plus(Region.Card.BYTES_IN_CARD).GT());
               }
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
 //              visitedCards++;

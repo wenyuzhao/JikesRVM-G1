@@ -4,6 +4,7 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.options.MaxGCPauseMillis;
 import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
@@ -90,53 +91,6 @@ public class PauseTimePredictor {
     }
   };
 
-//  private static int[] UData = new int[] { 0, 0 };
-//  private static int[] SData = new int[] { 0, 0 };
-//  private static int[] CData = new int[] { 0, 0 };
-//
-//  @Inline public static void updateRefinementCardScanningTime(long ns) {
-//    Address totalMS = ObjectReference.fromObject(UData).toAddress();
-//    Address count = totalMS.plus(Constants.BYTES_IN_LONG);
-//    int oldValue, newValue;
-//    do {
-//      oldValue = totalMS.prepareInt();
-//      newValue = oldValue + (int) ns;
-//    } while (!totalMS.attempt(oldValue, newValue));
-//    do {
-//      oldValue = count.prepareInt();
-//      newValue = oldValue + 1;
-//    } while (!count.attempt(oldValue, newValue));
-//
-//  }
-//  @Inline public static void updateRemSetCardScanningTime(long ns) {
-//    Address totalMS = ObjectReference.fromObject(SData).toAddress();
-//    Address count = totalMS.plus(Constants.BYTES_IN_INT);
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(((int) ns) >= 0);
-//    int oldValue, newValue;
-//    do {
-//      oldValue = totalMS.prepareInt();
-//      newValue = oldValue + (int) ns;
-//    } while (!totalMS.attempt(oldValue, newValue));
-//    do {
-//      oldValue = count.prepareInt();
-//      newValue = oldValue + 1;
-//    } while (!count.attempt(oldValue, newValue));
-//  }
-//  @Inline public static void updateObjectEvacuationTime(ObjectReference ref, long ns) {
-//    Address totalMS = ObjectReference.fromObject(CData).toAddress();
-//    Address totalBytes = totalMS.plus(Constants.BYTES_IN_INT);
-//    int oldValue, newValue;
-//    do {
-//      oldValue = totalMS.prepareInt();
-//      newValue = oldValue + (int) ns;
-//    } while (!totalMS.attempt(oldValue, newValue));
-//    do {
-//      oldValue = totalBytes.prepareInt();
-//      newValue = oldValue + VM.objectModel.getSizeWhenCopied(ref);
-//    } while (!totalBytes.attempt(oldValue, newValue));
-//  }
-
-
   @Inline public static void stopTheWorldStart() {
     startTime = VM.statistics.nanoTime();
     dirtyCards = CardTable.dirtyCardSize();
@@ -159,177 +113,77 @@ public class PauseTimePredictor {
 //      Log.writeln(" ms]");
 //    }
   }
-  static boolean firstGC = true;
-  public static AddressArray predict(AddressArray cset, short gcKind) {
-    // Calculate dirty cards
-    //int d = CardTable.dirtyCardSize();
-    // Calculate rsSize & liveBytes
+
+  @Inline public static void nurseryGCStart() {
+    startTime = VM.statistics.nanoTime();
+    dirtyCards = CardTable.dirtyCardSize();
+  }
+
+  static float totalNurseryCount;
+  static float totalNurseryCardScanningTime;
+  static float totalNurseryEvacuationTime;
+  static float totalNurseryRegions;
+
+  @Inline public static void nurseryGCEnd() {
+    float totalTime = (float) (VM.statistics.nanoTime() - startTime);
+    float cardScanningTime = U * dirtyCards / G1.parallelWorkers.activeWorkerCount();
+    totalNurseryCount += 1;
+    totalNurseryCardScanningTime += cardScanningTime;
+    totalNurseryEvacuationTime += totalTime - cardScanningTime;
+    totalNurseryRegions += G1.relocationSet.length();
+
+    float averageCardScanningTime = totalNurseryCardScanningTime / totalNurseryCount;
+    float evacuationTimePerRegion = totalNurseryEvacuationTime / totalNurseryRegions;
+    int newEdenRegions = (int) ((EXPECTED_PAUSE_TIME() - averageCardScanningTime) / evacuationTimePerRegion);
+    Log.write("newEdenRegions0=");
+    Log.writeln(newEdenRegions);
+    int maxEdenRegions = (int) ((Options.g1MaxNewSizePercent.getValue() / 100f) * global().TOTAL_LOGICAL_REGIONS);
+    if (newEdenRegions > maxEdenRegions) newEdenRegions = maxEdenRegions;
+    if (newEdenRegions < 1) newEdenRegions = 1;
+    global().newSizeRatio = ((float) newEdenRegions) / ((float) global().TOTAL_LOGICAL_REGIONS);
+    Log.write("averageCardScanningTime=");
+    Log.writeln(averageCardScanningTime);
+    Log.write("evacuationTimePerRegion=");
+    Log.writeln(evacuationTimePerRegion);
+    Log.write("newEdenRegions=");
+    Log.writeln(newEdenRegions);
+    Log.write("NewSizeRatio=");
+    Log.writeln(global().newSizeRatio);
+  }
 
 
-//    if (VM.VERIFY_ASSERTIONS) {
-//      Log.write("U ");
-//      Log.writeln(U);
-//      Log.write("S ");
-//      Log.writeln(S);
-//      Log.write("C ");
-//      Log.writeln(C);
-//      Log.write("VFixed ");
-//      Log.writeln(VFixed);
-//      Log.write("dirtyCards ");
-//      Log.writeln(dirtyCards);
-//      Log.flush();
-//    }
+  public static AddressArray predict(AddressArray cset) {
     int rsSize = 0, liveBytes = 0;
     int expectedPauseTime = EXPECTED_PAUSE_TIME();
 
-    if (gcKind == G1.YOUNG_GC) {
-      // cset only contains young regions
-      // choose young regions
-      int cursor = 0;
-      for (int i = 0; i < cset.length(); i++) {
-        Address block = cset.get(i);
-        int newLiveBytes = liveBytes + Region.usedSize(block);
-        int newRSSize = rsSize + Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-
-//        if (VM.VERIFY_ASSERTIONS) {
-//          Log.write("Block (", i);
-//          Log.write("/", cset.length());
-//          Log.write(") ", block);
-//          Log.write(": ", Region.usedSize(block));
-//          Log.write("/", Region.BYTES_IN_BLOCK);
-//          Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
-//          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
-//          Log.writeln(" relocate");
-//        }
-        if (gcCost(dirtyCards, newRSSize, newLiveBytes) > expectedPauseTime) {
-          break;
-        } else {
-          cursor += 1;
-          rsSize = newRSSize;
-          liveBytes = newLiveBytes;
-        }
-      }
-//      if (firstGC) {
-//        if (cursor >= PureG1.parallelWorkers.activeWorkerCount()) {
-//          cursor = PureG1.parallelWorkers.activeWorkerCount();
-//        }
-//        firstGC = false;
-//      }
-
-//      if (VM.VERIFY_ASSERTIONS) {
-//        Log.write("Expected pause time: ");
-//        Log.writeln(gcCost(dirtyCards, rsSize, liveBytes));
-//      }
-
-      for (int i = cursor; i < cset.length(); i++) {
-        cset.set(i, Address.zero());
-      }
-    } else {
-
-      int cursor = 0;
-      for (int i = 0; i < cset.length(); i++) {
-        Address block = cset.get(i);
-        if (block.isZero()) continue;
-        int newLiveBytes = liveBytes + Region.usedSize(block);
-        int newRSSize = rsSize + Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-
-//        if (VM.VERIFY_ASSERTIONS) {
-//          Log.write("Block (", i);
-//          Log.write("/", cset.length());
-//          Log.write(") ", block);
-//          Log.write(": ", Region.usedSize(block));
-//          Log.write("/", Region.BYTES_IN_BLOCK);
-//          Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
-//          Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
-//          Log.writeln(" relocate");
-//        }
-//        boolean isNurseryRegion = Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0;
-        if (/*!isNurseryRegion &&*/ gcCost(dirtyCards, newRSSize, newLiveBytes) > expectedPauseTime) {
-//          cset.set(i, Address.zero());
-          break;
-        } else {
-          cursor++;
-          rsSize = newRSSize;
-          liveBytes = newLiveBytes;
-        }
-      }
-
-//      if (VM.VERIFY_ASSERTIONS) {
-//        Log.write("Expected pause time: ");
-//        Log.writeln(gcCost(dirtyCards, rsSize, liveBytes));
-//        Log.write("VFixed ");
-//        Log.writeln(VFixed);
-//        Log.write("U ");
-//        Log.writeln(U);
-//        Log.write("S ");
-//        Log.writeln(S);
-//        Log.write("C ");
-//        Log.writeln(C);
-//        Log.write("dirtyCards ");
-//        Log.writeln(dirtyCards);
-//        Log.write("rsSize ");
-//        Log.writeln(rsSize);
-//        Log.write("liveBytes ");
-//        Log.writeln(liveBytes);
-//      }
-
-      for (int i = cursor; i < cset.length(); i++) {
-        cset.set(i, Address.zero());
-      }
-//        int nonNullCursor = 0;
-//        for (int j = 0; j < cset.length(); j++) {
-//          Address a = cset.get(j);
-//          if (!a.isZero()) {
-//            cset.set(nonNullCursor++, a);
-//          }
-//        }
-//        for (int j = nonNullCursor; j < cset.length(); j++) {
-//          cset.set(nonNullCursor++, Address.zero());
-//        }
-//      }
-
-    }
-
-    totalRSSize = rsSize;
-    totalLiveBytes = liveBytes;
-
-    return cset;
-    /*int rsSize = 0, liveBytes = 0, cursor = 0;
+    int cursor = 0;
     for (int i = 0; i < cset.length(); i++) {
       Address block = cset.get(i);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!block.isZero());
+      if (block.isZero()) continue;
       int newLiveBytes = liveBytes + Region.usedSize(block);
       int newRSSize = rsSize + Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.write("Block (", i);
-        Log.write("/", cset.length());
-        Log.write(") ", block);
-        Log.write(": ", Region.usedSize(block));
-        Log.write("/", Region.BYTES_IN_BLOCK);
-        Log.write(" rsSize ", Region.metaDataOf(block, Region.METADATA_REMSET_SIZE_OFFSET).loadInt());
-        Log.write(" liveBytes ", Region.metaDataOf(block, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt());
-        Log.writeln(" relocate");
-      }
-      boolean isNurseryRegion = Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0;
-      if (!isNurseryRegion && gcCost(dirtyCards, newRSSize, newLiveBytes) > EXPECTED_PAUSE_TIME) {
+      if (/*!isNurseryRegion &&*/ gcCost(dirtyCards, newRSSize, newLiveBytes) > expectedPauseTime) {
+//         cset.set(i, Address.zero());
         break;
       } else {
-        cursor += 1;
+        cursor++;
         rsSize = newRSSize;
         liveBytes = newLiveBytes;
       }
     }
 
-    Log.writeln("Cursor ", cursor);
-    // Remove blocks with index > cursor
-    for (int i = cursor + 1; i < cset.length(); i++) {
+    for (int i = cursor; i < cset.length(); i++) {
       cset.set(i, Address.zero());
     }
-    //
+
     totalRSSize = rsSize;
     totalLiveBytes = liveBytes;
+
     return cset;
-    */
+  }
+
+  @Inline
+  private static G1 global() {
+    return (G1) VM.activePlan.global();
   }
 }

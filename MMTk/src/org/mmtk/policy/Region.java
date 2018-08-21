@@ -1,5 +1,7 @@
 package org.mmtk.policy;
 
+import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.concurrent.g1.G1;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
@@ -469,6 +471,12 @@ public class Region {
       ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
       int currentSpace = Space.getSpaceForAddress(card).getDescriptor();
 
+      if (Space.isInSpace(RS, card)) {
+        Address regionLimit = Region.metaDataOf(Region.of(card), Region.METADATA_CURSOR_OFFSET).loadAddress();
+        end = regionLimit.LT(end) ? regionLimit : end;
+        if (end.LT(cursor)) return;
+      }
+
       //VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
       //VM.assertions._assert(!Region.Card.getCardLimit(card).isZero());
 
@@ -550,33 +558,7 @@ public class Region {
             VM.objectModel.writeAvailableBitsWord(ref, Word.zero());
             if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
           }
-//          if (LOG) {
-//            lock.acquire();
-//
-//            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.G1) {
-//              Log.write(Region.relocationRequired(Region.of(card)) ? "G1 reloc " : "G1  _ ");
-//              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
-//            }
-//            VM.objectModel.dumpObject(ref);
-//            Log.flush();
-//            VM.objectModel.dumpObject(ref);
-//            if (!VM.debugging.validRef(ref)) VM.objectModel.dumpObject(ref);
-//            VM.assertions._assert(VM.debugging.validRef(ref));
-//            lock.release();
-//          }
-//          if (!VM.debugging.validRef(ref)) {
-//            lock.acquire();
-//            Log.write(Space.getSpaceForAddress(card).getName());
-//            if (Space.getSpaceForAddress(card).getDescriptor() == PureG1.G1) {
-//              Log.write(Region.relocationRequired(Region.of(card)) ? " reloc " : "  _ ");
-//              Log.write(Region.allocated(Region.of(card)) ? "alloc " : "_ ");
-//            }
-//            Log.flush();
-//            VM.objectModel.dumpObject(ref);
-//            Log.flush();
-//            lock.release();
-//            VM.assertions.fail("");
-//          }
+          
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
           if (currentSpace == RS && ForwardingWord.isForwardedOrBeingForwarded(ref) && DISABLE_DYNAMIC_HASH_OFFSET) {
             VM.objectModel.writeAvailableBitsWord(ref, oldStatus);

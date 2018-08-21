@@ -17,6 +17,7 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
+import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.vm.Lock;
@@ -308,12 +309,12 @@ public final class RegionSpace extends Space {
 
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
 
-//    if (VM.VERIFY_ASSERTIONS) {
-//      Log.write("Block alloc ", region);
-//      Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
-//    }
-
     if (!region.isZero()) {
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.write("Block alloc ", region);
+        Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
+      }
+
       if (Region.USE_CARDS) Region.Card.clearCardMetaForBlock(region);
       //int oldCount = MarkBlock.count();
       //if (MarkBlock.allocated(region)) {
@@ -474,6 +475,13 @@ public final class RegionSpace extends Space {
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
     ObjectReference rtn = object;
 
+    if (VM.VERIFY_ASSERTIONS) {
+      if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
+        VM.objectModel.dumpObject(object);
+      }
+      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+    }
+
     if (testAndMark(rtn)) {
       Address region = Region.of(rtn);
       Region.updateBlockAliveSize(region, rtn);
@@ -490,20 +498,55 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
+  public ObjectReference traceNurseryEvacuateObject(TransitiveClosure trace, ObjectReference object, int allocator) {
+    /* If the object in question is already in to-space, then do nothing */
+    if (!Region.relocationRequired(Region.of(object))) return object;
+
+    /* Try to forward the object */
+    Word forwardingWord = ForwardingWord.attemptToForward(object);
+
+    if (ForwardingWord.stateIsForwardedOrBeingForwarded(forwardingWord)) {
+      /* Somebody else got to it first. */
+      /* We must wait (spin) if the object is not yet fully forwarded */
+      while (ForwardingWord.stateIsBeingForwarded(forwardingWord))
+        forwardingWord = VM.objectModel.readAvailableBitsWord(object);
+      /* Now extract the object reference from the forwarding word and return it */
+      return ForwardingWord.extractForwardingPointer(forwardingWord);
+    } else {
+      /* We are the designated copier, so forward it and enqueue it */
+      ObjectReference newObject = VM.objectModel.copy(object, allocator);
+      ForwardingWord.setForwardingPointer(object, newObject);
+      trace.processNode(newObject); // Scan it later
+      return newObject;
+    }
+  }
+
+
+  @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationTimer evacuationTimer) {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(priorStatusWord.and(Word.fromIntZeroExtend(3)).toInt() != 1);
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
         return newObject;
+      } else if (priorStatusWord.and(Word.fromIntZeroExtend(3)).toInt() == 1) {
+        VM.objectModel.dumpObject(object);
+        VM.assertions.fail("");
+        return object;
       } else {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((VM.objectModel.readAvailableByte(object) & 3) != 1);
+
         long time = VM.statistics.nanoTime();
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
         if (evacuationTimer != null) {
           evacuationTimer.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
         }
+//        Log.write(object);
+//        Log.writeln(" -> ", newObject);
         writeMarkState(newObject);
+//        trace.processNode(object);
         trace.processNode(newObject);
         return newObject;
       }
@@ -524,6 +567,9 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public boolean isLive(ObjectReference object) {
+    if ((VM.objectModel.readAvailableByte(object) & 3) == 1) {
+      return false;
+    }
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
     return HEADER_MARK_BIT ? Header.isMarked(object) : MarkBitMap.isMarked(object);
   }
@@ -873,6 +919,16 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
+  public boolean contains(Address address) {
+    return !address.isZero() && Space.isInSpace(descriptor, address) && Region.allocated(Region.of(address));
+  }
+
+  @Inline
+  public boolean contains(ObjectReference ref) {
+    return contains(VM.objectModel.objectStartRef(ref));
+  }
+
+  @Inline
   private static int ceilDiv(int x, int y) {
     return (x + y - 1) / y;
   }
@@ -897,6 +953,13 @@ public final class RegionSpace extends Space {
           Region.Card.clearCardMetaForBlock(block);
           RemSet.removeRemsetForRegion(this, block);
         }
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(Region.relocationRequired(block));
+          Log.write("Block ", block);
+          Log.write(": ", Region.usedSize(block));
+          Log.write("/", Region.BYTES_IN_BLOCK);
+          Log.writeln(" released");
+        }
         this.release(block);
       }
     }
@@ -917,16 +980,54 @@ public final class RegionSpace extends Space {
       if (!block.isZero()) {
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(Region.relocationRequired(block));
-//          Log.write("Block ", block);
-//          Log.write(": ", Region.usedSize(block));
-//          Log.write("/", Region.BYTES_IN_BLOCK);
-//          Log.writeln(" released");
+          Log.write("Block ", block);
+          Log.write(": ", Region.usedSize(block));
+          Log.write("/", Region.BYTES_IN_BLOCK);
+          Log.writeln(" released");
         }
         if (Region.USE_CARDS) {
           Region.Card.clearCardMetaForBlock(block);
         }
         this.release(block);
       }
+    }
+  }
+
+  private final TransitiveClosure regionValidationTransitiveClosure = new TransitiveClosure() {
+    @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
+      ObjectReference ref = slot.loadObjectReference();
+      if (!VM.debugging.validRef(ref)) {
+        Log.writeln();
+        Log.write("Invalid ", source);
+        Log.write(".", slot);
+        Log.writeln(" -> ", ref);
+        //Log.write(Space.getSpaceForObject(ref).getName());
+//        Log.writeln(" ", ref);
+      }
+      VM.assertions._assert(VM.debugging.validRef(ref));
+      if (contains(ref)) {
+        Address region = Region.of(ref);
+        if (region.NE(Region.of(source))) {
+          Address card = Region.Card.of(source);
+          VM.assertions._assert(RemSet.contains(region, card));
+        }
+      }
+    }
+  };
+
+  private final LinearScan regionValidationLinearScan = new LinearScan() {
+    @Uninterruptible public void scan(ObjectReference object) {
+      if ((VM.objectModel.readAvailableByte(object) & 3) == 1) return;
+      VM.assertions._assert(VM.debugging.validRef(object));
+      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
+//      if (isLive(object)) {
+        VM.scanning.scanObject(regionValidationTransitiveClosure, object);
+//      }
+    }
+  };
+  public void validate() {
+    for (Address region = firstBlock(); !region.isZero(); region = nextBlock(region)) {
+      Region.linearScan(regionValidationLinearScan, region);
     }
   }
 }

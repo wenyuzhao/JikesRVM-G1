@@ -23,6 +23,10 @@ import org.vmmagic.pragma.Uninterruptible;
 @Uninterruptible
 public class G1Constraints extends ConcurrentConstraints {
   @Override
+  public boolean generational() {
+    return true;
+  }
+  @Override
   public boolean movesObjects() {
     return true;
   }
@@ -46,12 +50,4 @@ public class G1Constraints extends ConcurrentConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.BYTES_IN_BLOCK;
   }
-  //@Override
-  //public boolean needsObjectReferenceWriteBarrier() {
-    //return true;
-  //}
-  //@Override
-  //public boolean objectReferenceBulkCopySupported() {
-    //return true;
-  //}
 }

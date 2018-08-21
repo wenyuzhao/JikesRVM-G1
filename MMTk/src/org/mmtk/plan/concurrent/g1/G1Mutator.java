@@ -16,6 +16,7 @@ import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.alloc.Allocator;
@@ -50,13 +51,10 @@ public class G1Mutator extends ConcurrentMutator {
    */
   protected final RegionAllocator mc;
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
-  private Address remSetLogBuffer = Address.zero();// = AddressArray.create(REMSET_LOG_BUFFER_SIZE);
+  private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
   private final TraceWriteBuffer markRemset, relocateRemset;
   private TraceWriteBuffer currentRemset;
-  //private final AddressDeque cardBuf;
-  // public final Lock refinementLock = VM.newLock("refinementLock");
-  // private boolean refinementInProgress = false;
 
   /****************************************************************************
    *
@@ -71,7 +69,6 @@ public class G1Mutator extends ConcurrentMutator {
     markRemset = new TraceWriteBuffer(global().markTrace);
     relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
-    //cardBuf = new AddressDeque("cardBuf", ConcurrentRemSetRefinement.cardBufPool);
   }
 
   @Inline
@@ -97,7 +94,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == G1.ALLOC_MC) {
+    if (allocator == G1.ALLOC_RS) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return mc.alloc(bytes, align, offset);
     } else {
@@ -109,12 +106,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
-    if (allocator == G1.ALLOC_MC) {
-      /*if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(Space.isInSpace(PureG1.G1, object));
-        VM.assertions._assert(Region.allocated(Region.of(VM.objectModel.objectStartRef(object))));
-        VM.assertions._assert(Region.of(object).NE(EmbeddedMetaData.getMetaDataBase(VM.objectModel.objectStartRef(object))));
-      }*/
+    if (allocator == G1.ALLOC_RS) {
       G1.regionSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
@@ -168,19 +160,7 @@ public class G1Mutator extends ConcurrentMutator {
       VM.collection.prepareMutator(this);
       currentRemset = relocateRemset;
       mc.reset();
-//      enqueueCurrentRSBuffer(false);
       super.collectionPhase(G1.PREPARE, primary);
-      //if (barrierActive) {
-      //  Log.writeln("BarrierActive for mutator #", getId());
-      //}
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!barrierActive);
-      return;
-    }
-
-    if (phaseId == G1.CONSTRUCT_REMEMBERED_SETS) {
-      VM.collection.prepareMutator(this);
-//      currentRemset = relocateRemset;
-      mc.reset();
       return;
     }
 
@@ -192,7 +172,6 @@ public class G1Mutator extends ConcurrentMutator {
 
     if (phaseId == G1.COMPLETE) {
       mc.reset();
-//      super.collectionPhase(PureG1.COMPLETE, primary);
       return;
     }
 
@@ -213,10 +192,6 @@ public class G1Mutator extends ConcurrentMutator {
   public void deinitMutator() {
     enqueueCurrentRSBuffer(true);
     super.deinitMutator();
-  }
-
-  public boolean rsBufferIsEmpty() {
-    return remSetLogBufferCursor == 0;
   }
 
   @Inline
@@ -240,8 +215,6 @@ public class G1Mutator extends ConcurrentMutator {
     ConcurrentRemSetRefinement.enqueueFilledRSBuffer(buf, triggerConcurrentRefinement);
   }
 
-  //static Monitor lock = VM.newLock("awewwenyu");
-
   @Inline
   public void markAndEnqueueCard(Address card) {
     if (CardTable.attemptToMarkCard(card, true)) {
@@ -261,6 +234,8 @@ public class G1Mutator extends ConcurrentMutator {
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
       if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
         Region.Card.updateCardMeta(src);
+        Address card = Region.Card.of(src);
+        RemSet.addCard(Region.of(ref), card);
         markAndEnqueueCard(Region.Card.of(src));
       }
     }
@@ -269,7 +244,6 @@ public class G1Mutator extends ConcurrentMutator {
   @Override
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-    //if (barrierActive) {
 
     if (Space.isInSpace(G1.G1, ref)) G1.regionSpace.traceMarkObject(currentRemset, ref);
     else if (Space.isInSpace(G1.IMMORTAL, ref)) G1.immortalSpace.traceObject(currentRemset, ref);
@@ -277,18 +251,6 @@ public class G1Mutator extends ConcurrentMutator {
     else if (Space.isInSpace(G1.NON_MOVING, ref)) G1.nonMovingSpace.traceObject(currentRemset, ref);
     else if (Space.isInSpace(G1.SMALL_CODE, ref)) G1.smallCodeSpace.traceObject(currentRemset, ref);
     else if (Space.isInSpace(G1.LARGE_CODE, ref)) G1.largeCodeSpace.traceObject(currentRemset, ref);
-    //}
-
-    /*if (VM.VERIFY_ASSERTIONS) {
-      if (!ref.isNull() && !Plan.gcInProgress()) {
-        if (Space.isInSpace(PureG1.G1, ref)) VM.assertions._assert(PureG1.regionSpace.isLive(ref));
-        else if (Space.isInSpace(PureG1.IMMORTAL, ref)) VM.assertions._assert(PureG1.immortalSpace.isLive(ref));
-        else if (Space.isInSpace(PureG1.LOS, ref)) VM.assertions._assert(PureG1.loSpace.isLive(ref));
-        else if (Space.isInSpace(PureG1.NON_MOVING, ref)) VM.assertions._assert(PureG1.nonMovingSpace.isLive(ref));
-        else if (Space.isInSpace(PureG1.SMALL_CODE, ref)) VM.assertions._assert(PureG1.smallCodeSpace.isLive(ref));
-        else if (Space.isInSpace(PureG1.LARGE_CODE, ref)) VM.assertions._assert(PureG1.largeCodeSpace.isLive(ref));
-      }
-    }*/
   }
 
   @Inline
@@ -326,32 +288,27 @@ public class G1Mutator extends ConcurrentMutator {
     Address srcCursor = src.toAddress().plus(srcOffset);
     Address cursor = dst.toAddress().plus(dstOffset);
     Address limit = cursor.plus(bytes);
-    boolean containsCrossRegionPointer = false;
+//    boolean containsCrossRegionPointer = false;
     while (cursor.LT(limit)) {
-//      ObjectReference oldValue, newValue;
-//      do {
-//        oldValue = cursor.loadObjectReference();
-//        newValue = srcCursor.loadObjectReference();
-//      } while (!cursor.attempt(oldValue, newValue));
-
       ObjectReference element = srcCursor.loadObjectReference();
       cursor.store(element);
-      if (!containsCrossRegionPointer) {
-        if (!element.isNull()) {
-          Word x = VM.objectModel.objectStartRef(dst).toWord();
-          Word y = VM.objectModel.objectStartRef(element).toWord();
-          Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
-          if (!tmp.isZero() && Space.isInSpace(G1.G1, element)) {
-            containsCrossRegionPointer = true;
-          }
-        }
-      }
+      checkCrossRegionPointer(dst, cursor, element);
+//      if (!containsCrossRegionPointer) {
+//        if (!element.isNull()) {
+//          Word x = VM.objectModel.objectStartRef(dst).toWord();
+//          Word y = VM.objectModel.objectStartRef(element).toWord();
+//          Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
+//          if (!tmp.isZero() && Space.isInSpace(G1.G1, element)) {
+//            containsCrossRegionPointer = true;
+//          }
+//        }
+//      }
       cursor = cursor.plus(BYTES_IN_ADDRESS);
       srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
     }
-    if (containsCrossRegionPointer) {
-      markAndEnqueueCard(Region.Card.of(dst));
-    }
+//    if (containsCrossRegionPointer) {
+//      markAndEnqueueCard(Region.Card.of(dst));
+//    }
     return true;
   }
 
@@ -359,7 +316,6 @@ public class G1Mutator extends ConcurrentMutator {
   public final void assertRemsetsFlushed() {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(currentRemset.isFlushed());
-      //VM.assertions._assert(remSetLogBufferCursor == 0);
     }
   }
 

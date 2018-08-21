@@ -140,44 +140,14 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }
   }
 
-  public static int totalCardsToRefine() {
-    return FilledRSBufferQueue.size() << Constants.LOG_BYTES_IN_PAGE + HotCardsQueue.size();
-  }
-  /*
-
-  @Uninterruptible
-  public static class HotCardsQueue {
-    public static final Lock lock = VM.newLock("hot-cards-queue-lock");
-    public static AddressArray array = AddressArray.create(1024);
-    public static int cursor = 0;
-    @Inline public static void enqueue(Address address) {
-      lock.acquire();
-      if (cursor >= array.length()) {
-        AddressArray oldArray = array;
-        array = AddressArray.create(oldArray.length() << 1);
-        for (int i = 0; i < oldArray.length(); i++)
-          array.set(i, oldArray.get(i));
-      }
-      array.set(cursor++, address);
-      lock.release();
-    }
-  }
-  */
-
   public static final int REMSET_LOG_BUFFER_SIZE = Constants.BYTES_IN_PAGE >>> Constants.LOG_BYTES_IN_ADDRESS;
   public static Monitor monitor;
   public static Lock lock = VM.newLock("RefineLock");
-  public final int NUM_WORKERS;
-  public ConcurrentRemSetRefinement(int numWorkers) {
-    NUM_WORKERS = numWorkers;
-  }
 
   @Override
   @Interruptible
   public void initCollector(int id) {
     super.initCollector(id);
-    monitor = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock");
-    controller = new Controller(NUM_WORKERS);
   }
 
   @Override
@@ -252,8 +222,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       }
     }
   };
-
-  static boolean relocationSetOnly = false;
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Inline @Uninterruptible public void scan(ObjectReference object) {
@@ -341,74 +309,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     VM.activePlan.collector().rendezvous();
   }
 
-  @Inline
-  public static void refineAll() {
-    Address buffer;
-    while (!(buffer = FilledRSBufferQueue.tryDequeue()).isZero()) {
-      refineSingleBuffer(buffer);
-    }
-    /*
-    int workers = VM.activePlan.collector().parallelWorkerCount();
-    int id = VM.activePlan.collector().getId();
-    int buffersToProcess = RemSet.ceilDiv(FilledRSBufferQueue.size(), workers);
-
-    for (int i = 0; i < buffersToProcess; i++) {
-      int cursor = buffersToProcess * id + i;
-      if (cursor >= FilledRSBufferQueue.size()) continue;
-      cursor = (FilledRSBufferQueue.head + cursor) % FilledRSBufferQueue.CAPACITY;
-      Address buffer = FilledRSBufferQueue.array.get(cursor);
-      if (buffer.isZero()) continue;
-      FilledRSBufferQueue.array.set(cursor, Address.zero());
-      refineSingleBuffer(buffer);
-    }
-    */
-  }
-
-  @Inline
-  public static void refineHotCards() {
-    Address card;
-    while (!(card = HotCardsQueue.tryDequeue()).isZero()) {
-      if (CardTable.attemptToMarkCard(card, false)) {
-        processCard(card);
-      }
-    }
-    /*
-    collector.rendezvous();
-    int workers = VM.activePlan.collector().parallelWorkerCount();
-    int id = VM.activePlan.collector().getId();
-    int cardsToProcess = RemSet.ceilDiv(HotCardsQueue.cursor, workers);
-
-    if (VM.VERIFY_ASSERTIONS && id == 0) {
-      Log.write("Processing ", HotCardsQueue.cursor);
-      Log.writeln(" hot cards ");
-    }
-
-    for (int i = 0; i < cardsToProcess; i++) {
-      int cursor = cardsToProcess * id + i;
-      if (cursor >= HotCardsQueue.cursor) break;
-      Address card = HotCardsQueue.array.get(cursor);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!card.isZero());
-      HotCardsQueue.array.set(cursor, Address.zero());
-      if (CardTable.attemptToMarkCard(card, false)) {
-        processCard(card);
-      }
-    }
-    */
-  }
-
-  @Inline
-  public static void finishCollectorRefinements() {
-    //FilledRSBufferQueue.head = 0;
-    //FilledRSBufferQueue.tail = 0;
-    //FilledRSBufferQueue.size = 0;
-    //HotCardsQueue.cursor = 0;
-    CardTable.clearAllHotness();
-  }
-
-//  static boolean pause = false;
-//  static int paused = 0;
-//  static int NUM_WORKERS = 16;
-
   @Uninterruptible
   static class Controller {
     boolean pause = false;
@@ -439,7 +339,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       pauseMonitor.lock();
       paused = 0;
       pause = true;
-      //pauseMonitor.broadcast();
       pauseMonitor.unlock();
       // Wait for all thread blocked
 //      Log.writeln("Wait for blocked");
@@ -458,7 +357,15 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       pauseMonitor.unlock();
     }
   }
+
   static Controller controller;
+
+  @Interruptible
+  static void initialize(int numWorkers) {
+    monitor = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock");
+    controller = new Controller(numWorkers);
+  }
+
   static void pause() {
     controller.pause();
   }

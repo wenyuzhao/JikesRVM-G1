@@ -15,6 +15,7 @@ package org.mmtk.plan.concurrent.g1;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.*;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
@@ -58,7 +59,6 @@ public class G1 extends Concurrent {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace redirectTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
-  //public static boolean concurrentMarkingInProgress = false;
 
   static {
     Options.g1ReservePercent = new G1ReservePercent();
@@ -72,11 +72,11 @@ public class G1 extends Concurrent {
     smallCodeSpace.makeAllocAsMarked();
     nonMovingSpace.makeAllocAsMarked();
   }
-  static boolean log = false;
+
   /**
    *
    */
-  public static final int ALLOC_MC = Plan.ALLOC_DEFAULT;
+  public static final int ALLOC_RS = Plan.ALLOC_DEFAULT;
   public static final int SCAN_MARK = 0;
   public static final int SCAN_REDIRECT = 1;
 
@@ -84,7 +84,6 @@ public class G1 extends Concurrent {
   public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
   public static final short REDIRECT_CLOSURE = Phase.createSimple("redirect-closure");
   public static final short REDIRECT_RELEASE = Phase.createSimple("redirect-release");
-  //public static final short RELOCATE_UPDATE_POINTERS = Phase.createSimple("relocate-update-pointers");
 
   public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
@@ -94,89 +93,44 @@ public class G1 extends Concurrent {
     Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
     Phase.scheduleGlobal(RELOCATION_SET_SELECTION)
   );
-  //public static final short EVACUATION = Phase.createSimple("evacuation");
-  //public static final short PREPARE_EVACUATION = Phase.createSimple("prepare-evacuation");
+
   public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
   public static final short EAGER_CLEANUP_BLOCKS = Phase.createSimple("eager-cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
-  public static final short CONSTRUCT_REMEMBERED_SETS = Phase.createSimple("construct-remembered-sets");
 
-  protected static final short preemptConcurrentCleanup = Phase.createComplex("preeempt-concurrent-cleanup", null,
-      Phase.scheduleCollector(CLEANUP_BLOCKS));
-
-  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
-      Phase.scheduleComplex(preemptConcurrentCleanup));
-
-  public static final short CONCURRENT_CONSTRUCT_REMEMBERED_SETS = Phase.createConcurrent("concurrent-construct-remembered-sets",
-      Phase.scheduleCollector(CONSTRUCT_REMEMBERED_SETS));
-
-  //public static final short CONCURRENT_LOCK_MUTATORS = Phase.createConcurrent("flush-refinement-thread", Phase.scheduleMutator(FLUSH_MUTATOR));
-  /*protected static final short concurrentLockMutators = Phase.createComplex("concurrent-lock-mutators", null,
-      Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
-      Phase.scheduleMutator   (SET_BARRIER_ACTIVE),
-      Phase.scheduleCollector (FLUSH_COLLECTOR),
-      Phase.scheduleConcurrent(CONCURRENT_LOCK_MUTATORS),
-      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
-      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));*/
-  //public static final short MARK_RELEASE = Phase.createSimple("mark-release");
   public static final boolean GENERATIONAL = true;
   public static final short YOUNG_GC = 1;
   public static final short MIXED_GC = 2;
   public static final short FULL_GC = 3;
   public static short currentGCKind = 0;
+  public static short lastGCKind = 0;
 
   public static final short relocationPhase = Phase.createComplex("relocation", null,
     Phase.scheduleMutator  (REDIRECT_PREPARE),
     Phase.scheduleGlobal   (REDIRECT_PREPARE),
     Phase.scheduleCollector(REDIRECT_PREPARE),
 
+//    Phase.scheduleCollector(FINALIZABLE),
+//    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+//    Phase.scheduleCollector(REDIRECT_CLOSURE),
+//    Phase.scheduleCollector(EAGER_CLEANUP_BLOCKS),
 
-//      Phase.scheduleMutator(CONSTRUCT_REMEMBERED_SETS),
-      Phase.scheduleCollector(FINALIZABLE),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-      Phase.scheduleCollector(EAGER_CLEANUP_BLOCKS),
-//      Phase.scheduleCollector(FINALIZABLE),
-//      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-////      Phase.scheduleCollector(REDIRECT_CLOSURE),
-//      Phase.scheduleCollector(EAGER_CLEANUP_BLOCKS),
-//      Phase.scheduleGlobal(CONSTRUCT_REMEMBERED_SETS),
-//      Phase.scheduleConcurrent(CONCURRENT_CONSTRUCT_REMEMBERED_SETS),
-
-
-
-      /*Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
-
-    //Phase.scheduleComplex  (prepareStacks),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
-      /*Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),*/
-//    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-//    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
-//    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-//    Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(WEAK_REFS),
-//    Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
 
 
-    //Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-    //Phase.scheduleCollector(REDIRECT_CLOSURE),
-    Phase.scheduleComplex  (forwardPhase),
+      Phase.scheduleComplex  (forwardPhase),
 
       Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
@@ -184,21 +138,64 @@ public class G1 extends Concurrent {
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),
 
-    //Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-
       Phase.scheduleCollector(CLEANUP_BLOCKS),
       Phase.scheduleCollector(CLEAR_CARD_META),
-      //Phase.scheduleConcurrent(CONCURRENT_CLEANUP),
-
 
     Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
     Phase.scheduleGlobal   (REDIRECT_RELEASE)
-
-
-
-    //Phase.scheduleComplex(Validation.validationPhase)
   );
+
+  public static final short nurseryCollection = Phase.createComplex("nursery-collection", null,
+      Phase.scheduleComplex  (initPhase),
+
+      Phase.scheduleMutator  (REDIRECT_PREPARE),
+      Phase.scheduleGlobal   (REDIRECT_PREPARE),
+      Phase.scheduleCollector(REDIRECT_PREPARE),
+
+      Phase.scheduleComplex  (relocationSetSelection),
+      // rootClosurePhase
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      // refTypeClosurePhase
+      Phase.scheduleCollector  (SOFT_REFS),
+      Phase.scheduleGlobal     (REDIRECT_CLOSURE),
+      Phase.scheduleCollector  (REDIRECT_CLOSURE),
+      Phase.scheduleCollector  (WEAK_REFS),
+      Phase.scheduleGlobal     (REDIRECT_CLOSURE),
+      Phase.scheduleCollector  (REDIRECT_CLOSURE),
+      Phase.scheduleCollector  (PHANTOM_REFS),
+
+      Phase.scheduleComplex  (forwardPhase),
+
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+
+      Phase.scheduleCollector  (FINALIZABLE),
+      Phase.scheduleGlobal     (REDIRECT_CLOSURE),
+      Phase.scheduleCollector  (REDIRECT_CLOSURE),
+
+      Phase.scheduleCollector(CLEANUP_BLOCKS),
+      Phase.scheduleCollector(CLEAR_CARD_META),
+
+      Phase.scheduleMutator  (REDIRECT_RELEASE),
+      Phase.scheduleCollector(REDIRECT_RELEASE),
+      Phase.scheduleGlobal   (REDIRECT_RELEASE),
+
+      Phase.scheduleComplex  (finishPhase)
+    );
 
 
 
@@ -208,45 +205,20 @@ public class G1 extends Concurrent {
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
 
-    //Phase.scheduleComplex  (refTypeClosurePhase),
-      //Phase.scheduleComplex  (forwardPhase),
-      Phase.scheduleCollector  (SOFT_REFS),
-      Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),
-      Phase.scheduleCollector(WEAK_REFS),
-//      Phase.scheduleCollector(FINALIZABLE),
-      Phase.scheduleGlobal   (CLOSURE),
-      Phase.scheduleCollector(CLOSURE),
-      Phase.scheduleCollector(PHANTOM_REFS),
-      Phase.scheduleGlobal(RELEASE),
-      //Phase.scheduleGlobal(PAUSE_REFINEMENT_THREADS),
-      /*Phase.scheduleCollector  (WEAK_REFS),
-      //Phase.scheduleCollector  (FINALIZABLE),
-      Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),
-      //Phase.schedulePlaceholder(WEAK_TRACK_REFS),
-      Phase.scheduleCollector  (PHANTOM_REFS),
-      Phase.scheduleGlobal     (CLOSURE),
-      Phase.scheduleCollector  (CLOSURE),*/
-    //Phase.scheduleComplex  (completeClosurePhase),
-      //Phase.scheduleComplex(concurrentLockMutators),
-      //hase.scheduleMutator   (CLEAR_BARRIER_ACTIVE),
-    //Phase.scheduleCollector(RELEASE),
-    //Phase.scheduleGlobal(RELEASE),
-    //Phase.scheduleComplex(completeClosurePhase),
+    Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleGlobal   (CLOSURE),
+    Phase.scheduleCollector(CLOSURE),
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleGlobal   (CLOSURE),
+    Phase.scheduleCollector(CLOSURE),
+    Phase.scheduleCollector(PHANTOM_REFS),
+    Phase.scheduleGlobal   (RELEASE),
 
-//    Phase.scheduleGlobal(CONSTRUCT_REMEMBERED_SETS),
-//    Phase.scheduleConcurrent(CONCURRENT_CONSTRUCT_REMEMBERED_SETS),
     Phase.scheduleComplex  (relocationSetSelection),
-
 
     Phase.scheduleComplex  (relocationPhase),
 
-      //Phase.scheduleGlobal(CLEANUP_BLOCKS),
-
-
     Phase.scheduleComplex  (finishPhase)
-      //Phase.scheduleMutator(COMPLETE)
   );
 
   /**
@@ -267,13 +239,11 @@ public class G1 extends Concurrent {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
-//    if (VM.VERIFY_ASSERTIONS) {
-//      Log.write("Global ");
-//      Log.write(Phase.getName(phaseId));
-//      Log.write(" total ");
-//      Log.write(VM.statistics.nanosToMillis( VM.statistics.nanoTime() - startTime));
-//      Log.writeln(" ms");
-//    }
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.write("Global ");
+      Log.writeln(Phase.getName(phaseId));
+    }
+
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
@@ -289,30 +259,16 @@ public class G1 extends Concurrent {
       //PureG1.stacksPrepared = false;
       if (currentGCKind != 0) {
         // FULL_GC
-//        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: FULL_GC]");
-      } else if (!GENERATIONAL || regionSpace.heapWastePercent(true) >= Options.g1HeapWastePercent.getValue()) {
-        currentGCKind = MIXED_GC;
-//        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: MIXED_GC]");
-      } else {
+      } else if (collection == nurseryCollection) {
         currentGCKind = YOUNG_GC;
-//        if (VM.VERIFY_ASSERTIONS) Log.writeln("[G1: YOUNG_GC]");
+        VM.assertions.fail("Error: Young GC required");
+      } else {
+        currentGCKind = MIXED_GC;
       }
 
-      PauseTimePredictor.stopTheWorldStart();
+      if (currentGCKind == MIXED_GC) PauseTimePredictor.stopTheWorldStart();
       startTime = VM.statistics.nanoTime();
       ConcurrentRemSetRefinement.pause();
-      ConcurrentRemSetRefinement.relocationSetOnly = true;
-      //VM.assertions._assert(false);
-      //startTime = VM.statistics.nanoTime();
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
-      //markTrace.release();
-
-      //stacksPrepared = false;
-      //inConcurrentCollection = false;
-      //regionSpace.release();
-      //super.collectionPhase(phaseId);
-      //inConcurrentCollection = false;
-      //VM.assertions._assert(!stacksPrepared);
       return;
     }
 
@@ -322,60 +278,42 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      //blocksSnapshot = regionSpace.snapshotBlocks();
       relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, currentGCKind != YOUNG_GC, false);
-      if (currentGCKind == YOUNG_GC || currentGCKind == MIXED_GC) {
-        PauseTimePredictor.predict(relocationSet, currentGCKind);
+      if (currentGCKind == MIXED_GC) {
+        PauseTimePredictor.predict(relocationSet);
       }
       RegionSpace.markRegionsAsRelocate(relocationSet);
       blocksSnapshot = null;
       return;
     }
 
-    if (phaseId == CONSTRUCT_REMEMBERED_SETS) {
-      regionSpace.regionIterator.reset();
-      return;
-    }
-
     if (phaseId == REDIRECT_PREPARE) {
-
-
-
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!stacksPrepared);
-      //stacksPrepared = false;
-      ConcurrentRemSetRefinement.resume();
+      if (collection == nurseryCollection) {
+        currentGCKind = YOUNG_GC;
+      }
+      if (nurseryGC()) {
+        PauseTimePredictor.nurseryGCStart();
+        regionSpace.prepare(true);
+        VM.memory.globalPrepareVMSpace();
+      }
+      // Flush mutators
+      if (!nurseryGC()) ConcurrentRemSetRefinement.resume();
       VM.activePlan.resetMutatorIterator();
       G1Mutator m;
       while ((m = (G1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.dropCurrentRSBuffer();
-//        m.enqueueCurrentRSBuffer(true);
       }
       ConcurrentRemSetRefinement.pause();
-      //ConcurrentRemSetRefinement.lock.acquire();
-      //ConcurrentRemSetRefinement.refineAll();
-      //CardTable.assertAllCardsAreNotMarked();
-
-      //super.collectionPhase(PREPARE);
       redirectTrace.prepare();
-      //regionSpace.prepare(false);
       return;
     }
 
     if (phaseId == REMEMBERED_SETS) {
-
       VM.activePlan.resetMutatorIterator();
       G1Mutator m;
       while ((m = (G1Mutator) VM.activePlan.getNextMutator()) != null) {
         m.dropCurrentRSBuffer();
-//        m.enqueueCurrentRSBuffer(false);
       }
-      //ConcurrentRemSetRefinement.lock.acquire();
-      //ConcurrentRemSetRefinement.refineAll();
-      //RemSet.noCSet = true;
-      //super.collectionPhase(PREPARE);
-      //ConcurrentRemSetRefinement.refineAll();
-      //if (VM.VERIFY_ASSERTIONS) CardTable.assertAllCardsAreNotMarked();
-      //regionSpace.prepare();
       return;
     }
 
@@ -384,26 +322,35 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_RELEASE) {
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!markTrace.hasWork());
       regionSpace.promoteAllRegionsAsOldGeneration();
-      markTrace.release();
       redirectTrace.release();
       regionSpace.release();
-      super.collectionPhase(RELEASE);
-      //ConcurrentRemSetRefinement.cardBufPool.clearDeque(1);
+      if (!nurseryGC()) {
+        markTrace.release();
+        super.collectionPhase(RELEASE);
+      } else {
+        VM.memory.globalReleaseVMSpace();
+      }
       return;
     }
 
     if (phaseId == COMPLETE) {
-      ConcurrentRemSetRefinement.relocationSetOnly = false;
       ConcurrentRemSetRefinement.resume();
-      PauseTimePredictor.stopTheWorldEnd();
+      if (currentGCKind == MIXED_GC) PauseTimePredictor.stopTheWorldEnd();
       super.collectionPhase(COMPLETE);
+      if (nurseryGC()) PauseTimePredictor.nurseryGCEnd();
+      lastGCKind = currentGCKind;
       currentGCKind = NOT_IN_GC;
+//      regionSpace.validate();
       return;
     }
 
     super.collectionPhase(phaseId);
+  }
+
+  @Inline
+  public boolean nurseryGC() {
+    return currentGCKind == YOUNG_GC;
   }
 
   /****************************************************************************
@@ -411,23 +358,46 @@ public class G1 extends Concurrent {
    * Accounting
    */
 
+  final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
+    // Young GC
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(TOTAL_LOGICAL_REGIONS > 0);
+
+
+    if (Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
+      Log.writeln("Nursery GC ");
+      collection = nurseryCollection;
       return true;
     }
-    return super.collectionRequired(spaceFull, space);
+
+    // Full GC
+    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    boolean fullGCRequired = false;
+    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
+      fullGCRequired = true;
+    }
+    fullGCRequired = fullGCRequired || super.collectionRequired(spaceFull, space);
+    if (fullGCRequired) collection = _collection;
+    return fullGCRequired;
   }
 
   @Override
   protected boolean concurrentCollectionRequired() {
     int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
     int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    boolean mixedGCRequired = !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    if (mixedGCRequired) {
+      Log.write("Mixed GC ", regionSpace.youngRegions());
+      Log.writeln("/", TOTAL_LOGICAL_REGIONS);
+      collection = _collection;
+    }
+    return mixedGCRequired;
   }
 
+  float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
   final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
   final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
 
@@ -448,13 +418,11 @@ public class G1 extends Concurrent {
   protected void spawnCollectorThreads(int numThreads) {
     super.spawnCollectorThreads(numThreads);
 
-    //ConcurrentRemSetRefinement.NUM_WORKERS = numThreads;
     int refineThreads = numThreads;// <= 2 ? 1 : numThreads >> 1;
+    ConcurrentRemSetRefinement.initialize(refineThreads);
     for (int i = 0; i < refineThreads; i++) {
-      VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement(refineThreads));
+      VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement());
     }
-
-//    Region.dumpMeta();
   }
 
   @Override
@@ -481,14 +449,17 @@ public class G1 extends Concurrent {
     return super.getPagesUsed() + regionSpace.reservedPages();
   }
 
-  /**
-   * Return the number of pages available for allocation, <i>assuming
-   * all future allocation is to the semi-space</i>.
-   *
-   * @return The number of pages available for allocation, <i>assuming
-   * all future allocation is to the semi-space</i>.
-   */
-  // @Override public final int getPagesAvail() { return(super.getPagesAvail()) >> 1; }
+  @Override
+  @Inline
+  public boolean isCurrentGCNursery() {
+    return false;//collection == nurseryCollection;
+  }
+
+  @Override
+  @Inline
+  public boolean lastCollectionFullHeap() {
+    return lastGCKind == FULL_GC;
+  }
 
   @Override
   public boolean willNeverMove(ObjectReference object) {
