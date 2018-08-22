@@ -128,9 +128,7 @@ public class G1 extends Concurrent {
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
     Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
-
-
-      Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleComplex  (forwardPhase),
 
       Phase.scheduleMutator  (REMEMBERED_SETS),
       Phase.scheduleGlobal   (REMEMBERED_SETS),
@@ -138,8 +136,8 @@ public class G1 extends Concurrent {
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),
 
-      Phase.scheduleCollector(CLEANUP_BLOCKS),
-      Phase.scheduleCollector(CLEAR_CARD_META),
+    Phase.scheduleCollector(CLEANUP_BLOCKS),
+    Phase.scheduleCollector(CLEAR_CARD_META),
 
     Phase.scheduleMutator  (REDIRECT_RELEASE),
     Phase.scheduleCollector(REDIRECT_RELEASE),
@@ -164,6 +162,14 @@ public class G1 extends Concurrent {
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),
       // refTypeClosurePhase
+
+
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+
       Phase.scheduleCollector  (SOFT_REFS),
       Phase.scheduleGlobal     (REDIRECT_CLOSURE),
       Phase.scheduleCollector  (REDIRECT_CLOSURE),
@@ -172,23 +178,17 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector  (REDIRECT_CLOSURE),
       Phase.scheduleCollector  (PHANTOM_REFS),
 
-      Phase.scheduleComplex  (forwardPhase),
-
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
-      Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
 
       Phase.scheduleCollector  (FINALIZABLE),
       Phase.scheduleGlobal     (REDIRECT_CLOSURE),
       Phase.scheduleCollector  (REDIRECT_CLOSURE),
 
+      Phase.scheduleComplex  (forwardPhase),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+
       Phase.scheduleCollector(CLEANUP_BLOCKS),
-      Phase.scheduleCollector(CLEAR_CARD_META),
+//      Phase.scheduleCollector(CLEAR_CARD_META),
 
       Phase.scheduleMutator  (REDIRECT_RELEASE),
       Phase.scheduleCollector(REDIRECT_RELEASE),
@@ -205,13 +205,13 @@ public class G1 extends Concurrent {
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
 
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleGlobal   (CLOSURE),
-    Phase.scheduleCollector(CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleGlobal   (CLOSURE),
-    Phase.scheduleCollector(CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
+//    Phase.scheduleCollector(SOFT_REFS),
+//    Phase.scheduleGlobal   (CLOSURE),
+//    Phase.scheduleCollector(CLOSURE),
+//    Phase.scheduleCollector(WEAK_REFS),
+//    Phase.scheduleGlobal   (CLOSURE),
+//    Phase.scheduleCollector(CLOSURE),
+//    Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleGlobal   (RELEASE),
 
     Phase.scheduleComplex  (relocationSetSelection),
@@ -247,7 +247,7 @@ public class G1 extends Concurrent {
     if (phaseId == PREPARE) {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
-      regionSpace.prepare(true);
+      regionSpace.prepare();
       return;
     }
 
@@ -293,7 +293,7 @@ public class G1 extends Concurrent {
       }
       if (nurseryGC()) {
         PauseTimePredictor.nurseryGCStart();
-        regionSpace.prepare(true);
+        regionSpace.prepare();
         VM.memory.globalPrepareVMSpace();
       }
       // Flush mutators
@@ -366,11 +366,11 @@ public class G1 extends Concurrent {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(TOTAL_LOGICAL_REGIONS > 0);
 
 
-    if (Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
-      Log.writeln("Nursery GC ");
-      collection = nurseryCollection;
-      return true;
-    }
+//    if (Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
+//      Log.writeln("Nursery GC ");
+//      collection = nurseryCollection;
+//      return true;
+//    }
 
     // Full GC
     int usedPages = getPagesUsed() - metaDataSpace.reservedPages();

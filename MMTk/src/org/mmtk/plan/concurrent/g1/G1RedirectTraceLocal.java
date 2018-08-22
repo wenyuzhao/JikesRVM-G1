@@ -30,12 +30,12 @@ public class G1RedirectTraceLocal extends TraceLocal {
 //        return G1.regionSpace.isLive(object);
 //      }
 //      return super.isLive(object);
-      if (Space.isInSpace(G1.G1, object)) {
-        Word s = VM.objectModel.readAvailableBitsWord(object);
-        if (s.and(Word.fromIntZeroExtend(3)).toInt() == 1) {
-          return false;
-        }
-      }
+//      if (Space.isInSpace(G1.G1, object)) {
+//        Word s = VM.objectModel.readAvailableBitsWord(object);
+//        if (s.and(Word.fromIntZeroExtend(3)).toInt() == 1) {
+//          return false;
+//        }
+//      }
 
       if (Space.isInSpace(G1.G1, object) && Region.relocationRequired(Region.of(object))) {
 
@@ -45,7 +45,7 @@ public class G1RedirectTraceLocal extends TraceLocal {
       return true;
     } else {
       if (Space.isInSpace(G1.G1, object)) {
-        if (!Region.relocationRequired(Region.of(object))) return true;
+//        if (!Region.relocationRequired(Region.of(object))) return true;
         return G1.regionSpace.isLive(object);
       }
       return super.isLive(object);

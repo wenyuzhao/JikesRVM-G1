@@ -56,27 +56,25 @@ public final class RegionSpace extends Space {
   public static final int GC_HEADER_WORDS_REQUIRED = 0;
   private static boolean allocAsMarked = false;
   private static final boolean HEADER_MARK_BIT = false;
-  private Lock regionCounterLock = VM.newLock("regionCounterLock");
-  private int[] youngRegions = new int[] { 0 };
-  private int[] committedRegions = new int[] { 0 };
+
+  private Atomic.Int youngRegions = new Atomic.Int();
+  private Atomic.Int committedRegions = new Atomic.Int();
 
   @Inline
-  public int youngRegions() { return youngRegions[0]; }
+  public int youngRegions() { return youngRegions.get(); }
 
   @Inline
-  public int committedRegions() { return committedRegions[0]; }
+  public int committedRegions() { return committedRegions.get(); }
 
   @Uninterruptible
   private static class Header {
     static byte markState = MARK_BASE_VALUE;
     @Inline
     public static boolean isMarked(ObjectReference object) {
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return isMarked(VM.objectModel.readAvailableByte(object));
     }
     @Inline
     private static boolean isMarked(byte gcByte) {
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((markState & MARK_MASK) == markState);
       return ((byte) (gcByte & MARK_MASK)) == markState;
     }
     @Inline
@@ -100,7 +98,6 @@ public final class RegionSpace extends Space {
         rtn = (byte) (rtn + MARK_INCREMENT);
         rtn &= MARK_MASK;
       } while (rtn < MARK_BASE_VALUE);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(rtn != markState);
       markState = rtn;
     }
     @Inline
@@ -192,7 +189,7 @@ public final class RegionSpace extends Space {
 //      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.NE(Region.of(address)));
       address = address.minus(Region.BYTES_IN_BLOCK * Region.METADATA_BLOCKS_PER_REGION);
       Address liveWordAddress = chunk.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
       return liveWordAddress;
     }
   }
@@ -235,37 +232,25 @@ public final class RegionSpace extends Space {
   public void growSpace(Address start, Extent bytes, boolean newChunk) {
     if (newChunk) {
       Address chunk = Conversions.chunkAlign(start.plus(bytes), true);
-//      if (VM.VERIFY_ASSERTIONS) Log.writeln("New Region ", chunk);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Conversions.chunkAlign(start.plus(bytes), true).EQ(chunk));
-      // MarkBlock.clearRegionMetadata(chunk);
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.EQ(EmbeddedMetaData.getMetaDataBase(chunk)));
       HeapLayout.mmapper.ensureMapped(chunk, Region.METADATA_PAGES_PER_REGION);
       VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(Region.BLOCKS_START_OFFSET));
     }
   }
 
   @Inline
-  public void prepare(boolean clearBlockLiveSize) {
-    prepare();
-    if (clearBlockLiveSize) {
-      for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
-        Region.setUsedSize(b, 0);
-      }
-    }
-  }
-  /**
-   * Prepare for a new collection increment.
-   */
-  @Inline
-  private void prepare() {
+  public void prepare() {
+    // Update mark state
     if (HEADER_MARK_BIT) {
       Header.increaseMarkState();
-//      Log.writeln("MarkState ", Header.markState);
     } else {
       // Clear marking data
       for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
         Region.clearMarkBitMap(b);
       }
+    }
+    // clearBlockLiveSize
+    for (Address b = firstBlock(); !b.isZero(); b = nextBlock(b)) {
+      Region.setUsedSize(b, 0);
     }
   }
 
@@ -307,8 +292,6 @@ public final class RegionSpace extends Space {
     // Allocate
     Address region = acquire(Region.PAGES_IN_BLOCK);
 
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
-
     if (!region.isZero()) {
       if (VM.VERIFY_ASSERTIONS) {
         Log.write("Block alloc ", region);
@@ -316,46 +299,13 @@ public final class RegionSpace extends Space {
       }
 
       if (Region.USE_CARDS) Region.Card.clearCardMetaForBlock(region);
-      //int oldCount = MarkBlock.count();
-      //if (MarkBlock.allocated(region)) {
-      //  VM.memory.dumpMemory(EmbeddedMetaData.getMetaDataBase(region).plus(MarkBlock.METADATA_OFFSET_IN_REGION), 0, 128);
-      //}
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.allocated(region));
+
       Region.register(region, copy);
 
-      /// youngRegions++;
-      {
-        Address youngRegionsPointer = ObjectReference.fromObject(youngRegions).toAddress();
-        int oldValue, newValue;
-        do {
-          oldValue = youngRegionsPointer.prepareInt();
-          newValue = oldValue + 1;
-        } while (!youngRegionsPointer.attempt(oldValue, newValue));
-      }
-      /// committedRegions++;
-      {
-        Address committedRegionsPointer = ObjectReference.fromObject(committedRegions).toAddress();
-        int oldValue, newValue;
-        do {
-          oldValue = committedRegionsPointer.prepareInt();
-          newValue = oldValue + 1;
-        } while (!committedRegionsPointer.attempt(oldValue, newValue));
-      }
-
-//      regionCounterLock.acquire();
-//      youngRegions++;
-//      committedRegions++;
-//      regionCounterLock.release();
+      youngRegions.add(1);
+      committedRegions.add(1);
     }
-    /*if (VM.VERIFY_ASSERTIONS) {
-      if (!region.isZero()) {
-        VM.assertions._assert(Region.allocated(region));
-        VM.assertions._assert(!Region.relocationRequired(region));
-        VM.assertions._assert(Region.usedSize(region) == 0);
-      } else {
-        Log.writeln("ALLOCATED A NULL REGION");
-      }
-    }*/
+
     return region;
   }
 
@@ -368,34 +318,14 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public void release(Address region) {
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(region));
-
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(region));
-    /// committedRegions--;
-    {
-      Address committedRegionsPointer = ObjectReference.fromObject(committedRegions).toAddress();
-      int oldValue, newValue;
-      do {
-        oldValue = committedRegionsPointer.prepareInt();
-        newValue = oldValue - 1;
-      } while (!committedRegionsPointer.attempt(oldValue, newValue));
-    }
+    committedRegions.add(-1);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
 
     if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
-      /// youngRegions--;
-      Address youngRegionsPointer = ObjectReference.fromObject(youngRegions).toAddress();
-      int oldValue, newValue;
-      do {
-        oldValue = youngRegionsPointer.prepareInt();
-        newValue = oldValue - 1;
-      } while (!youngRegionsPointer.attempt(oldValue, newValue));
+      youngRegions.add(-1);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(youngRegions.get() >= 0);
     }
-//    regionCounterLock.acquire();
-//    committedRegions--;
-//    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
-//      youngRegions--;
-//    }
-//    regionCounterLock.release();
+
     Region.unregister(region);
 
     ((FreeListPageResource) pr).releasePages(region);
@@ -527,26 +457,17 @@ public final class RegionSpace extends Space {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(priorStatusWord.and(Word.fromIntZeroExtend(3)).toInt() != 1);
+
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
         return newObject;
-      } else if (priorStatusWord.and(Word.fromIntZeroExtend(3)).toInt() == 1) {
-        VM.objectModel.dumpObject(object);
-        VM.assertions.fail("");
-        return object;
       } else {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((VM.objectModel.readAvailableByte(object) & 3) != 1);
-
         long time = VM.statistics.nanoTime();
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
         if (evacuationTimer != null) {
           evacuationTimer.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
         }
-//        Log.write(object);
-//        Log.writeln(" -> ", newObject);
         writeMarkState(newObject);
-//        trace.processNode(object);
         trace.processNode(newObject);
         return newObject;
       }
@@ -567,9 +488,6 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public boolean isLive(ObjectReference object) {
-    if ((VM.objectModel.readAvailableByte(object) & 3) == 1) {
-      return false;
-    }
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
     return HEADER_MARK_BIT ? Header.isMarked(object) : MarkBitMap.isMarked(object);
   }
@@ -718,16 +636,12 @@ public final class RegionSpace extends Space {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
     int blocksCount = nurseryOnly ? youngRegions() : committedRegions();
-//    if (VM.VERIFY_ASSERTIONS) Log.writeln("Blocks: ", blocksCount);
     AddressArray blocks = AddressArray.create(blocksCount);
 
     // Initialize blocks array
     int index = 0;
     Address block = firstBlock();
     while (!block.isZero()) {
-      //if (VM.VERIFY_ASSERTIONS) {
-        //VM.assertions._assert(index < blocks.length());
-      //}
       if (!nurseryOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
         blocks.set(index, block);
         index++;
@@ -752,11 +666,7 @@ public final class RegionSpace extends Space {
       Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(1);
       block = nextBlock(block);
     }
-    /// youngRegions = 0;
-    youngRegions[0] = 0;
-//    regionCounterLock.acquire();
-//    youngRegions = 0;
-//    regionCounterLock.release();
+    youngRegions.set(0);
   }
 
 
@@ -993,6 +903,10 @@ public final class RegionSpace extends Space {
     }
   }
 
+  /**
+   * Heap Validation Methods
+   */
+
   private final TransitiveClosure regionValidationTransitiveClosure = new TransitiveClosure() {
     @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
       ObjectReference ref = slot.loadObjectReference();
@@ -1001,11 +915,9 @@ public final class RegionSpace extends Space {
         Log.write("Invalid ", source);
         Log.write(".", slot);
         Log.writeln(" -> ", ref);
-        //Log.write(Space.getSpaceForObject(ref).getName());
-//        Log.writeln(" ", ref);
       }
       VM.assertions._assert(VM.debugging.validRef(ref));
-      if (contains(ref)) {
+      if (Region.USE_CARDS && contains(ref)) {
         Address region = Region.of(ref);
         if (region.NE(Region.of(source))) {
           Address card = Region.Card.of(source);
@@ -1020,11 +932,10 @@ public final class RegionSpace extends Space {
       if ((VM.objectModel.readAvailableByte(object) & 3) == 1) return;
       VM.assertions._assert(VM.debugging.validRef(object));
       VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-//      if (isLive(object)) {
-        VM.scanning.scanObject(regionValidationTransitiveClosure, object);
-//      }
+      VM.scanning.scanObject(regionValidationTransitiveClosure, object);
     }
   };
+
   public void validate() {
     for (Address region = firstBlock(); !region.isZero(); region = nextBlock(region)) {
       Region.linearScan(regionValidationLinearScan, region);

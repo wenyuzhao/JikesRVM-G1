@@ -140,7 +140,7 @@ public class Regional extends Concurrent {
   public void collectionPhase(short phaseId) {
     if (phaseId == PREPARE) {
       super.collectionPhase(PREPARE);
-      regionSpace.prepare(true);
+      regionSpace.prepare();
       markTrace.prepareNonBlocking();
       return;
     }
@@ -164,7 +164,7 @@ public class Regional extends Concurrent {
 
     if (phaseId == EVACUATE_PREPARE) {
       super.collectionPhase(PREPARE);
-      regionSpace.prepare(true);
+      regionSpace.prepare();
       evacuateTrace.prepare();
       return;
     }
