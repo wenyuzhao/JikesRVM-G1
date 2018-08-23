@@ -29,11 +29,12 @@ public class Atomic {
 
     @Inline
     public final int add(int value) {
+      Address pointer = ObjectReference.fromObject(this.value).toAddress();
       int oldValue, newValue;
       do {
-        oldValue = get();
+        oldValue = pointer.prepareInt();
         newValue = oldValue + value;
-      } while (!attempt(oldValue, newValue));
+      } while (!pointer.attempt(oldValue, newValue));
       return oldValue;
     }
   }

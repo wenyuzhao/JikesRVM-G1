@@ -109,6 +109,8 @@ public class CardTable {
     do {
       // Get old int
       oldValue = buf[intIndex];
+      boolean oldBit = (oldValue & (1 << (31 - bitIndex))) != 0;
+      if (oldBit == newBit) return false;
       // Build new int
       if (newBit) {
         newValue = oldValue | (1 << (31 - bitIndex));

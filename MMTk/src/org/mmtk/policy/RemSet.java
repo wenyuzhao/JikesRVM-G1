@@ -52,6 +52,8 @@ public class RemSet {
       do {
         // Get old int
         oldValue = buf.plus(intIndex << Constants.LOG_BYTES_IN_INT).loadInt();//buf[intIndex];
+        boolean oldBit = (oldValue & (1 << (31 - bitIndex))) != 0;
+        if (oldBit == newBit) return false;
         // Build new int
         if (newBit) {
           newValue = oldValue | (1 << (31 - bitIndex));
@@ -93,9 +95,11 @@ public class RemSet {
   @Inline
   private static void lock(Address region) {
     Address remSetLock = Region.metaDataOf(region, Region.METADATA_REMSET_LOCK_OFFSET);
-    //int oldValue;
     do {
-      //oldValue = remSetLock.prepareInt();
+      if (VM.VERIFY_ASSERTIONS) {
+        int oldValue = remSetLock.prepareInt();
+        VM.assertions._assert(oldValue == 0 || oldValue == 1);
+      }
     } while (!remSetLock.attempt(0, 1));
   }
 
@@ -152,7 +156,7 @@ public class RemSet {
       Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
       int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
       do {
-        oldSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).prepareInt();
+        oldSize = sizePointer.prepareInt();
         newSize = oldSize + 1;
       } while (!sizePointer.attempt(oldSize, newSize));
     }
@@ -238,11 +242,30 @@ public class RemSet {
       }
     };
 
+    public TransitiveClosure clearFieldsTransitiveClosure = new TransitiveClosure() {
+      @Uninterruptible
+      public void processEdge(ObjectReference source, Address slot) {
+        slot.store(ObjectReference.nullReference());
+      }
+    };
+
+    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
+
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
-        if (!object.isNull()) {// && redirectPointerTrace.isLive(object)) {
+        if (!object.isNull()) {
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-          redirectPointerTrace.traceObject(object, true);
+          if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
+            return;
+          } else if (redirectPointerTrace.isLive(object)) {
+            redirectPointerTrace.traceObject(object, true);
+//            redirectPointerTrace.processNode(object);
+          } else {
+            object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
+//            Word status = VM.objectModel.readAvailableBitsWord(object);
+//            VM.objectModel.writeAvailableBitsWord(object, status.or(Word.one()));
+//            VM.scanning.scanObject(clearFieldsTransitiveClosure, object);
+          }
         }
       }
     };

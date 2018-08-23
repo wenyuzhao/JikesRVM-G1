@@ -248,7 +248,7 @@ public class G1RedirectTraceLocal extends TraceLocal {
         newObject = super.traceObject(object);
       }
     }
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(newObject));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
     return newObject;
   }
 

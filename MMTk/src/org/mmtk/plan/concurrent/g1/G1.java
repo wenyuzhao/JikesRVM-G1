@@ -122,7 +122,11 @@ public class G1 extends Concurrent {
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
     Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(SOFT_REFS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
     Phase.scheduleCollector(WEAK_REFS),
     Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleGlobal   (REDIRECT_CLOSURE),
@@ -163,13 +167,6 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(REDIRECT_CLOSURE),
       // refTypeClosurePhase
 
-
-      Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
       Phase.scheduleCollector  (SOFT_REFS),
       Phase.scheduleGlobal     (REDIRECT_CLOSURE),
       Phase.scheduleCollector  (REDIRECT_CLOSURE),
@@ -178,6 +175,11 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector  (REDIRECT_CLOSURE),
       Phase.scheduleCollector  (PHANTOM_REFS),
 
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
 
       Phase.scheduleCollector  (FINALIZABLE),
       Phase.scheduleGlobal     (REDIRECT_CLOSURE),
@@ -366,11 +368,11 @@ public class G1 extends Concurrent {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(TOTAL_LOGICAL_REGIONS > 0);
 
 
-//    if (Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
-//      Log.writeln("Nursery GC ");
-//      collection = nurseryCollection;
-//      return true;
-//    }
+    if (GENERATIONAL && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
+      Log.writeln("Nursery GC ");
+      collection = nurseryCollection;
+      return true;
+    }
 
     // Full GC
     int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
@@ -418,7 +420,7 @@ public class G1 extends Concurrent {
   protected void spawnCollectorThreads(int numThreads) {
     super.spawnCollectorThreads(numThreads);
 
-    int refineThreads = numThreads;// <= 2 ? 1 : numThreads >> 1;
+    int refineThreads = 1;//numThreads;// <= 2 ? 1 : numThreads >> 1;
     ConcurrentRemSetRefinement.initialize(refineThreads);
     for (int i = 0; i < refineThreads; i++) {
       VM.collection.spawnCollectorContext(new ConcurrentRemSetRefinement());

@@ -198,10 +198,10 @@ public class Region {
   @Inline
   public static void updateBlockAliveSize(Address block, ObjectReference object) {
     Address meta = metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET);
-    int oldValue, newValue;
+    int oldValue, newValue, size = VM.objectModel.getSizeWhenCopied(object);
     do {
       oldValue = meta.prepareInt();
-      newValue = oldValue + VM.objectModel.getSizeWhenCopied(object);
+      newValue = oldValue + size;
     } while (!meta.attempt(oldValue, newValue));
   }
 
@@ -405,17 +405,19 @@ public class Region {
     @Inline
     public static void clearCardMeta(Address card) {
       int i = hash(card);
-      byte oldByte;
-
-      do {
-        oldByte = getByte(anchors, i);
-        if (oldByte == (byte) -1) break;
-      } while (!compareAndSwapByteInBuffer(anchors, i, oldByte, (byte) -1));
-
-      do {
-        oldByte = getByte(limits, i);
-        if (oldByte == (byte) -1) break;
-      } while (!compareAndSwapByteInBuffer(limits, i, oldByte, (byte) -1));
+      ObjectReference.fromObject(anchors).toAddress().plus(i).store((byte) -1);
+      ObjectReference.fromObject(limits).toAddress().plus(i).store((byte) -1);
+//      byte oldByte;
+//
+//      do {
+//        oldByte = getByte(anchors, i);
+//        if (oldByte == (byte) -1) break;
+//      } while (!compareAndSwapByteInBuffer(anchors, i, oldByte, (byte) -1));
+//
+//      do {
+//        oldByte = getByte(limits, i);
+//        if (oldByte == (byte) -1) break;
+//      } while (!compareAndSwapByteInBuffer(limits, i, oldByte, (byte) -1));
     }
 
     @Inline
@@ -554,13 +556,44 @@ public class Region {
           //  Word oldStatus = VM.objectModel.prepareAvailableBits(ref);
           //}
 
-          if (currentSpace == RS && ForwardingWord.isForwardedOrBeingForwarded(ref) && DISABLE_DYNAMIC_HASH_OFFSET) {
-            VM.objectModel.writeAvailableBitsWord(ref, Word.zero());
-            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
+          if (VM.VERIFY_ASSERTIONS) {
+            if (!VM.debugging.validRef(ref)) {
+              Log _log = VM.activePlan.mutator().getLog();
+              _log.writeln();
+              _log.write(Space.getSpaceForObject(ref).getName());
+              if (Space.isInSpace(regionSpace.descriptor, ref)) {
+                _log.write(Region.allocated(Region.of(ref)) ? " alloc " : " no-alloc ");
+                _log.write(Region.relocationRequired(Region.of(ref)) ? " reloc " : " no-reloc ");
+              }
+              _log.flush();
+              VM.objectModel.dumpObject(ref);
+            }
+            VM.assertions._assert(VM.debugging.validRef(ref));
           }
-          
+
+          if (currentSpace == RS && ForwardingWord.stateIsForwardedOrBeingForwarded(oldStatus)) {
+//            while (!VM.objectModel.attemptAvailableBits(ref, oldStatus, Word.zero())) {}
+            VM.objectModel.writeAvailableBitsWord(ref, Word.zero());
+          }
+
+          if (VM.VERIFY_ASSERTIONS) {
+            if (!VM.debugging.validRef(ref)) {
+              Log _log = VM.activePlan.mutator().getLog();
+              _log.writeln();
+              _log.write(Space.getSpaceForObject(ref).getName());
+              if (Space.isInSpace(regionSpace.descriptor, ref)) {
+                _log.write(Region.allocated(Region.of(ref)) ? " alloc " : " no-alloc ");
+                _log.write(Region.relocationRequired(Region.of(ref)) ? "reloc " : "no-reloc ");
+                _log.write(ForwardingWord.isForwardedOrBeingForwarded(ref) ? "fwd " : "no-fwd ");
+              }
+              _log.flush();
+              VM.objectModel.dumpObject(ref);
+            }
+            VM.assertions._assert(VM.debugging.validRef(ref));
+          }
           currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
-          if (currentSpace == RS && ForwardingWord.isForwardedOrBeingForwarded(ref) && DISABLE_DYNAMIC_HASH_OFFSET) {
+
+          if (currentSpace == RS && ForwardingWord.stateIsForwardedOrBeingForwarded(oldStatus)) {
             VM.objectModel.writeAvailableBitsWord(ref, oldStatus);
           }
           //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!currentObjectEnd.isZero());

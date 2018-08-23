@@ -40,7 +40,11 @@ public class G1Constraints extends ConcurrentConstraints {
   }
   @Override
   public int gcHeaderWords() {
-    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
+    return 1; //RegionSpace.GC_HEADER_WORDS_REQUIRED;
+  }
+  @Override
+  public boolean needsLinearScan() {
+    return true;
   }
   @Override
   public int numSpecializedScans() {

@@ -416,7 +416,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
       if (FilledRSBufferQueue.size() <= FilledRSBufferQueue.CAPACITY * untilRatio) {
         //lock.release();
-        break;
+        continue;
       }
       // Dequeue one buffer
       Address buffer = FilledRSBufferQueue.tryDequeue();

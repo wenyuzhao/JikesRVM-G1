@@ -133,7 +133,7 @@ public final class RegionSpace extends Space {
     private static final Word WORD_SHIFT_MASK = Word.one().lsh(LOG_BITS_IN_WORD).minus(Extent.one());
     @Inline
     public static boolean isMarked(ObjectReference object) {
-      return liveBitSet(VM.objectModel.refToAddress(object));
+      return liveBitSet(VM.objectModel.objectStartRef(object));
     }
     @Inline
     public static boolean testAndMark(ObjectReference object) {
