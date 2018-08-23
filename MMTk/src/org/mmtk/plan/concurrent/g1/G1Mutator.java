@@ -53,7 +53,7 @@ public class G1Mutator extends ConcurrentMutator {
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
-  private final TraceWriteBuffer markRemset, relocateRemset;
+  private final TraceWriteBuffer markRemset;
   private TraceWriteBuffer currentRemset;
 
   /****************************************************************************
@@ -67,7 +67,6 @@ public class G1Mutator extends ConcurrentMutator {
   public G1Mutator() {
     mc = new RegionAllocator(G1.regionSpace, false);
     markRemset = new TraceWriteBuffer(global().markTrace);
-    relocateRemset = new TraceWriteBuffer(global().redirectTrace);
     currentRemset = markRemset;
   }
 
@@ -158,7 +157,6 @@ public class G1Mutator extends ConcurrentMutator {
 
     if (phaseId == G1.REDIRECT_PREPARE) {
       VM.collection.prepareMutator(this);
-      currentRemset = relocateRemset;
       mc.reset();
       super.collectionPhase(G1.PREPARE, primary);
       return;

@@ -56,9 +56,9 @@ public class G1Collector extends ConcurrentCollector {
    */
   protected final RegionAllocator copy = new RegionAllocator(G1.regionSpace, true);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
+  protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final G1RedirectTraceLocal redirectTrace = new G1RedirectTraceLocal(global().redirectTrace);
   protected TraceLocal currentTrace;
-  protected RemSet.Builder remSetBuilder = new RemSet.Builder(markTrace, G1.regionSpace);
 
   /****************************************************************************
    *
@@ -119,80 +119,39 @@ public class G1Collector extends ConcurrentCollector {
 
     if (phaseId == G1.RELEASE) {
       VM.assertions.fail("Unreachable");
-      markTrace.completeTrace();
-      markTrace.release();
-      return;
-    }
-
-    if (phaseId == G1.EAGER_CLEANUP_BLOCKS) {
-      G1.regionSpace.releaseZeroRegions(G1.relocationSet, false);
-      if (rendezvous() == 0) {
-        int cursor = 0;
-        for (int i = 0; i < G1.relocationSet.length(); i++) {
-          Address a = G1.relocationSet.get(i);
-          if (!a.isZero()) {
-            G1.relocationSet.set(cursor++, a);
-          }
-        }
-        while (cursor < G1.relocationSet.length()) {
-          G1.relocationSet.set(cursor++, Address.zero());
-        }
-      }
-      rendezvous();
       return;
     }
 
     if (phaseId == G1.REDIRECT_PREPARE) {
       ConcurrentRemSetRefinement.refineAllDirtyCards();
       rendezvous();
-//      if (global().isCurrentGCNursery()) super.collectionPhase(G1.PREPARE, primary);
-      currentTrace = redirectTrace;
-      redirectTrace.prepare();
+      currentTrace = global().nurseryGC() ? nurseryTrace : redirectTrace;
+      currentTrace.prepare();
       copy.reset();
       if (global().nurseryGC()) {
-//        VM.memory.collectorPrepareVMSpace();
         super.collectionPhase(G1.PREPARE, primary);
       }
       return;
     }
 
     if (phaseId == G1.REMEMBERED_SETS) {
-      Region.Card.DISABLE_DYNAMIC_HASH_OFFSET = true;
       ConcurrentRemSetRefinement.refineAllDirtyCards();
-      Region.Card.DISABLE_DYNAMIC_HASH_OFFSET = false;
-      redirectTrace.processRemSets();
+      ((G1EvacuationTraceLocal) currentTrace).processRemSets();
       return;
     }
 
-    if (phaseId == G1.FINALIZABLE) {
-      if (global().nurseryGC()) {
-        redirectTrace.nurseryTraceFinalizables = true;
-        rendezvous();
-      }
-    }
-
-    if (phaseId == G1.PHANTOM_REFS) {
-      if (global().nurseryGC()) {
-        redirectTrace.nurseryTraceFinalizables = false;
-        rendezvous();
-      }
-    }
-
     if (phaseId == G1.REDIRECT_CLOSURE) {
-      redirectTrace.completeTrace();
+      currentTrace.completeTrace();
       return;
     }
 
     if (phaseId == G1.REDIRECT_RELEASE) {
       copy.reset();
-      redirectTrace.release();
+      currentTrace.release();
       if (!global().nurseryGC()) {
         markTrace.release();
-        super.collectionPhase(G1.RELEASE, primary);
-      } else {
-        super.collectionPhase(G1.RELEASE, primary);
-//        VM.memory.collectorReleaseVMSpace();
       }
+      super.collectionPhase(G1.RELEASE, primary);
       return;
     }
 
@@ -219,8 +178,6 @@ public class G1Collector extends ConcurrentCollector {
     }
     return false;
   }
-
-//  static
 
   @Override
   @Unpreemptible

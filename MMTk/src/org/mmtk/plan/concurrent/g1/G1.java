@@ -57,6 +57,7 @@ public class G1 extends Concurrent {
   public static final int G1 = regionSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
+  public final Trace nurseryTrace = new Trace(metaDataSpace);
   public final Trace redirectTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
 
@@ -77,8 +78,9 @@ public class G1 extends Concurrent {
    *
    */
   public static final int ALLOC_RS = Plan.ALLOC_DEFAULT;
-  public static final int SCAN_MARK = 0;
-  public static final int SCAN_REDIRECT = 1;
+  public static final int SCAN_NURSERY = 0;
+  public static final int SCAN_MARK = 1;
+  public static final int SCAN_MATURE = 2;
 
   /* Phases */
   public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
@@ -96,57 +98,15 @@ public class G1 extends Concurrent {
 
   public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
-  public static final short EAGER_CLEANUP_BLOCKS = Phase.createSimple("eager-cleanup-blocks");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
 
   public static final boolean GENERATIONAL = true;
   public static final short YOUNG_GC = 1;
   public static final short MIXED_GC = 2;
   public static final short FULL_GC = 3;
-  public static short currentGCKind = 0;
-  public static short lastGCKind = 0;
+  public static short currentGCKind = NOT_IN_GC, lastGCKind = NOT_IN_GC;
 
-  public static final short relocationPhase = Phase.createComplex("relocation", null,
-    Phase.scheduleMutator  (REDIRECT_PREPARE),
-    Phase.scheduleGlobal   (REDIRECT_PREPARE),
-    Phase.scheduleCollector(REDIRECT_PREPARE),
 
-//    Phase.scheduleCollector(FINALIZABLE),
-//    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-//    Phase.scheduleCollector(REDIRECT_CLOSURE),
-//    Phase.scheduleCollector(EAGER_CLEANUP_BLOCKS),
-
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-    Phase.scheduleCollector(SOFT_REFS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-    Phase.scheduleCollector(REDIRECT_CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleComplex  (forwardPhase),
-
-      Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
-    Phase.scheduleCollector(CLEANUP_BLOCKS),
-    Phase.scheduleCollector(CLEAR_CARD_META),
-
-    Phase.scheduleMutator  (REDIRECT_RELEASE),
-    Phase.scheduleCollector(REDIRECT_RELEASE),
-    Phase.scheduleGlobal   (REDIRECT_RELEASE)
-  );
 
   public static final short nurseryCollection = Phase.createComplex("nursery-collection", null,
       Phase.scheduleComplex  (initPhase),
@@ -199,21 +159,48 @@ public class G1 extends Concurrent {
       Phase.scheduleComplex  (finishPhase)
     );
 
+  public static final short relocationPhase = Phase.createComplex("mature-evacuation", null,
+      Phase.scheduleMutator  (REDIRECT_PREPARE),
+      Phase.scheduleGlobal   (REDIRECT_PREPARE),
+      Phase.scheduleCollector(REDIRECT_PREPARE),
 
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(SOFT_REFS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector(FINALIZABLE),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleComplex  (forwardPhase),
 
+      Phase.scheduleMutator  (REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
+      Phase.scheduleCollector(REDIRECT_CLOSURE),
 
-  public short _collection = Phase.createComplex("_collection", null,
+      Phase.scheduleCollector(CLEANUP_BLOCKS),
+      Phase.scheduleCollector(CLEAR_CARD_META),
+
+      Phase.scheduleMutator  (REDIRECT_RELEASE),
+      Phase.scheduleCollector(REDIRECT_RELEASE),
+      Phase.scheduleGlobal   (REDIRECT_RELEASE)
+  );
+
+  public short matureCollection = Phase.createComplex("mature-collection", null,
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
 
-//    Phase.scheduleCollector(SOFT_REFS),
-//    Phase.scheduleGlobal   (CLOSURE),
-//    Phase.scheduleCollector(CLOSURE),
-//    Phase.scheduleCollector(WEAK_REFS),
-//    Phase.scheduleGlobal   (CLOSURE),
-//    Phase.scheduleCollector(CLOSURE),
-//    Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleGlobal   (RELEASE),
 
     Phase.scheduleComplex  (relocationSetSelection),
@@ -227,7 +214,7 @@ public class G1 extends Concurrent {
    * Constructor
    */
   public G1() {
-    collection = _collection;
+    collection = matureCollection;
   }
   /****************************************************************************
    *
@@ -306,7 +293,7 @@ public class G1 extends Concurrent {
         m.dropCurrentRSBuffer();
       }
       ConcurrentRemSetRefinement.pause();
-      redirectTrace.prepare();
+      (nurseryGC() ? nurseryTrace : redirectTrace).prepare();
       return;
     }
 
@@ -325,7 +312,7 @@ public class G1 extends Concurrent {
 
     if (phaseId == REDIRECT_RELEASE) {
       regionSpace.promoteAllRegionsAsOldGeneration();
-      redirectTrace.release();
+      (nurseryGC() ? nurseryTrace : redirectTrace).release();
       regionSpace.release();
       if (!nurseryGC()) {
         markTrace.release();
@@ -382,7 +369,7 @@ public class G1 extends Concurrent {
       fullGCRequired = true;
     }
     fullGCRequired = fullGCRequired || super.collectionRequired(spaceFull, space);
-    if (fullGCRequired) collection = _collection;
+    if (fullGCRequired) collection = matureCollection;
     return fullGCRequired;
   }
 
@@ -394,7 +381,7 @@ public class G1 extends Concurrent {
     if (mixedGCRequired) {
       Log.write("Mixed GC ", regionSpace.youngRegions());
       Log.writeln("/", TOTAL_LOGICAL_REGIONS);
-      collection = _collection;
+      collection = matureCollection;
     }
     return mixedGCRequired;
   }
@@ -473,7 +460,8 @@ public class G1 extends Concurrent {
   @Interruptible
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, G1MarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_REDIRECT, G1RedirectTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MATURE, G1RedirectTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_NURSERY, G1NurseryTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

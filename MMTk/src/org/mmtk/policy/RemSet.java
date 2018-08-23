@@ -3,7 +3,6 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.plan.concurrent.g1.G1;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
@@ -166,18 +165,15 @@ public class RemSet {
 
   @Inline
   public static void removeCard(Address region, Address card) {
-//    Log.writeln("Remove card ");
     lock(region);
-//    Log.writeln("Remove card enter");
+
     Address prt = preparePRT(region, card, false);
     if (prt.isZero()) {
       unlock(region);
       return;
     }
-//    Log.writeln("Remove card attempt to remove");
-//    PerRegionTable.remove(prt, card);
+
     if (PerRegionTable.remove(prt, card)) {
-//      Log.writeln("Remove card decrease rs size");
       Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
       int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
       do {
@@ -186,8 +182,8 @@ public class RemSet {
         newSize = oldSize - 1;
       } while (!sizePointer.attempt(oldSize, newSize));
     }
+
     unlock(region);
-//    Log.writeln("Remove card end");
   }
 
   @Inline
@@ -218,53 +214,27 @@ public class RemSet {
       this.regionSpace = regionSpace;
     }
 
-    public TransitiveClosure redirectPointerTransitiveClosure = new TransitiveClosure() {
-      @Uninterruptible
-      public void processEdge(ObjectReference source, Address slot) {
-        ObjectReference ref = slot.loadObjectReference();
-        if (!ref.isNull() && Space.isMappedObject(ref) && Space.isInSpace(regionSpace.getDescriptor(), ref) && Region.relocationRequired(Region.of(ref))) {
-          redirectPointerTrace.processRootEdge(slot, true);
-        }
-      }
-    };
+    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
 
-    public TransitiveClosure validateTC = new TransitiveClosure() {
-      @Uninterruptible
-      public void processEdge(ObjectReference source, Address slot) {
-        ObjectReference ref = slot.loadObjectReference();
-        if (G1.regionSpace.contains(ref)) {
-          if ((VM.objectModel.readAvailableByte(ref) & 3) == 1) {
-            VM.objectModel.dumpObject(source);
-            VM.objectModel.dumpObject(ref);
-          }
-          VM.assertions._assert((VM.objectModel.readAvailableByte(ref) & 3) != 1);
-        }
+    static {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(RegionSpace.GC_HEADER_WORDS_REQUIRED == 2);
       }
-    };
-
-    public TransitiveClosure clearFieldsTransitiveClosure = new TransitiveClosure() {
-      @Uninterruptible
-      public void processEdge(ObjectReference source, Address slot) {
-        slot.store(ObjectReference.nullReference());
-      }
-    };
-
-    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
+    }
 
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
         if (!object.isNull()) {
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+
           if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).EQ(Word.one()));
             return;
           } else if (redirectPointerTrace.isLive(object)) {
             redirectPointerTrace.traceObject(object, true);
-//            redirectPointerTrace.processNode(object);
           } else {
+            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
             object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
-//            Word status = VM.objectModel.readAvailableBitsWord(object);
-//            VM.objectModel.writeAvailableBitsWord(object, status.or(Word.one()));
-//            VM.scanning.scanObject(clearFieldsTransitiveClosure, object);
           }
         }
       }
@@ -382,52 +352,6 @@ public class RemSet {
           prtEntry.store(Address.zero());
         }
       }
-    }
-  }
-
-  @Uninterruptible
-  public static class Builder {
-    RegionSpace regionSpace;
-    int REGION_SPACE;
-    TraceLocal traceLocal;
-    boolean cardAdded = false;
-
-    public Builder(TraceLocal traceLocal, RegionSpace regionSpace) {
-      this.traceLocal = traceLocal;
-      this.regionSpace = regionSpace;
-      REGION_SPACE = regionSpace.getDescriptor();
-    }
-
-    TransitiveClosure rsBuilderTC = new TransitiveClosure() {
-      @Uninterruptible
-      @Inline
-      public void processEdge(ObjectReference src, Address slot) {
-        ObjectReference ref = slot.loadObjectReference();
-        if (!ref.isNull() && Space.isInSpace(REGION_SPACE, ref)) {
-          Address region = Region.of(ref);
-          if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) return;
-          if (Region.relocationRequired(region) && region.NE(Region.of(src))) {
-            Address card = Region.Card.of(src);
-            cardAdded = true;
-            RemSet.addCard(region, card);
-          }
-        }
-      }
-    };
-
-    LinearScan regionLinearScan = new LinearScan() {
-      @Override @Uninterruptible public void scan(ObjectReference object) {
-        if (regionSpace.isLive(object)) {
-          cardAdded = false;
-          VM.scanning.scanObject(rsBuilderTC, object);
-          if (cardAdded) {
-            Region.Card.updateCardMeta(object);
-          }
-        }
-      }
-    };
-    public void scanRegionForConstructingRemSets(Address region) {
-      Region.linearScan(regionLinearScan, region);
     }
   }
 }
