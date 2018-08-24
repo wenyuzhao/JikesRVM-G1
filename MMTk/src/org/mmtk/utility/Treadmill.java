@@ -99,6 +99,11 @@ public final class Treadmill {
     return fromSpace.pop();
   }
 
+  @Inline
+  public boolean isInToSpace(Address node) {
+    return toSpace.isMember(node);// || allocNursery.isMember(node);
+  }
+
   /**
    * Copies a node (during gc tracing).
    *

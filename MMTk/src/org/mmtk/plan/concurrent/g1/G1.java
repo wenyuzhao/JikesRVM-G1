@@ -77,7 +77,12 @@ public class G1 extends Concurrent {
   /**
    *
    */
-  public static final int ALLOC_RS = Plan.ALLOC_DEFAULT;
+//  public static final int ALLOC_MATURE = Plan.ALLOC_DEFAULT;
+  public static final int ALLOC_EDEN = Plan.ALLOC_DEFAULT;
+  public static final int ALLOC_SURVIVOR = ALLOCATORS + 1;
+  public static final int ALLOC_OLD = ALLOCATORS + 2;
+//  public static final int ALLOC_NURSERY = Plan.ALLOC_DEFAULT;
+//  public static final int ALLOC_RS = Plan.ALLOC_DEFAULT;
   public static final int SCAN_NURSERY = 0;
   public static final int SCAN_MARK = 1;
   public static final int SCAN_MATURE = 2;
@@ -267,7 +272,12 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, currentGCKind != YOUNG_GC, false);
+      if (currentGCKind == YOUNG_GC) {
+        // blocksSnapshot is already and only contains young & survivor regions
+        relocationSet = blocksSnapshot;
+      } else {
+        relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, true, false);
+      }
       if (currentGCKind == MIXED_GC) {
         PauseTimePredictor.predict(relocationSet);
       }
@@ -311,7 +321,7 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == REDIRECT_RELEASE) {
-      regionSpace.promoteAllRegionsAsOldGeneration();
+//      regionSpace.promoteAllRegionsAsOldGeneration();
       (nurseryGC() ? nurseryTrace : redirectTrace).release();
       regionSpace.release();
       if (!nurseryGC()) {

@@ -242,7 +242,7 @@ public class RemSet {
 
     /** Scan all cards in remsets of collection regions */
     @Inline
-    public void processRemSets(AddressArray relocationSet, boolean concurrent, RegionSpace regionSpace, RemSetCardScanningTimer remSetCardScanningTimer) {
+    public void processRemSets(AddressArray relocationSet, boolean concurrent, boolean skipDeadBlock, RegionSpace regionSpace, RemSetCardScanningTimer remSetCardScanningTimer) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -279,9 +279,10 @@ public class RemSet {
               if (!Space.isMappedAddress(card)) continue;
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
               if (Space.isInSpace(REGION_SPACE, card) && Region.relocationRequired(Region.of(card))) continue;
+//              if (Region.Card.getCardAnchor(card).isZero())
 
               long time = VM.statistics.nanoTime();
-              Region.Card.linearScan(cardLinearScan, regionSpace, card, false);
+              Region.Card.linearScan(cardLinearScan, regionSpace, card, skipDeadBlock);
               remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
             }
           }

@@ -15,6 +15,9 @@ package org.mmtk.policy;
 import static org.mmtk.utility.Constants.LOG_BYTES_IN_PAGE;
 
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.utility.Constants;
+import org.mmtk.utility.ForwardingWord;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.FreeListPageResource;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.HeaderByte;
@@ -203,6 +206,12 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
     Address cell = VM.objectModel.objectStartRef(object);
     Address node = Treadmill.midPayloadToNode(cell);
     treadmill.copy(node, nurseryObject);
+  }
+
+  @Inline
+  public boolean isInToSpace(Address address) {
+    Word node = address.toWord().and(Word.fromIntZeroExtend(Constants.BYTES_IN_PAGE - 1).not());
+    return treadmill.isInToSpace(node.toAddress());
   }
 
   /****************************************************************************

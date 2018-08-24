@@ -15,6 +15,11 @@ import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class Region {
+  public static final int NORMAL = 0;
+  public static final int EDEN = NORMAL;
+  public static final int SURVIVOR = 1;
+  public static final int OLD = 2;
+
   public static final int LOG_PAGES_IN_BLOCK = 8;
   public static final int PAGES_IN_BLOCK = 1 << 8; // 256
   public static final int LOG_BYTES_IN_BLOCK = LOG_PAGES_IN_BLOCK + LOG_BYTES_IN_PAGE;
@@ -168,7 +173,12 @@ public class Region {
   static Lock blocksCountLock = VM.newLock("blocksCountLock");
 
   @Inline
-  public static void register(Address block, boolean copy) {
+  public static int kind(Address region) {
+    return Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt();
+  }
+
+  @Inline
+  public static void register(Address block, int allocationKind) {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
     // Handle this block
     //blocksCountLock.acquire();
@@ -176,6 +186,10 @@ public class Region {
     //blocksCountLock.release();
     clearState(block);
     setAllocated(block, true);
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
+    }
+    Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(allocationKind);
   }
 
   @Inline
@@ -432,37 +446,54 @@ public class Region {
     }
 
     @Inline
-    public static void clearCardMetaForUnmarkedCards(RegionSpace space, boolean concurrent) {
+    public static void clearCardMetaForUnmarkedCards(RegionSpace regionSpace, boolean concurrent) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
       int totalEntries = anchors.length;
       int entriesToClear = ceilDiv(anchors.length, workers);
 
-      int G1_SPACE = space.getDescriptor();
+      int G1_SPACE = regionSpace.getDescriptor();
 
       for (int i = 0; i < entriesToClear; i++) {
         int index = entriesToClear * id + i;
         if (index >= totalEntries) break;
         int firstCardIndex = index << Constants.LOG_BYTES_IN_INT;
         Address firstCard = VM.HEAP_START.plus(firstCardIndex << LOG_BYTES_IN_CARD);
+        if (!Space.isMappedAddress(firstCard)) {
+          anchors[index] = 0xFFFFFFFF;
+          limits[index] = 0xFFFFFFFF;
+          continue;
+        }
         if (Space.isInSpace(G1_SPACE, firstCard)) continue;
-        anchors[index] = 0xFFFFFFFF;
-        limits[index] = 0xFFFFFFFF;
+
+        Space space = Space.getSpaceForAddress(firstCard);
+        if (space instanceof SegregatedFreeListSpace) {
+          if (!BlockAllocator.checkBlockMeta(firstCard)) {
+            anchors[index] = 0xFFFFFFFF;
+            limits[index] = 0xFFFFFFFF;
+          }
+        } if (space instanceof LargeObjectSpace) {
+          if (!((LargeObjectSpace) space).isInToSpace(firstCard)) {
+            anchors[index] = 0xFFFFFFFF;
+            limits[index] = 0xFFFFFFFF;
+          }
+        }
+
+//          if (Space.isInSpace(G1_SPACE, firstCard)) continue;
+//          anchors[index] = 0xFFFFFFFF;
+//          limits[index] = 0xFFFFFFFF;
       }
     }
     public static String tag = null;
 
-    @Inline
-    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card) {
-      linearScan(scan, regionSpace, card, false);
-    }
     static Lock lock2 = VM.newLock("linearScan");
     public static boolean LOG = false;
     public static boolean DISABLE_DYNAMIC_HASH_OFFSET = false;
+
     @Inline
     @Uninterruptible
-    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean log) {
+    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean skipDeadBlock) {
       final int RS = regionSpace.getDescriptor();
       //lock2.acquire();
       //if (VM.VERIFY_ASSERTIONS) {

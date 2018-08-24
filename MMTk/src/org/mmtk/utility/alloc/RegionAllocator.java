@@ -35,7 +35,7 @@ public class RegionAllocator extends Allocator {
    */
 
   protected final RegionSpace space;
-  private final boolean copy;
+  private final int allocationKind;
   private Address cursor;
   private Address limit;
 
@@ -45,9 +45,9 @@ public class RegionAllocator extends Allocator {
    * @param space The space to bump point into.
    * @param copy TODO
    */
-  public RegionAllocator(RegionSpace space, boolean copy) {
+  public RegionAllocator(RegionSpace space, int allocationKind) {
     this.space = space;
-    this.copy = copy;
+    this.allocationKind = allocationKind;
     reset();
   }
 
@@ -116,7 +116,7 @@ public class RegionAllocator extends Allocator {
    */
   @Override
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
-    Address ptr = space.getSpace(copy); // New block
+    Address ptr = space.getSpace(allocationKind); // New block
 
     if (ptr.isZero()) {
       return ptr; // failed allocation --- we will need to GC

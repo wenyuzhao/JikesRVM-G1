@@ -54,7 +54,8 @@ public class G1Collector extends ConcurrentCollector {
   /**
    *
    */
-  protected final RegionAllocator copy = new RegionAllocator(G1.regionSpace, true);
+  protected final RegionAllocator g1CopySurvivor = new RegionAllocator(G1.regionSpace, Region.SURVIVOR);
+  protected final RegionAllocator g1CopyOld = new RegionAllocator(G1.regionSpace, Region.OLD);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
   protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final G1RedirectTraceLocal redirectTrace = new G1RedirectTraceLocal(global().redirectTrace);
@@ -81,7 +82,12 @@ public class G1Collector extends ConcurrentCollector {
   @Override
   @Inline
   public Address allocCopy(ObjectReference original, int bytes, int align, int offset, int allocator) {
-    return copy.alloc(bytes, align, offset);
+    if (allocator == G1.ALLOC_SURVIVOR) {
+      return g1CopySurvivor.alloc(bytes, align, offset);
+    } else {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == G1.ALLOC_OLD);
+      return g1CopyOld.alloc(bytes, align, offset);
+    }
   }
 
   @Override
@@ -127,7 +133,8 @@ public class G1Collector extends ConcurrentCollector {
       rendezvous();
       currentTrace = global().nurseryGC() ? nurseryTrace : redirectTrace;
       currentTrace.prepare();
-      copy.reset();
+      g1CopySurvivor.reset();
+      g1CopyOld.reset();
       if (global().nurseryGC()) {
         super.collectionPhase(G1.PREPARE, primary);
       }
@@ -146,7 +153,8 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.REDIRECT_RELEASE) {
-      copy.reset();
+      g1CopySurvivor.reset();
+      g1CopyOld.reset();
       currentTrace.release();
       if (!global().nurseryGC()) {
         markTrace.release();

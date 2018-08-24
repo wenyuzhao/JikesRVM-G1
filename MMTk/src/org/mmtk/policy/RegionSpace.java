@@ -209,26 +209,27 @@ public final class RegionSpace extends Space {
    * Use different block selection heuristics depending on whether the allocation
    * request is "hot" or "cold".
    *
-   * @param copy Whether the space is for relocation
+   * @param allocationKind The generation kind of the result region
    * @return the pointer into the alloc table containing usable blocks, {@code null}
    *  if no usable blocks are available
    */
   @Inline
-  public Address getSpace(boolean copy) {
+  public Address getSpace(int allocationKind) {
     // Allocate
     Address region = acquire(Region.PAGES_IN_BLOCK);
 
     if (!region.isZero()) {
       if (VM.VERIFY_ASSERTIONS) {
-        Log.write("Block alloc ", region);
+        Log.write("Block alloc ");
+        Log.write(allocationKind == Region.EDEN ? "eden " : (allocationKind == Region.SURVIVOR ? "survivor " : "old "), region);
         Log.writeln(", in region ", EmbeddedMetaData.getMetaDataBase(region));
       }
 
       if (Region.USE_CARDS) Region.Card.clearCardMetaForBlock(region);
 
-      Region.register(region, copy);
+      Region.register(region, allocationKind);
 
-      youngRegions.add(1);
+      if (allocationKind != Region.OLD) youngRegions.add(1);
       committedRegions.add(1);
     }
 
@@ -247,7 +248,7 @@ public final class RegionSpace extends Space {
     committedRegions.add(-1);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
 
-    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
       youngRegions.add(-1);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(youngRegions.get() >= 0);
     }
@@ -425,7 +426,7 @@ public final class RegionSpace extends Space {
     int totalRegions = 0;
     Address block = firstBlock();
     while (!block.isZero()) {
-      if (!oldGenerationOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() != 0) {
+      if (!oldGenerationOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == Region.OLD) {
         usedSize += Region.usedSize(block);
         totalRegions++;
       }
@@ -436,25 +437,6 @@ public final class RegionSpace extends Space {
   }
 
   // Block iterator
-
-  @Inline
-  public int allocatedRegionsCount() {
-    return committedRegions();
-  }
-
-  @Inline
-  public AddressArray allocatedRegions() {
-    AddressArray array = AddressArray.create(allocatedRegionsCount());
-    Address region = firstBlock();
-    int i = 0;
-    do {
-      array.set(i, region);
-      region = nextBlock(region);
-      i += 1;
-    } while (!region.isZero());
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(i == allocatedRegionsCount());
-    return array;
-  }
 
   @Inline
   public Address firstBlock() {
@@ -556,7 +538,7 @@ public final class RegionSpace extends Space {
     int index = 0;
     Address block = firstBlock();
     while (!block.isZero()) {
-      if (!nurseryOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
+      if (!nurseryOnly || Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
         blocks.set(index, block);
         index++;
       }
@@ -577,7 +559,7 @@ public final class RegionSpace extends Space {
   public void promoteAllRegionsAsOldGeneration() {
     Address block = firstBlock();
     while (!block.isZero()) {
-      Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(1);
+      Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(Region.OLD);
       block = nextBlock(block);
     }
     youngRegions.set(0);
@@ -592,24 +574,9 @@ public final class RegionSpace extends Space {
     relocationSetSelected = false;
   }
 
+  /** Include all nursery regions and some old regions */
   @Inline
   public static AddressArray computeRelocationBlocks(AddressArray blocks, boolean includeAllNursery, boolean concurrent) {
-
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
-    /*
-    int id = concurrent ? VM.activePlan.collector().getId() - VM.activePlan.collector().parallelWorkerCount() : VM.activePlan.collector().getId();
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(id >= 0 && id < VM.activePlan.collector().parallelWorkerCount());
-    if (id != 0) return null;
-    */
-/*
-    relocationSetSelectionLock.acquire();
-    if (relocationSetSelected) {
-      relocationSetSelectionLock.release();
-      return null;
-    }
-    relocationSetSelected = true;
-    relocationSetSelectionLock.release();
-*/
     // Perform relocation set selection
     int blocksCount = blocks.length();
     // Initialize blockSizes array
@@ -629,45 +596,41 @@ public final class RegionSpace extends Space {
     // select relocation blocks
     int availBlocks = ((int) (VM.activePlan.global().getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * Region.BLOCKS_IN_REGION;
     int usableBytesForCopying = (int) (availBlocks * Region.BYTES_IN_BLOCK * 0.9);
-    int metaBytesPerRegion = 0;
-//    if (Region.Card.isEnabled()) {
-//      int metaPagesPerRegion = RemSet.PAGES_IN_PRT * RemSet.TOTAL_REGIONS + RemSet.REMSET_PAGES;
-//      metaBytesPerRegion = metaPagesPerRegion << Constants.LOG_BYTES_IN_PAGE;
-//      Log.writeln("metaBytesPerRegion=",metaBytesPerRegion);
-//    }
+
     int currentSize = 0;
     int relocationBlocks = 0;
 
-    for (int i = 0; i < blocks.length(); i++) {
-      int size = blockSizes.get(i).toInt();
-      Address block = blocks.get(i);
-      if (includeAllNursery && Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
-        // Include
-        if (currentSize + size + metaBytesPerRegion >= usableBytesForCopying) {
-          blocks.set(i, Address.zero());
-          currentSize += metaBytesPerRegion;
-          continue;
+    // Include all nursery regions
+    if (includeAllNursery) {
+      for (int i = 0; i < blocks.length(); i++) {
+        int size = blockSizes.get(i).toInt();
+        Address region = blocks.get(i);
+        if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
+          // This is a nursery region
+          if (currentSize + size >= usableBytesForCopying) {
+            blocks.set(i, Address.zero());
+            continue;
+          }
+          currentSize += size;
+          relocationBlocks++;
         }
-        currentSize += size + metaBytesPerRegion;
-        relocationBlocks++;
       }
     }
+    // Include some old regions
     for (int i = 0; i < blocks.length(); i++) {
       int size = blockSizes.get(i).toInt();
       Address block = blocks.get(i);
       if (block.isZero()) continue;
-      if (includeAllNursery && Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) {
-        // Include
+      if (includeAllNursery && Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
+        // This region is already included
         continue;
-      } else if (currentSize + size + metaBytesPerRegion >= usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
-        //if (VM.VERIFY_ASSERTIONS) Log.writeln();
+      } else if (currentSize + size >= usableBytesForCopying || size > Region.BYTES_IN_BLOCK * 0.65) {
         blocks.set(i, Address.zero());
         continue;
       }
-      currentSize += size + metaBytesPerRegion;
+      currentSize += size;
       relocationBlocks++;
     }
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(currentSize < usableBytesForCopying);
 
     // Return relocationSet array
     AddressArray relocationSet = AddressArray.create(relocationBlocks);
@@ -677,10 +640,6 @@ public final class RegionSpace extends Space {
       if (!block.isZero())
         relocationSet.set(cursor++, block);
     }
-//    if (VM.VERIFY_ASSERTIONS) {
-//      VM.assertions._assert(cursor == relocationSet.length());
-//      Log.writeln("# of selected regions = ", cursor);
-//    }
 
     return relocationSet;
   }
@@ -690,7 +649,6 @@ public final class RegionSpace extends Space {
     for (int i = 0; i < regions.length(); i++) {
       Address region = regions.get(i);
       if (!region.isZero()) {
-//        Log.writeln("Relocate ", region);
         Region.setRelocationState(region, true);
       }
     }

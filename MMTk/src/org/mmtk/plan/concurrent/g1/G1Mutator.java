@@ -49,26 +49,19 @@ public class G1Mutator extends ConcurrentMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator mc;
+  protected final RegionAllocator g1Eden = new RegionAllocator(G1.regionSpace, Region.EDEN);
+  protected final RegionAllocator g1Survivor = new RegionAllocator(G1.regionSpace, Region.SURVIVOR);
+  protected final RegionAllocator g1Old = new RegionAllocator(G1.regionSpace, Region.OLD);
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
-  private final TraceWriteBuffer markRemset;
-  private TraceWriteBuffer currentRemset;
+  private final TraceWriteBuffer markRemset = new TraceWriteBuffer(global().markTrace);
+  private TraceWriteBuffer currentRemset = markRemset;
 
   /****************************************************************************
    *
    * Initialization
    */
-
-  /**
-   * Constructor
-   */
-  public G1Mutator() {
-    mc = new RegionAllocator(G1.regionSpace, false);
-    markRemset = new TraceWriteBuffer(global().markTrace);
-    currentRemset = markRemset;
-  }
 
   @Inline
   private Address remSetLogBuffer() {
@@ -93,9 +86,17 @@ public class G1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == G1.ALLOC_RS) {
+    if (allocator == G1.ALLOC_EDEN) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
-      return mc.alloc(bytes, align, offset);
+      return g1Eden.alloc(bytes, align, offset);
+    } else if (allocator == G1.ALLOC_SURVIVOR) {
+      VM.assertions._assert(false);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      return g1Survivor.alloc(bytes, align, offset);
+    } else if (allocator == G1.ALLOC_OLD) {
+      VM.assertions._assert(false);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      return g1Old.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
     }
@@ -105,7 +106,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
-    if (allocator == G1.ALLOC_RS) {
+    if (allocator == G1.ALLOC_EDEN || allocator == G1.ALLOC_SURVIVOR || allocator == G1.ALLOC_OLD) {
       G1.regionSpace.postAlloc(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
@@ -114,7 +115,7 @@ public class G1Mutator extends ConcurrentMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == G1.regionSpace) return mc;
+    if (space == G1.regionSpace) return g1Eden;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -135,12 +136,16 @@ public class G1Mutator extends ConcurrentMutator {
 //      enqueueCurrentRSBuffer(true);
       currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
-      mc.reset();
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
       return;
     }
 
     if (phaseId == G1.RELEASE) {
-      mc.reset();
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -151,25 +156,26 @@ public class G1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == G1.RELOCATION_SET_SELECTION_PREPARE) {
-      mc.reset();
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
       return;
     }
 
     if (phaseId == G1.REDIRECT_PREPARE) {
       VM.collection.prepareMutator(this);
-      mc.reset();
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
       super.collectionPhase(G1.PREPARE, primary);
       return;
     }
 
     if (phaseId == G1.REDIRECT_RELEASE) {
-      mc.reset();
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
       super.collectionPhase(G1.RELEASE, primary);
-      return;
-    }
-
-    if (phaseId == G1.COMPLETE) {
-      mc.reset();
       return;
     }
 
@@ -178,11 +184,10 @@ public class G1Mutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    //enqueueCurrentRSBuffer();
     currentRemset.flush();
-    mc.reset();
-//    enqueueCurrentRSBuffer(false);
-    //cardBuf.flushLocal();
+    g1Eden.reset();
+    g1Survivor.reset();
+    g1Old.reset();
     assertRemsetsFlushed();
   }
 

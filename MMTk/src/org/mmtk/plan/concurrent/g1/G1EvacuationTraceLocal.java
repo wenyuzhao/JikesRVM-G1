@@ -59,7 +59,7 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
 
   @Inline
   public void processRemSets() {
-    processor.processRemSets(G1.relocationSet, false, G1.regionSpace, PauseTimePredictor.remSetCardScanningTimer);
+    processor.processRemSets(G1.relocationSet, false, !global().nurseryGC(), G1.regionSpace, PauseTimePredictor.remSetCardScanningTimer);
   }
 
   @Inline

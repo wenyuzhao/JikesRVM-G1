@@ -34,7 +34,8 @@ public class G1RedirectTraceLocal extends G1EvacuationTraceLocal {
     ObjectReference newObject;
 
     if (Space.isInSpace(G1.G1, object)) {
-      newObject = G1.regionSpace.traceEvacuateObject(this, object, G1.ALLOC_RS, PauseTimePredictor.evacuationTimer);
+      int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
+      newObject = G1.regionSpace.traceEvacuateObject(this, object, allocator, PauseTimePredictor.evacuationTimer);
       if (newObject.toAddress().NE(object.toAddress()))
         Region.Card.updateCardMeta(newObject);
     } else {
