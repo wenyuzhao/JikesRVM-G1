@@ -36,7 +36,10 @@ public class Region {
   public static final int METADATA_REMSET_PAGES_OFFSET = METADATA_REMSET_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_POINTER_OFFSET = METADATA_REMSET_PAGES_OFFSET + BYTES_IN_INT;
   public static final int METADATA_GENERATION_OFFSET = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
-  public static final int METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
+//  public static final int METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
+  public static final int METADATA_FORWARDING_TABLE_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
+  public static final int METADATA_BYTES = METADATA_FORWARDING_TABLE_OFFSET + BYTES_IN_ADDRESS;
+
   // Derived constants
   public static final int METADATA_OFFSET_IN_REGION = 0; // 0
   public static final int METADATA_BLOCKS_PER_REGION;
@@ -57,6 +60,9 @@ public class Region {
     BLOCKS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_REGION; // 1048576
     MARKING_METADATA_START = METADATA_BYTES * BLOCKS_IN_REGION;
     MARKING_METADATA_EXTENT = BYTES_IN_BLOCK * metadataBlocksInRegion - MARKING_METADATA_START;
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(MARKING_METADATA_START < (METADATA_PAGES_PER_REGION * BYTES_IN_PAGE));
+    }
   }
 
   public static void dumpMeta() {
@@ -234,7 +240,10 @@ public class Region {
   private static void clearState(Address region) {
     Address metaData = EmbeddedMetaData.getMetaDataBase(region);
     Address metaForRegion = metaData.plus(METADATA_OFFSET_IN_REGION + METADATA_BYTES * indexOf(region));
+    // Forwarding table should not be cleared
+    Address forwardingTable = metaDataOf(region, METADATA_FORWARDING_TABLE_OFFSET).loadAddress();
     VM.memory.zero(false, metaForRegion, Extent.fromIntZeroExtend(METADATA_BYTES));
+    metaDataOf(region, METADATA_FORWARDING_TABLE_OFFSET).store(forwardingTable);
   }
 
   @Inline
@@ -446,7 +455,7 @@ public class Region {
     }
 
     @Inline
-    public static void clearCardMetaForUnmarkedCards(RegionSpace regionSpace, boolean concurrent) {
+    public static void clearCardMetaForUnmarkedCards(RegionSpace regionSpace, boolean concurrent, boolean nursery) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -465,6 +474,12 @@ public class Region {
           limits[index] = 0xFFFFFFFF;
           continue;
         }
+        if (Space.isInSpace(G1_SPACE, firstCard) && !Region.allocated(Region.of(firstCard))) {
+          anchors[index] = 0xFFFFFFFF;
+          limits[index] = 0xFFFFFFFF;
+          continue;
+        }
+        if (nursery) continue;
         if (Space.isInSpace(G1_SPACE, firstCard)) continue;
 
         Space space = Space.getSpaceForAddress(firstCard);

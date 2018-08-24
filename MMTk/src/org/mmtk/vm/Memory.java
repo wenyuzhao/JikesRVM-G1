@@ -39,6 +39,10 @@ import org.vmmagic.pragma.*;
    */
   @Inline
   public abstract boolean attemptLong(Object object, Offset offset, long oldValue, long newValue);
+
+  @Inline
+  public abstract void copy(Address source, Address target, int bytes);
+
   /**
    * Return the space associated with/reserved for the VM.  In the
    * case of Jikes RVM this is the boot image space.<p>

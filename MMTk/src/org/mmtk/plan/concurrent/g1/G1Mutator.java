@@ -107,7 +107,7 @@ public class G1Mutator extends ConcurrentMutator {
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
     if (allocator == G1.ALLOC_EDEN || allocator == G1.ALLOC_SURVIVOR || allocator == G1.ALLOC_OLD) {
-      G1.regionSpace.postAlloc(object, bytes);
+      G1.regionSpace.initializeHeader(object);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }

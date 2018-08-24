@@ -8,9 +8,9 @@ import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
-public class G1RedirectTraceLocal extends G1EvacuationTraceLocal {
+public class G1MatureTraceLocal extends G1EvacuationTraceLocal {
 
-  public G1RedirectTraceLocal(Trace trace) {
+  public G1MatureTraceLocal(Trace trace) {
     super(G1.SCAN_MATURE, trace);
   }
 

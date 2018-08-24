@@ -58,7 +58,7 @@ public class G1 extends Concurrent {
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace nurseryTrace = new Trace(metaDataSpace);
-  public final Trace redirectTrace = new Trace(metaDataSpace);
+  public final Trace matureTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
 
   static {
@@ -155,7 +155,7 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(REDIRECT_CLOSURE),
 
       Phase.scheduleCollector(CLEANUP_BLOCKS),
-//      Phase.scheduleCollector(CLEAR_CARD_META),
+      Phase.scheduleCollector(CLEAR_CARD_META),
 
       Phase.scheduleMutator  (REDIRECT_RELEASE),
       Phase.scheduleCollector(REDIRECT_RELEASE),
@@ -292,7 +292,7 @@ public class G1 extends Concurrent {
       }
       if (nurseryGC()) {
         PauseTimePredictor.nurseryGCStart();
-        regionSpace.prepare();
+//        regionSpace.prepare();
         VM.memory.globalPrepareVMSpace();
       }
       // Flush mutators
@@ -303,7 +303,7 @@ public class G1 extends Concurrent {
         m.dropCurrentRSBuffer();
       }
       ConcurrentRemSetRefinement.pause();
-      (nurseryGC() ? nurseryTrace : redirectTrace).prepare();
+      (nurseryGC() ? nurseryTrace : matureTrace).prepare();
       return;
     }
 
@@ -322,9 +322,9 @@ public class G1 extends Concurrent {
 
     if (phaseId == REDIRECT_RELEASE) {
 //      regionSpace.promoteAllRegionsAsOldGeneration();
-      (nurseryGC() ? nurseryTrace : redirectTrace).release();
-      regionSpace.release();
+      (nurseryGC() ? nurseryTrace : matureTrace).release();
       if (!nurseryGC()) {
+        regionSpace.release();
         markTrace.release();
         super.collectionPhase(RELEASE);
       } else {
@@ -470,7 +470,7 @@ public class G1 extends Concurrent {
   @Interruptible
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, G1MarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_MATURE, G1RedirectTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MATURE, G1MatureTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_NURSERY, G1NurseryTraceLocal.class);
     super.registerSpecializedMethods();
   }

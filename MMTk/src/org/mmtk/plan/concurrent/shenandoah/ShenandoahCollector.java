@@ -10,13 +10,17 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.regional;
+package org.mmtk.plan.concurrent.shenandoah;
 
 import org.mmtk.plan.CollectorContext;
+import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
+import org.mmtk.utility.Atomic;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -34,22 +38,22 @@ import org.vmmagic.unboxed.ObjectReference;
  * (through <code>trace</code> and the <code>collectionPhase</code>
  * method), and collection-time allocation (copying of objects).<p>
  *
- * See {@link Regional} for an overview of the semi-space algorithm.
+ * See {@link Shenandoah} for an overview of the semi-space algorithm.
  *
- * @see Regional
- * @see RegionalMutator
+ * @see Shenandoah
+ * @see ShenandoahMutator
  * @see StopTheWorldCollector
  * @see CollectorContext
  */
 @Uninterruptible
-public class RegionalCollector extends ConcurrentCollector {
+public class ShenandoahCollector extends ConcurrentCollector {
 
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator copy = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
-  protected final RegionalMarkTraceLocal markTrace = new RegionalMarkTraceLocal(global().markTrace);
-  protected final RegionalEvacuateTraceLocal evacuateTrace = new RegionalEvacuateTraceLocal(global().evacuateTrace);
+  protected final RegionAllocator copy = new RegionAllocator(Shenandoah.regionSpace, Region.NORMAL);
+  protected final ShenandoahMarkTraceLocal markTrace = new ShenandoahMarkTraceLocal(global().markTrace);
+  protected final ShenandoahEvacuateTraceLocal evacuateTrace = new ShenandoahEvacuateTraceLocal(global().evacuateTrace);
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -60,7 +64,7 @@ public class RegionalCollector extends ConcurrentCollector {
   /**
    * Constructor
    */
-  public RegionalCollector() {}
+  public ShenandoahCollector() {}
 
   /****************************************************************************
    *
@@ -80,7 +84,7 @@ public class RegionalCollector extends ConcurrentCollector {
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    Regional.regionSpace.initializeHeader(object);
+    Shenandoah.regionSpace.initializeHeader(object);
   }
 
   /****************************************************************************
@@ -88,53 +92,78 @@ public class RegionalCollector extends ConcurrentCollector {
    * Collection
    */
 
+  private final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
+  private static final RegionSpace.RegionIterator regionIterator = Shenandoah.regionSpace.new RegionIterator();
+
+  @Inline
+  private void evacuateRegion(Address region) {
+    Region.linearScan(evacuationLinearScan, region);
+  }
+
+  private static final Atomic.Int atomicCounter = new Atomic.Int();
+
+  @Inline
+  private void evacuateRegions() {
+    atomicCounter.set(0);
+    rendezvous();
+    int index;
+    while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+      Log.writeln("Evacuating ", Shenandoah.relocationSet.get(index));
+      evacuateRegion(Shenandoah.relocationSet.get(index));
+    }
+  }
+
   /**
    * {@inheritDoc}
    */
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-//    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
-    if (phaseId == Regional.PREPARE) {
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (phaseId == Shenandoah.PREPARE) {
       currentTrace = markTrace;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Regional.CLOSURE) {
+    if (phaseId == Shenandoah.CLOSURE) {
       markTrace.completeTrace();
       return;
     }
 
-    if (phaseId == Regional.RELEASE) {
+    if (phaseId == Shenandoah.RELEASE) {
+      Shenandoah.readBarrierEnabled = false;
+      rendezvous();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_PREPARE) {
-      currentTrace = evacuateTrace;
+    if (phaseId == Shenandoah.EVACUATE_PREPARE) {
       evacuateTrace.prepare();
+      currentTrace = evacuateTrace;
       copy.reset();
-      super.collectionPhase(Regional.PREPARE, primary);
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_CLOSURE) {
-      evacuateTrace.completeTrace();
+    if (phaseId == Shenandoah.EVACUATE) {
+      Log.writeln("Enable barriers...");
+      Shenandoah.readBarrierEnabled = true;
+      rendezvous();
+      evacuateRegions();
+      rendezvous();
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_RELEASE) {
+    if (phaseId == Shenandoah.EVACUATE_RELEASE) {
       evacuateTrace.release();
       copy.reset();
-      super.collectionPhase(Regional.RELEASE, primary);
       return;
     }
 
-    if (phaseId == Regional.CLEANUP_BLOCKS) {
-      Regional.regionSpace.cleanupBlocks(Regional.relocationSet, false);
+    if (phaseId == Shenandoah.CLEANUP_BLOCKS) {
+      Shenandoah.regionSpace.cleanupBlocks(Shenandoah.relocationSet, false);
       return;
     }
 
@@ -152,7 +181,8 @@ public class RegionalCollector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
-    if (phaseId == Regional.CONCURRENT_CLOSURE) {
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (phaseId == Shenandoah.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
     }
     super.concurrentCollectionPhase(phaseId);
@@ -165,8 +195,8 @@ public class RegionalCollector extends ConcurrentCollector {
 
   /** @return The active global plan as an <code>RegionalCopy</code> instance. */
   @Inline
-  private static Regional global() {
-    return (Regional) VM.activePlan.global();
+  private static Shenandoah global() {
+    return (Shenandoah) VM.activePlan.global();
   }
 
   @Override

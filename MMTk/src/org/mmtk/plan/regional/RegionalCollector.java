@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.regional;
+package org.mmtk.plan.regional;
 
 import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.StopTheWorldCollector;
@@ -42,7 +42,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see CollectorContext
  */
 @Uninterruptible
-public class RegionalCollector extends ConcurrentCollector {
+public class RegionalCollector extends StopTheWorldCollector {
 
   /****************************************************************************
    * Instance fields
@@ -139,23 +139,6 @@ public class RegionalCollector extends ConcurrentCollector {
     }
 
     super.collectionPhase(phaseId, primary);
-  }
-
-  @Override
-  protected boolean concurrentTraceComplete() {
-    if (!global().markTrace.hasWork()) {
-      return true;
-    }
-    return false;
-  }
-
-  @Override
-  @Unpreemptible
-  public void concurrentCollectionPhase(short phaseId) {
-    if (phaseId == Regional.CONCURRENT_CLOSURE) {
-      currentTrace = markTrace;
-    }
-    super.concurrentCollectionPhase(phaseId);
   }
 
   /****************************************************************************

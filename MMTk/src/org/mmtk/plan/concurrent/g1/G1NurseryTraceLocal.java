@@ -1,9 +1,12 @@
 package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.Trace;
+import org.mmtk.policy.LargeObjectSpace;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.SegregatedFreeListSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -20,7 +23,7 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
   @Override
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
-    if (Space.isInSpace(G1.G1, object) && Region.relocationRequired(Region.of(object))) {
+    if (Space.isInSpace(G1.G1, object)) {
       return G1.regionSpace.isLive(object);
     }
     return true;
@@ -43,31 +46,40 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
 
-    if (VM.VERIFY_ASSERTIONS) {
-      if (!VM.debugging.validRef(object)) {
-        Address region = Region.of(object);
-        if (Space.isInSpace(G1.G1, object)) {
-          Log.writeln("generation=", Region.kind(region));
-          Log.writeln(Region.allocated(region) ? "alloc=true" : "alloc=false");
-          Log.writeln(Region.relocationRequired(region) ? "reloc=true" : "reloc=false");
-        } else {
-          Log.write("Space ");
-          Log.writeln(Space.getSpaceForObject(object).getName());
-        }
-        VM.objectModel.dumpObject(object);
-        VM.assertions.fail("");
-      }
-      VM.assertions._assert(VM.debugging.validRef(object));
-    }
-    Region.Card.updateCardMeta(object);
+//    Space space = Space.getSpaceForObject(object);
+//    if (space instanceof SegregatedFreeListSpace) {
+//      if (!BlockAllocator.checkBlockMeta(VM.objectModel.objectStartRef(object))) {
+//        return object;
+//      }
+//    } if (space instanceof LargeObjectSpace) {
+//      if (!((LargeObjectSpace) space).isInToSpace(VM.objectModel.objectStartRef(object))) {
+//        return object;
+//      }
+//    }
+
+//    if (VM.VERIFY_ASSERTIONS) {
+//      if (!VM.debugging.validRef(object)) {
+//        Address region = Region.of(object);
+//        if (Space.isInSpace(G1.G1, object)) {
+//          Log.writeln("generation=", Region.kind(region));
+//          Log.writeln(Region.allocated(region) ? "alloc=true" : "alloc=false");
+//          Log.writeln(Region.relocationRequired(region) ? "reloc=true" : "reloc=false");
+//        } else {
+//          Log.write("Space ");
+//          Log.writeln(Space.getSpaceForObject(object).getName());
+//        }
+//        VM.objectModel.dumpObject(object);
+//        VM.assertions.fail("");
+//      }
+//      VM.assertions._assert(VM.debugging.validRef(object));
+//    }
+//    Region.Card.updateCardMeta(object);
 
     ObjectReference newObject = object;
 
     if (G1.regionSpace.contains(object) && Region.relocationRequired(Region.of(object))) {
       int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
       newObject = G1.regionSpace.traceEvacuateObject(this, object, allocator, PauseTimePredictor.evacuationTimer);
-      if (newObject.toAddress().NE(object.toAddress()))
-        Region.Card.updateCardMeta(newObject);
     }
 
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));

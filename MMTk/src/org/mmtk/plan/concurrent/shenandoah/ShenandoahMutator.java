@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.regional;
+package org.mmtk.plan.concurrent.shenandoah;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
@@ -35,15 +35,15 @@ import org.vmmagic.unboxed.ObjectReference;
  * and per-mutator thread collection semantics (flushing and restoring
  * per-mutator allocator state).<p>
  *
- * See {@link Regional} for an overview of the semi-space algorithm.
+ * See {@link Shenandoah} for an overview of the semi-space algorithm.
  *
- * @see Regional
- * @see RegionalCollector
+ * @see Shenandoah
+ * @see ShenandoahCollector
  * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class RegionalMutator extends ConcurrentMutator {
+public class ShenandoahMutator extends ShenandoahMutatorBarriers {
 
   /****************************************************************************
    * Instance fields
@@ -59,8 +59,8 @@ public class RegionalMutator extends ConcurrentMutator {
   /**
    * Constructor
    */
-  public RegionalMutator() {
-    ra = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
+  public ShenandoahMutator() {
+    ra = new RegionAllocator(Shenandoah.regionSpace, Region.NORMAL);
     remset = new TraceWriteBuffer(global().markTrace);
   }
 
@@ -75,7 +75,7 @@ public class RegionalMutator extends ConcurrentMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == Regional.ALLOC_MC) {
+    if (allocator == Shenandoah.ALLOC_RS) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return ra.alloc(bytes, align, offset);
     } else {
@@ -86,8 +86,8 @@ public class RegionalMutator extends ConcurrentMutator {
   @Override
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    if (allocator == Regional.ALLOC_MC) {
-      Regional.regionSpace.initializeHeader(object);
+    if (allocator == Shenandoah.ALLOC_RS) {
+      Shenandoah.regionSpace.initializeHeader(object);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -95,7 +95,7 @@ public class RegionalMutator extends ConcurrentMutator {
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == Regional.regionSpace) return ra;
+    if (space == Shenandoah.regionSpace) return ra;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -112,27 +112,27 @@ public class RegionalMutator extends ConcurrentMutator {
   public void collectionPhase(short phaseId, boolean primary) {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
-    if (phaseId == Regional.PREPARE) {
+    if (phaseId == Shenandoah.PREPARE) {
       ra.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Regional.RELEASE) {
+    if (phaseId == Shenandoah.RELEASE) {
       ra.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_PREPARE) {
+    if (phaseId == Shenandoah.EVACUATE_PREPARE) {
       ra.reset();
-      super.collectionPhase(Regional.PREPARE, primary);
+      super.collectionPhase(Shenandoah.PREPARE, primary);
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_RELEASE) {
+    if (phaseId == Shenandoah.EVACUATE_RELEASE) {
       ra.reset();
-      super.collectionPhase(Regional.RELEASE, primary);
+      super.collectionPhase(Shenandoah.RELEASE, primary);
       return;
     }
 
@@ -150,12 +150,12 @@ public class RegionalMutator extends ConcurrentMutator {
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
 
-    if (Space.isInSpace(Regional.RS, ref)) Regional.regionSpace.traceMarkObject(remset, ref);
-    else if (Space.isInSpace(Regional.IMMORTAL, ref)) Regional.immortalSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.LOS, ref)) Regional.loSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.NON_MOVING, ref)) Regional.nonMovingSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.SMALL_CODE, ref)) Regional.smallCodeSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.LARGE_CODE, ref)) Regional.largeCodeSpace.traceObject(remset, ref);
+    if (Space.isInSpace(Shenandoah.RS, ref)) Shenandoah.regionSpace.traceMarkObject(remset, ref);
+    else if (Space.isInSpace(Shenandoah.IMMORTAL, ref)) Shenandoah.immortalSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(Shenandoah.LOS, ref)) Shenandoah.loSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(Shenandoah.NON_MOVING, ref)) Shenandoah.nonMovingSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(Shenandoah.SMALL_CODE, ref)) Shenandoah.smallCodeSpace.traceObject(remset, ref);
+    else if (Space.isInSpace(Shenandoah.LARGE_CODE, ref)) Shenandoah.largeCodeSpace.traceObject(remset, ref);
   }
 
   @Override
@@ -166,7 +166,7 @@ public class RegionalMutator extends ConcurrentMutator {
   }
 
   @Inline
-  Regional global() {
-    return (Regional) VM.activePlan.global();
+  Shenandoah global() {
+    return (Shenandoah) VM.activePlan.global();
   }
 }

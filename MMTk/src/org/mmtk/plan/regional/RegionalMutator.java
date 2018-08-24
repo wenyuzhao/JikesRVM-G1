@@ -10,7 +10,7 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.concurrent.regional;
+package org.mmtk.plan.regional;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
@@ -43,13 +43,12 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see MutatorContext
  */
 @Uninterruptible
-public class RegionalMutator extends ConcurrentMutator {
+public class RegionalMutator extends StopTheWorldMutator {
 
   /****************************************************************************
    * Instance fields
    */
   protected final RegionAllocator ra;
-  private final TraceWriteBuffer remset;
 
   /****************************************************************************
    *
@@ -61,7 +60,6 @@ public class RegionalMutator extends ConcurrentMutator {
    */
   public RegionalMutator() {
     ra = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
-    remset = new TraceWriteBuffer(global().markTrace);
   }
 
   /****************************************************************************
@@ -141,28 +139,8 @@ public class RegionalMutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    remset.flush();
     ra.reset();
     assertRemsetsFlushed();
-  }
-
-  @Override
-  protected void checkAndEnqueueReference(ObjectReference ref) {
-    if (ref.isNull()) return;
-
-    if (Space.isInSpace(Regional.RS, ref)) Regional.regionSpace.traceMarkObject(remset, ref);
-    else if (Space.isInSpace(Regional.IMMORTAL, ref)) Regional.immortalSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.LOS, ref)) Regional.loSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.NON_MOVING, ref)) Regional.nonMovingSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.SMALL_CODE, ref)) Regional.smallCodeSpace.traceObject(remset, ref);
-    else if (Space.isInSpace(Regional.LARGE_CODE, ref)) Regional.largeCodeSpace.traceObject(remset, ref);
-  }
-
-  @Override
-  public final void assertRemsetsFlushed() {
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(remset.isFlushed());
-    }
   }
 
   @Inline

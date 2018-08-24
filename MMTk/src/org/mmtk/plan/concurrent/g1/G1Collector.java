@@ -15,11 +15,9 @@ package org.mmtk.plan.concurrent.g1;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
-import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
-import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -58,7 +56,7 @@ public class G1Collector extends ConcurrentCollector {
   protected final RegionAllocator g1CopyOld = new RegionAllocator(G1.regionSpace, Region.OLD);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
   protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
-  protected final G1RedirectTraceLocal redirectTrace = new G1RedirectTraceLocal(global().redirectTrace);
+  protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -94,7 +92,7 @@ public class G1Collector extends ConcurrentCollector {
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
-    G1.regionSpace.postCopy(object, bytes);
+    G1.regionSpace.initializeHeader(object);
   }
 
   /****************************************************************************
@@ -131,7 +129,7 @@ public class G1Collector extends ConcurrentCollector {
     if (phaseId == G1.REDIRECT_PREPARE) {
       ConcurrentRemSetRefinement.refineAllDirtyCards();
       rendezvous();
-      currentTrace = global().nurseryGC() ? nurseryTrace : redirectTrace;
+      currentTrace = global().nurseryGC() ? nurseryTrace : matureTrace;
       currentTrace.prepare();
       g1CopySurvivor.reset();
       g1CopyOld.reset();
@@ -164,7 +162,7 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.CLEAR_CARD_META) {
-      Region.Card.clearCardMetaForUnmarkedCards(G1.regionSpace, false);
+      Region.Card.clearCardMetaForUnmarkedCards(G1.regionSpace, false, global().nurseryGC());
       return;
     }
 

@@ -53,6 +53,12 @@ import org.vmmagic.unboxed.Offset;
   }
 
   @Override
+  @Inline
+  public void copy(Address source, Address target, int bytes) {
+    org.jikesrvm.runtime.Memory.memcopy(target, source, bytes);
+  }
+
+  @Override
   protected boolean getHeapLayout32Bit() {
     return HeapLayoutConstants.HEAP_LAYOUT == HeapLayoutConstants.HEAP_LAYOUT_32BIT;
   }

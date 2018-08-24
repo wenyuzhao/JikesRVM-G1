@@ -269,55 +269,9 @@ public final class RegionSpace extends Space {
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
   }
 
-  /**
-   * Perform any required post allocation initialization
-   *
-   * @param object the object ref to the storage to be initialized
-   * @param bytes size of the allocated object in bytes
-   */
   @Inline
-  public void postAlloc(ObjectReference object, int bytes) {
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
-    //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
-    //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Header.isNewObject(object));
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!object.isNull());
-
-    //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
-    initializeHeader(object);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(VM.objectModel.GC_HEADER_OFFSET()).isZero());
-//    } else {
-//      VM.objectModel.writeAvailableByte(object, (byte) 0);
-//    }
-
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-  }
-
-  /**
-   * Perform any required post copy (i.e. in-GC allocation) initialization.
-   * This is relevant (for example) when Squish is used as the mature space in
-   * a copying GC.
-   *
-   * @param object the object ref to the storage to be initialized
-   * @param bytes size of the copied object in bytes
-   */
-  @Inline
-  public void postCopy(ObjectReference object, int bytes) {
-    //MarkBlock.setCursor(MarkBlock.of(object.toAddress()), VM.objectModel.getObjectEndAddress(object));
-    //VM.assertions._assert(object.toAddress().NE(Address.fromIntZeroExtend(0x692e8c78)));
-    initializeHeader(object);
-    if (VM.VERIFY_ASSERTIONS) {
-      Word state = object.toAddress().loadWord(VM.objectModel.GC_HEADER_OFFSET());
-      if (!state.isZero()) {
-        Log.writeln("Invalid state ", state);
-        VM.assertions.fail("");
-      }
-    }
-    //if (MarkBlock.Card.isEnabled()) MarkBlock.Card.updateCardMeta(object);
-//    if (VM.VERIFY_ASSERTIONS) {
-//      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-//      if (HeaderByte.NEEDS_UNLOGGED_BIT) VM.assertions._assert(HeaderByte.isUnlogged(object));
-//    }
+  public boolean isMarked(ObjectReference object) {
+    return MarkBitMap.isMarked(object);
   }
 
   /**
@@ -411,7 +365,7 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  private void writeMarkState(ObjectReference object) {
+  public void writeMarkState(ObjectReference object) {
     MarkBitMap.writeMarkState(object);
   }
 
@@ -848,35 +802,17 @@ public final class RegionSpace extends Space {
       Word oldValue;
       do {
         oldValue = object.toAddress().plus(FORWARDING_POINTER_OFFSET).loadWord();
-        if (!oldValue.and(FORWARDING_MASK).isZero()) {
-          if (!(oldValue.EQ(BEING_FORWARDED) || oldValue.GT(FORWARDED))) {
-            VM.objectModel.dumpObject(object);
-            Log.writeln("Invalid status ", oldValue);
-            Log.writeln("FORWARDING_POINTER_OFFSET ", FORWARDING_POINTER_OFFSET);
-          }
-          VM.assertions._assert(oldValue.EQ(BEING_FORWARDED) || oldValue.GT(FORWARDED));
-          return oldValue;
-        }
+        if (!oldValue.and(FORWARDING_MASK).isZero()) return oldValue;
       } while (!attemptForwardingPointer(object, oldValue, oldValue.or(BEING_FORWARDED)));
       return oldValue;
     }
 
     @Inline
     public static ObjectReference spinAndGetForwardedObject(ObjectReference object, Word statusWord) {
-      Word initialStatus = getForwardingPointer(object);
       while (statusWord.and(FORWARDING_MASK).EQ(BEING_FORWARDED))
         statusWord = getForwardingPointer(object);
       if (statusWord.and(FORWARDING_MASK).EQ(FORWARDED)) {
-        ObjectReference newObj = statusWord.and(FORWARDING_MASK.not()).toAddress().toObjectReference();
-        if (newObj.isNull()) {
-          VM.objectModel.dumpObject(object);
-          Log.write(initialStatus);
-          Log.write(initialStatus);
-          Log.writeln(" ", getForwardingPointer(object));
-        }
-        VM.assertions._assert(!newObj.isNull());
-        VM.assertions._assert(VM.debugging.validRef(newObj));
-        return newObj;
+        return statusWord.and(FORWARDING_MASK.not()).toAddress().toObjectReference();
       } else
         return object;
     }
@@ -885,11 +821,6 @@ public final class RegionSpace extends Space {
     public static ObjectReference forwardObject(ObjectReference object, int allocator) {
       ObjectReference newObject = VM.objectModel.copy(object, allocator);
       setForwardingPointer(object, newObject.toAddress().toWord().or(FORWARDED));
-      ObjectReference newObj = getForwardingPointer(object).and(FORWARDING_MASK.not()).toAddress().toObjectReference();;
-      VM.assertions._assert(!newObj.isNull());
-      VM.assertions._assert(VM.debugging.validRef(newObj));
-      VM.assertions._assert(!newObject.isNull());
-      VM.assertions._assert(VM.debugging.validRef(newObject));
       return newObject;
     }
 
