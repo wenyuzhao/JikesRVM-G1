@@ -246,11 +246,11 @@ public final class RegionSpace extends Space {
   @Inline
   public void release(Address region) {
     committedRegions.add(-1);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
 
     if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
       youngRegions.add(-1);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(youngRegions.get() >= 0);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(youngRegions.get() >= 0);
     }
 
     Region.unregister(region);
@@ -288,6 +288,8 @@ public final class RegionSpace extends Space {
     VM.assertions.fail("unsupported interface");
     return null;
   }
+
+//  static final int[][][] markTable; // int[COLLECTORS][REGIONS][BITMAP]
 
   /**
    * Trace an object under a copying collection policy.
@@ -349,6 +351,16 @@ public final class RegionSpace extends Space {
       }
       return object;
     }
+  }
+
+  @Inline
+  public ObjectReference traceForwardObject(TraceLocal trace, ObjectReference object) {
+    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
+    object = newObject.isNull() ? object : newObject;
+    if (testAndMark(object)) {
+      trace.processNode(object);
+    }
+    return object;
   }
 
   /**
@@ -841,7 +853,17 @@ public final class RegionSpace extends Space {
 
     @Inline
     public static ObjectReference getForwardedObject(ObjectReference oldObject) {
-      return getForwardingPointer(oldObject).and(FORWARDING_MASK.not()).toAddress().toObjectReference();
+      return oldObject.toAddress().loadWord(FORWARDING_POINTER_OFFSET).and(FORWARDING_MASK.not()).toAddress().toObjectReference();
+    }
+
+    @Inline
+    public static ObjectReference getForwardedObjectAtomically(ObjectReference oldObject) {
+      Word statusWord = oldObject.toAddress().plus(FORWARDING_POINTER_OFFSET).loadWord();
+      if (stateIsForwardedOrBeingForwarded(statusWord)) {
+        return ForwardingWord.spinAndGetForwardedObject(oldObject, statusWord);
+      } else {
+        return oldObject;
+      }
     }
   }
 }

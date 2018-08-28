@@ -14,9 +14,7 @@ package org.mmtk.plan.concurrent.shenandoah;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.ForwardingTable;
 import org.mmtk.policy.Space;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -35,7 +33,7 @@ public class ShenandoahMarkTraceLocal extends TraceLocal {
 
   @Override
   protected boolean overwriteReferenceDuringTrace() {
-    return true;
+    return false;
   }
 
   /**
@@ -45,7 +43,7 @@ public class ShenandoahMarkTraceLocal extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(Shenandoah.RS, object)) {
-      return Shenandoah.regionSpace.isLive(object);
+      return true;
     }
     return super.isLive(object);
   }
@@ -55,11 +53,7 @@ public class ShenandoahMarkTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     if (Space.isInSpace(Shenandoah.RS, object)) {
-      ObjectReference forwardedObject = ForwardingTable.getForwardingPointer(object);
-      object = forwardedObject.isNull() ? object : forwardedObject;
-      ObjectReference ref = Shenandoah.regionSpace.traceMarkObject(this, object);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Shenandoah.regionSpace.isMarked(ref));
-      return ref;
+      return Shenandoah.regionSpace.traceMarkObject(this, object);
     }
     return super.traceObject(object);
   }

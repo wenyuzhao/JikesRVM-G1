@@ -13,12 +13,10 @@
 package org.mmtk.plan.concurrent.shenandoah;
 
 import org.mmtk.plan.CollectorContext;
-import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
-import org.mmtk.policy.RegionSpace;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
@@ -53,7 +51,8 @@ public class ShenandoahCollector extends ConcurrentCollector {
    */
   protected final RegionAllocator copy = new RegionAllocator(Shenandoah.regionSpace, Region.NORMAL);
   protected final ShenandoahMarkTraceLocal markTrace = new ShenandoahMarkTraceLocal(global().markTrace);
-  protected final ShenandoahEvacuateTraceLocal evacuateTrace = new ShenandoahEvacuateTraceLocal(global().evacuateTrace);
+  protected final ShenandoahForwardTraceLocal forwardTrace = new ShenandoahForwardTraceLocal(global().forwardTrace);
+  protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -70,6 +69,19 @@ public class ShenandoahCollector extends ConcurrentCollector {
    *
    * Collection-time allocation
    */
+
+  private static final Atomic.Int atomicCounter = new Atomic.Int();
+
+  @Inline
+  private void evacuateRegions() {
+    atomicCounter.set(0);
+    rendezvous();
+    int index;
+    while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+      Log.writeln("Evacuating ", Shenandoah.relocationSet.get(index));
+      Region.linearScan(evacuationLinearScan, Shenandoah.relocationSet.get(index));
+    }
+  }
 
   /**
    * {@inheritDoc}
@@ -92,34 +104,13 @@ public class ShenandoahCollector extends ConcurrentCollector {
    * Collection
    */
 
-  private final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
-  private static final RegionSpace.RegionIterator regionIterator = Shenandoah.regionSpace.new RegionIterator();
-
-  @Inline
-  private void evacuateRegion(Address region) {
-    Region.linearScan(evacuationLinearScan, region);
-  }
-
-  private static final Atomic.Int atomicCounter = new Atomic.Int();
-
-  @Inline
-  private void evacuateRegions() {
-    atomicCounter.set(0);
-    rendezvous();
-    int index;
-    while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
-      Log.writeln("Evacuating ", Shenandoah.relocationSet.get(index));
-      evacuateRegion(Shenandoah.relocationSet.get(index));
-    }
-  }
-
   /**
    * {@inheritDoc}
    */
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+//    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Shenandoah.PREPARE) {
       currentTrace = markTrace;
       markTrace.prepare();
@@ -133,32 +124,34 @@ public class ShenandoahCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Shenandoah.RELEASE) {
-      Shenandoah.readBarrierEnabled = false;
-      rendezvous();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Shenandoah.EVACUATE_PREPARE) {
-      evacuateTrace.prepare();
-      currentTrace = evacuateTrace;
-      copy.reset();
-      return;
-    }
-
     if (phaseId == Shenandoah.EVACUATE) {
-      Log.writeln("Enable barriers...");
-      Shenandoah.readBarrierEnabled = true;
-      rendezvous();
       evacuateRegions();
       rendezvous();
       return;
     }
 
-    if (phaseId == Shenandoah.EVACUATE_RELEASE) {
-      evacuateTrace.release();
+    if (phaseId == Shenandoah.FORWARD_PREPARE) {
+      currentTrace = forwardTrace;
+      forwardTrace.prepare();
       copy.reset();
+      super.collectionPhase(Shenandoah.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Shenandoah.FORWARD_CLOSURE) {
+      forwardTrace.completeTrace();
+      return;
+    }
+
+    if (phaseId == Shenandoah.FORWARD_RELEASE) {
+      forwardTrace.release();
+      copy.reset();
+      super.collectionPhase(Shenandoah.RELEASE, primary);
       return;
     }
 
@@ -181,9 +174,11 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Shenandoah.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
+    }
+    if (phaseId == Shenandoah.CONCURRENT_FORWARD_CLOSURE) {
+      currentTrace = forwardTrace;
     }
     super.concurrentCollectionPhase(phaseId);
   }

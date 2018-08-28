@@ -43,7 +43,7 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see MutatorContext
  */
 @Uninterruptible
-public class ShenandoahMutator extends ShenandoahMutatorBarriers {
+public class ShenandoahMutator extends ConcurrentMutator {
 
   /****************************************************************************
    * Instance fields
@@ -124,17 +124,17 @@ public class ShenandoahMutator extends ShenandoahMutatorBarriers {
       return;
     }
 
-    if (phaseId == Shenandoah.EVACUATE_PREPARE) {
-      ra.reset();
-      super.collectionPhase(Shenandoah.PREPARE, primary);
-      return;
-    }
-
-    if (phaseId == Shenandoah.EVACUATE_RELEASE) {
-      ra.reset();
-      super.collectionPhase(Shenandoah.RELEASE, primary);
-      return;
-    }
+//    if (phaseId == Regional.EVACUATE_PREPARE) {
+//      ra.reset();
+//      super.collectionPhase(Regional.PREPARE, primary);
+//      return;
+//    }
+//
+//    if (phaseId == Regional.EVACUATE_RELEASE) {
+//      ra.reset();
+//      super.collectionPhase(Regional.RELEASE, primary);
+//      return;
+//    }
 
     super.collectionPhase(phaseId, primary);
   }

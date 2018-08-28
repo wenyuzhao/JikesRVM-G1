@@ -36,7 +36,7 @@ public class ShenandoahConstraints extends ConcurrentConstraints {
   }
   @Override
   public int gcHeaderWords() {
-    return 1;
+    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
   }
   @Override
   public int numSpecializedScans() {
@@ -46,182 +46,12 @@ public class ShenandoahConstraints extends ConcurrentConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.BYTES_IN_BLOCK;
   }
-  @Override
-  public boolean needsLinearScan() {
-    return true;
-  }
-
-
-//  public boolean needsObjectReferenceReadBarrier() {
-//    return true;
-//  }
-
-  public boolean needsJavaLangReferenceReadBarrier() {
-    return true;
-  }
-
-  public boolean needsBooleanWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsBooleanReadBarrier() {
-    return true;
-  }
-
-  public boolean booleanBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsByteWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsByteReadBarrier() {
-    return true;
-  }
-
-  public boolean byteBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsCharWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsCharReadBarrier() {
-    return true;
-  }
-
-  public boolean charBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsShortWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsShortReadBarrier() {
-    return true;
-  }
-
-  public boolean shortBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsIntWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsIntReadBarrier() {
-    return true;
-  }
-
-  public boolean intBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsLongWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsLongReadBarrier() {
-    return true;
-  }
-
-  public boolean longBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsFloatWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsFloatReadBarrier() {
-    return true;
-  }
-
-  public boolean floatBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsDoubleWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsDoubleReadBarrier() {
-    return true;
-  }
-
-  public boolean doubleBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsWordWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsWordReadBarrier() {
-    return true;
-  }
-
-  public boolean wordBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsAddressWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsAddressReadBarrier() {
-    return true;
-  }
-
-  public boolean addressBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsExtentWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsExtentReadBarrier() {
-    return true;
-  }
-
-  public boolean extentBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsOffsetWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsOffsetReadBarrier() {
-    return true;
-  }
-
-  public boolean offsetBulkCopySupported() {
-    return true;
-  }
-
-  public boolean needsObjectReferenceWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsObjectReferenceReadBarrier() {
-    return true;
-  }
-
-  public boolean needsObjectReferenceNonHeapWriteBarrier() {
-    return true;
-  }
-
-  public boolean needsObjectReferenceNonHeapReadBarrier() {
-    return true;
-  }
-
-  public boolean objectReferenceBulkCopySupported() {
-    return true;
-  }
-
+  //@Override
+  //public boolean needsObjectReferenceWriteBarrier() {
+    //return true;
+  //}
+  //@Override
+  //public boolean objectReferenceBulkCopySupported() {
+    //return true;
+  //}
 }

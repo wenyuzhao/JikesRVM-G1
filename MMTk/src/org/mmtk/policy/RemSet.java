@@ -228,13 +228,15 @@ public class RemSet {
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
           if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
-            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).EQ(Word.one()));
+//            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).EQ(Word.one()));
             return;
           } else if (redirectPointerTrace.isLive(object)) {
             redirectPointerTrace.traceObject(object, true);
           } else {
-            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
-            object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
+            // This is a dead object. During next card scanning this object may have a invalid TIB pointing
+            // to a released region. So we set the objectEndAddress into the header to allow skipping this object.
+//            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
+            object.toAddress().store(VM.objectModel.getObjectEndAddress(object), LIVE_STATE_OFFSET);
           }
         }
       }

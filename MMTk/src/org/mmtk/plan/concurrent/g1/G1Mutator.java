@@ -90,11 +90,11 @@ public class G1Mutator extends ConcurrentMutator {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return g1Eden.alloc(bytes, align, offset);
     } else if (allocator == G1.ALLOC_SURVIVOR) {
-      VM.assertions._assert(false);
+      VM.assertions.fail("");
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return g1Survivor.alloc(bytes, align, offset);
     } else if (allocator == G1.ALLOC_OLD) {
-      VM.assertions._assert(false);
+      VM.assertions.fail("");
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return g1Old.alloc(bytes, align, offset);
     } else {

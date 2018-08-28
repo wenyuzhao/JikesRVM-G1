@@ -16,20 +16,40 @@ public class ForwardingTable {
   private static final int PAGES_IN_FT = 1 << LOG_PAGES_IN_FT;
   private static final Extent EXTENT = Extent.fromIntSignExtend(1 << LOG_BYTES_IN_FT);
 
+  private static final AddressArray forwardingTables;
+
+  static {
+    int regions = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+    forwardingTables = AddressArray.create(regions);
+  }
+
   @Inline
   public static void clear(Address region) {
-    Address tablePointer = Region.metaDataOf(region, Region.METADATA_FORWARDING_TABLE_OFFSET);
-    Address table = tablePointer.loadAddress();
+    int index = regionIndex(region);
+    Address table = forwardingTables.get(index);
     if (!table.isZero()) {
       Plan.metaDataSpace.release(table);
     }
-    tablePointer.store(Address.zero());
+    forwardingTables.set(index, Address.zero());
+  }
+
+  @Inline
+  private static int regionIndex(Address region) {
+    return region.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
   }
 
   @Inline
   private static int computeIndex(ObjectReference ref) {
-    Word index = ref.toAddress().diff(Region.of(ref)).toWord().rsha(4);
+    Word index = VM.objectModel.objectStartRef(ref).diff(Region.of(ref)).toWord().rsha(4);
     if (VM.VERIFY_ASSERTIONS) {
+      if (!index.lsh(2).LT(EXTENT.toWord())) {
+        VM.objectModel.dumpObject(ref);
+        Log.writeln("Invalid ref ", Region.of(ref));
+        Log.writeln("Region ", ref);
+        Log.writeln("Index ", index);
+        Log.writeln("EXTENT ", EXTENT);
+        VM.assertions.fail("");
+      }
       VM.assertions._assert(index.lsh(2).LT(EXTENT.toWord()));
     }
     return index.toInt();
@@ -37,36 +57,26 @@ public class ForwardingTable {
 
   @Inline
   public static final ObjectReference getForwardingPointer(ObjectReference ref) {
-//    Log.writeln("getForwardingPointer ", ref);
-    Address region = Region.of(ref);
-    Address table = Region.metaDataOf(region, Region.METADATA_FORWARDING_TABLE_OFFSET).loadAddress();
+    VM.assertions._assert(VM.debugging.validRef(ref));
+    int rIndex = regionIndex(Region.of(ref));
+    Address table = forwardingTables.get(rIndex);
     if (table.isZero()) return ObjectReference.nullReference();
     int index = computeIndex(ref);
     ObjectReference newRef = table.loadObjectReference(Offset.fromIntZeroExtend(index << 2));
-//    if (!newRef.isNull()) {
-//      Log.write(ref);
-//      Log.writeln(" ~> ", newRef);
-//    }
     return newRef.isNull() ? ObjectReference.nullReference() : newRef;
   }
 
   @Inline
   public static final void setForwardingPointer(ObjectReference oldRef, ObjectReference forwardedRef) {
-    Address region = Region.of(oldRef);
-    Address tablePointer = Region.metaDataOf(region, Region.METADATA_FORWARDING_TABLE_OFFSET);
-    if (tablePointer.loadAddress().isZero()) {
-      tablePointer.store(Plan.metaDataSpace.acquire(PAGES_IN_FT));
+    VM.assertions._assert(VM.debugging.validRef(oldRef));
+    VM.assertions._assert(VM.debugging.validRef(forwardedRef));
+    int rIndex = regionIndex(Region.of(oldRef));
+    Address table = forwardingTables.get(rIndex);
+    if (table.isZero()) {
+      table = Plan.metaDataSpace.acquire(PAGES_IN_FT);
+      forwardingTables.set(rIndex, table);
     }
-    Address table = tablePointer.loadAddress();
     int index = computeIndex(oldRef);
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(table.loadObjectReference(Offset.fromIntZeroExtend(index << 2)).isNull());
-    }
     table.store(forwardedRef, Offset.fromIntZeroExtend(index << 2));
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(VM.debugging.validRef(oldRef));
-      VM.assertions._assert(VM.debugging.validRef(forwardedRef));
-      VM.assertions._assert(forwardedRef.toAddress().EQ(getForwardingPointer(oldRef).toAddress()));
-    }
   }
 }

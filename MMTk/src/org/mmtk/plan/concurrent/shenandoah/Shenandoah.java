@@ -17,18 +17,14 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.concurrent.Concurrent;
-import org.mmtk.policy.ForwardingTable;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
-import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -41,9 +37,9 @@ public class Shenandoah extends Concurrent {
   public static final RegionSpace regionSpace = new RegionSpace("region", VMRequest.discontiguous());
   public static final int RS = regionSpace.getDescriptor();
   public final Trace markTrace = new Trace(metaDataSpace);
-  public final Trace evacuateTrace = new Trace(metaDataSpace);
-  public static AddressArray relocationSet;
-  public static boolean readBarrierEnabled = false;
+  public final Trace forwardTrace = new Trace(metaDataSpace);
+  public static AddressArray blocksSnapshot, relocationSet;
+  //public static boolean concurrentMarkingInProgress = false;
 
   static {
     Options.g1ReservePercent = new G1ReservePercent();
@@ -59,47 +55,20 @@ public class Shenandoah extends Concurrent {
 
   public static final int ALLOC_RS = Plan.ALLOC_DEFAULT;
   public static final int SCAN_MARK = 0;
-  public static final int SCAN_EVACUATE = 1;
+  public static final int SCAN_FORWARD = 1;
 
   /* Phases */
-  public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
-  public static final short EVACUATE_CLOSURE = Phase.createSimple("evacuate-closure");
-  public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
   public static final short EVACUATE = Phase.createSimple("evacuate");
-
-  public static final short evacuatePhase = Phase.createComplex("evacuate", null,
-    Phase.scheduleMutator  (EVACUATE_PREPARE),
-    Phase.scheduleGlobal   (EVACUATE_PREPARE),
-    Phase.scheduleCollector(EVACUATE_PREPARE),
-    // Roots
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-    Phase.scheduleGlobal   (EVACUATE_CLOSURE),
-    Phase.scheduleCollector(EVACUATE_CLOSURE),
-    // Refs
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleGlobal   (EVACUATE_CLOSURE),
-    Phase.scheduleCollector(EVACUATE_CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleGlobal   (EVACUATE_CLOSURE),
-    Phase.scheduleCollector(EVACUATE_CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-
-    Phase.scheduleComplex  (forwardPhase),
-
-    Phase.scheduleMutator  (EVACUATE_RELEASE),
-    Phase.scheduleCollector(EVACUATE_RELEASE),
-    Phase.scheduleGlobal   (EVACUATE_RELEASE)
-  );
-
-
+  public static final short FORWARD_PREPARE = Phase.createSimple("forward-prepare");
+  public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
+  public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
+  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+  protected static final short preemptConcurrentForwardClosure = Phase.createComplex("preeempt-concurrent-forward-trace", null,
+      Phase.scheduleMutator  (FLUSH_MUTATOR),
+      Phase.scheduleCollector(FORWARD_CLOSURE));
+  public static final short CONCURRENT_FORWARD_CLOSURE = Phase.createConcurrent("concurrent-forward-closure",
+      Phase.scheduleComplex(preemptConcurrentForwardClosure));
 
 
   public short _collection = Phase.createComplex("_collection", null,
@@ -108,21 +77,36 @@ public class Shenandoah extends Concurrent {
     Phase.scheduleComplex  (rootClosurePhase),
     Phase.scheduleComplex  (refTypeClosurePhase),
     Phase.scheduleComplex  (completeClosurePhase),
-
     // Select relocation sets
     Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
-
     // Evacuate
-    Phase.scheduleGlobal   (EVACUATE_PREPARE),
-    Phase.scheduleCollector(EVACUATE_PREPARE),
     Phase.scheduleCollector(EVACUATE),
+    // Update refs
+    Phase.scheduleGlobal   (FORWARD_PREPARE),
+    Phase.scheduleCollector(FORWARD_PREPARE),
+    Phase.scheduleMutator  (PREPARE),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
+    Phase.scheduleCollector(STACK_ROOTS),
+    Phase.scheduleGlobal   (STACK_ROOTS),
+    Phase.scheduleCollector(ROOTS),
+    Phase.scheduleGlobal   (ROOTS),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+//    Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
+    Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+//    Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+//    Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
+    Phase.scheduleCollector(PHANTOM_REFS),
     Phase.scheduleComplex  (forwardPhase),
-    Phase.scheduleCollector(EVACUATE_RELEASE),
-    Phase.scheduleGlobal   (EVACUATE_RELEASE),
-
+    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleCollector(FORWARD_RELEASE),
+    Phase.scheduleGlobal   (FORWARD_RELEASE),
     // Cleanup
     Phase.scheduleCollector(CLEANUP_BLOCKS),
-
     Phase.scheduleComplex  (finishPhase)
   );
 
@@ -139,10 +123,6 @@ public class Shenandoah extends Concurrent {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) {
-      Log.write("Global ");
-      Log.writeln(Phase.getName(phaseId));
-    }
     if (phaseId == PREPARE) {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
@@ -157,7 +137,6 @@ public class Shenandoah extends Concurrent {
     if (phaseId == RELEASE) {
       markTrace.release();
       super.collectionPhase(RELEASE);
-      clearForwardingTables();
       return;
     }
 
@@ -167,32 +146,39 @@ public class Shenandoah extends Concurrent {
       RegionSpace.markRegionsAsRelocate(relocationSet);
       return;
     }
-//
-    if (phaseId == EVACUATE_PREPARE) {
-      evacuateTrace.prepare();
-      return;
-    }
+
+//    if (phaseId == EVACUATE_PREPARE) {
+//      super.collectionPhase(PREPARE);
+//      regionSpace.prepare();
+//      forwardTrace.prepare();
+//      return;
+//    }
 //
 //    if (phaseId == EVACUATE_CLOSURE) {
 //      return;
 //    }
 //
-    if (phaseId == EVACUATE_RELEASE) {
-      evacuateTrace.release();
+//    if (phaseId == EVACUATE_RELEASE) {
+//      forwardTrace.release();
+//      regionSpace.release();
+//      super.collectionPhase(RELEASE);
+//      return;
+//    }
+
+    if (phaseId == FORWARD_PREPARE) {
+      super.collectionPhase(PREPARE);
+      forwardTrace.prepare();
+      regionSpace.prepare();
+      return;
+    }
+    if (phaseId == FORWARD_RELEASE) {
+      forwardTrace.release();
+      regionSpace.release();
+      super.collectionPhase(RELEASE);
       return;
     }
 
     super.collectionPhase(phaseId);
-  }
-
-  @Inline
-  private void clearForwardingTables() {
-    if (relocationSet == null) return;
-    for (int i = 0; i < relocationSet.length(); i++) {
-      Address region = relocationSet.get(i);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
-      ForwardingTable.clear(region);
-    }
   }
 
   /****************************************************************************
@@ -259,48 +245,7 @@ public class Shenandoah extends Concurrent {
   @Interruptible
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, ShenandoahMarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_EVACUATE, ShenandoahEvacuateTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_FORWARD, ShenandoahForwardTraceLocal.class);
     super.registerSpecializedMethods();
-  }
-
-  @Override
-  @Inline
-  public ObjectReference loadObjectReference(Address slot) {
-    return getForwardingPointer(slot.loadObjectReference());
-  }
-
-  @Override
-  @Inline
-  public void storeObjectReference(Address slot, ObjectReference value) {
-    slot.store(getForwardingPointer(value));
-  }
-
-
-
-  @Inline
-  public static ObjectReference getForwardingPointer(ObjectReference obj) {
-    // Skip if barriers are disabled
-    if (!Shenandoah.readBarrierEnabled) return obj;
-    // Skip if `obj` is in VM Space
-    if (VM.objectModel.objectStartRef(obj).LT(VM.AVAILABLE_START)) return obj;
-    // Lookup the forwarding table
-    ObjectReference rtn = obj;
-    if (!obj.isNull() && Space.isInSpace(Shenandoah.RS, obj)) {
-//      if (Region.relocationRequired(Region.of(obj))) {
-//        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(ForwardingWord.isForwarded(obj));
-//        return ForwardingWord.extractForwardingPointer(VM.objectModel.readAvailableBitsWord(obj));
-//      }
-      ObjectReference forwarded = ForwardingTable.getForwardingPointer(obj);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(forwarded.isNull() || Space.isInSpace(Shenandoah.RS, forwarded));
-      rtn = forwarded.isNull() ? obj : forwarded;
-    }
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(obj.isNull() || !rtn.isNull());
-      if (!obj.isNull()) {
-        VM.assertions._assert(VM.debugging.validRef(obj));
-        VM.assertions._assert(VM.debugging.validRef(rtn));
-      }
-    }
-    return rtn;
   }
 }

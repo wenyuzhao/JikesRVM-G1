@@ -26,7 +26,7 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
     if (Space.isInSpace(G1.G1, object)) {
       return G1.regionSpace.isLive(object);
     }
-    return true;
+    return super.isLive(object);
   }
 
 //  @Inline

@@ -161,6 +161,8 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(REDIRECT_RELEASE),
       Phase.scheduleGlobal   (REDIRECT_RELEASE),
 
+//      Phase.scheduleCollector(CLEAR_CARD_META),
+
       Phase.scheduleComplex  (finishPhase)
     );
 
@@ -362,7 +364,7 @@ public class G1 extends Concurrent {
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     // Young GC
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(TOTAL_LOGICAL_REGIONS > 0);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(TOTAL_LOGICAL_REGIONS > 0);
 
 
     if (GENERATIONAL && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {

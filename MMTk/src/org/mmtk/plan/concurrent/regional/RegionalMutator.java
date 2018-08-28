@@ -75,7 +75,7 @@ public class RegionalMutator extends ConcurrentMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == Regional.ALLOC_MC) {
+    if (allocator == Regional.ALLOC_RS) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
       return ra.alloc(bytes, align, offset);
     } else {
@@ -86,7 +86,7 @@ public class RegionalMutator extends ConcurrentMutator {
   @Override
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    if (allocator == Regional.ALLOC_MC) {
+    if (allocator == Regional.ALLOC_RS) {
       Regional.regionSpace.initializeHeader(object);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
@@ -113,6 +113,7 @@ public class RegionalMutator extends ConcurrentMutator {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.PREPARE) {
+      VM.collection.prepareMutator(this);
       ra.reset();
       super.collectionPhase(phaseId, primary);
       return;
@@ -121,18 +122,6 @@ public class RegionalMutator extends ConcurrentMutator {
     if (phaseId == Regional.RELEASE) {
       ra.reset();
       super.collectionPhase(phaseId, primary);
-      return;
-    }
-
-    if (phaseId == Regional.EVACUATE_PREPARE) {
-      ra.reset();
-      super.collectionPhase(Regional.PREPARE, primary);
-      return;
-    }
-
-    if (phaseId == Regional.EVACUATE_RELEASE) {
-      ra.reset();
-      super.collectionPhase(Regional.RELEASE, primary);
       return;
     }
 
@@ -166,7 +155,7 @@ public class RegionalMutator extends ConcurrentMutator {
   }
 
   @Inline
-  Regional global() {
+  private final Regional global() {
     return (Regional) VM.activePlan.global();
   }
 }

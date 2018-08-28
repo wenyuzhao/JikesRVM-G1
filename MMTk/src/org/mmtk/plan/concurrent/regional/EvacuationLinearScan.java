@@ -1,4 +1,4 @@
-package org.mmtk.plan.concurrent.shenandoah;
+package org.mmtk.plan.concurrent.regional;
 
 
 import org.mmtk.policy.RegionSpace.ForwardingWord;
@@ -12,8 +12,8 @@ import org.vmmagic.unboxed.ObjectReference;
 public class EvacuationLinearScan extends LinearScan {
   @Inline
   public void scan(ObjectReference object) {
-    if (Shenandoah.regionSpace.isLive(object)) {
-      ForwardingWord.forwardObject(object, Shenandoah.ALLOC_RS);
+    if (Regional.regionSpace.isLive(object)) {
+      ForwardingWord.forwardObject(object, Regional.ALLOC_RS);
     }
   }
 }

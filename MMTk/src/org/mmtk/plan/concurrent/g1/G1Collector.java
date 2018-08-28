@@ -83,7 +83,7 @@ public class G1Collector extends ConcurrentCollector {
     if (allocator == G1.ALLOC_SURVIVOR) {
       return g1CopySurvivor.alloc(bytes, align, offset);
     } else {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == G1.ALLOC_OLD);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(allocator == G1.ALLOC_OLD);
       return g1CopyOld.alloc(bytes, align, offset);
     }
   }

@@ -3,15 +3,16 @@ package org.mmtk.plan.concurrent.regional;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
-public class RegionalEvacuateTraceLocal extends TraceLocal {
+public class RegionalForwardTraceLocal extends TraceLocal {
 
-  public RegionalEvacuateTraceLocal(Trace trace) {
-    super(Regional.SCAN_EVACUATE, trace);
+  public RegionalForwardTraceLocal(Trace trace) {
+    super(Regional.SCAN_FORWARD, trace);
   }
 
   @Override
@@ -31,10 +32,12 @@ public class RegionalEvacuateTraceLocal extends TraceLocal {
     ObjectReference newObject;
 
     if (Space.isInSpace(Regional.RS, object)) {
-      newObject = Regional.regionSpace.traceEvacuateObject(this, object, Regional.ALLOC_MC, null);
+      newObject = Regional.regionSpace.traceForwardObject(this, object);
     } else {
       newObject = super.traceObject(object);
     }
+
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isLive(newObject));
 
     return newObject;
   }

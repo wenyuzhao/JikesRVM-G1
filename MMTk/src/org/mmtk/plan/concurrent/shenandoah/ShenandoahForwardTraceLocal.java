@@ -2,17 +2,16 @@ package org.mmtk.plan.concurrent.shenandoah;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.ForwardingTable;
 import org.mmtk.policy.Space;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
-public class ShenandoahEvacuateTraceLocal extends TraceLocal {
+public class ShenandoahForwardTraceLocal extends TraceLocal {
 
-  public ShenandoahEvacuateTraceLocal(Trace trace) {
-    super(Shenandoah.SCAN_EVACUATE, trace);
+  public ShenandoahForwardTraceLocal(Trace trace) {
+    super(Shenandoah.SCAN_FORWARD, trace);
   }
 
   @Override
@@ -32,8 +31,7 @@ public class ShenandoahEvacuateTraceLocal extends TraceLocal {
     ObjectReference newObject;
 
     if (Space.isInSpace(Shenandoah.RS, object)) {
-      ObjectReference forwardedObject = ForwardingTable.getForwardingPointer(object);
-      newObject = forwardedObject.isNull() ? object : forwardedObject;
+      newObject = Shenandoah.regionSpace.traceForwardObject(this, object);
     } else {
       newObject = super.traceObject(object);
     }

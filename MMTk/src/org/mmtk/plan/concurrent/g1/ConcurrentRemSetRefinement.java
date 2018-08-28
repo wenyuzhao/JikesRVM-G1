@@ -14,12 +14,10 @@ package org.mmtk.plan.concurrent.g1;
 
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.CardTable;
-import org.mmtk.policy.Region;
-import org.mmtk.policy.RemSet;
-import org.mmtk.policy.Space;
+import org.mmtk.policy.*;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.Monitor;
@@ -225,7 +223,20 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Inline @Uninterruptible public void scan(ObjectReference object) {
-      VM.scanning.scanObject(scanPointers, object);
+//      if (Space.isInSpace(G1.G1, object) && !G1.regionSpace.isLive(object)) {
+      if (object.toAddress().loadWord(Region.Card.OBJECT_END_ADDRESS_OFFSET).isZero()) {
+        if (!VM.debugging.validRef(object)) {
+          Log.write("Space: ");
+          Log.writeln(Space.getSpaceForObject(object).getName());
+          if (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace) {
+            Log.writeln(BlockAllocator.checkBlockMeta(Region.Card.of(object)) ? " Block Live " : " Block Dead ");
+          }
+          VM.objectModel.dumpObject(object);
+          VM.assertions.fail("");
+        }
+        VM.scanning.scanObject(scanPointers, object);
+      }
+//      }
     }
   };
 
