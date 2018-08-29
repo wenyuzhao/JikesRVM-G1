@@ -354,12 +354,13 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  public ObjectReference traceForwardObject(TraceLocal trace, ObjectReference object) {
+  public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
     ObjectReference newObject = ForwardingWord.getForwardedObject(object);
     object = newObject.isNull() ? object : newObject;
     if (testAndMark(object)) {
       trace.processNode(object);
     }
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     return object;
   }
 

@@ -12,14 +12,13 @@
  */
 package org.mmtk.plan.concurrent.shenandoah;
 
-import org.mmtk.plan.CollectorContext;
-import org.mmtk.plan.StopTheWorldCollector;
-import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -53,7 +52,10 @@ public class ShenandoahCollector extends ConcurrentCollector {
   protected final ShenandoahMarkTraceLocal markTrace = new ShenandoahMarkTraceLocal(global().markTrace);
   protected final ShenandoahForwardTraceLocal forwardTrace = new ShenandoahForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
-  protected TraceLocal currentTrace;
+  private static final boolean TRACE_MARK = false;
+  private static final boolean TRACE_FORWARD = true;
+  private boolean currentTrace;// = TRACE_MARK;
+//  protected TraceLocal currentTrace;
 
   /****************************************************************************
    *
@@ -110,9 +112,9 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-//    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Shenandoah.PREPARE) {
-      currentTrace = markTrace;
+      currentTrace = TRACE_MARK;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
@@ -136,7 +138,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Shenandoah.FORWARD_PREPARE) {
-      currentTrace = forwardTrace;
+      currentTrace = TRACE_FORWARD;
       forwardTrace.prepare();
       copy.reset();
       super.collectionPhase(Shenandoah.PREPARE, primary);
@@ -174,13 +176,18 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Shenandoah.CONCURRENT_CLOSURE) {
-      currentTrace = markTrace;
+      currentTrace = TRACE_MARK;
+      super.concurrentCollectionPhase(Shenandoah.CONCURRENT_CLOSURE);
+      return;
     }
+
     if (phaseId == Shenandoah.CONCURRENT_FORWARD_CLOSURE) {
-      currentTrace = forwardTrace;
+      currentTrace = TRACE_FORWARD;
+      super.concurrentCollectionPhase(Shenandoah.CONCURRENT_CLOSURE);
+      return;
     }
-    super.concurrentCollectionPhase(phaseId);
   }
 
   /****************************************************************************
@@ -196,6 +203,6 @@ public class ShenandoahCollector extends ConcurrentCollector {
 
   @Override
   public TraceLocal getCurrentTrace() {
-    return currentTrace;
+    return currentTrace == TRACE_MARK ? markTrace : forwardTrace;
   }
 }

@@ -43,13 +43,16 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see MutatorContext
  */
 @Uninterruptible
-public class ShenandoahMutator extends ConcurrentMutator {
+public class ShenandoahMutator extends ShenandoahMutatorBarriers {
 
   /****************************************************************************
    * Instance fields
    */
   protected final RegionAllocator ra;
-  private final TraceWriteBuffer remset;
+  private final TraceWriteBuffer markRemset, forwardRemset;
+  private static final boolean REMSET_MARK = false;
+  private static final boolean REMSET_FORWARD = true;
+  private boolean currentRemSet = REMSET_MARK;
 
   /****************************************************************************
    *
@@ -61,7 +64,8 @@ public class ShenandoahMutator extends ConcurrentMutator {
    */
   public ShenandoahMutator() {
     ra = new RegionAllocator(Shenandoah.regionSpace, Region.NORMAL);
-    remset = new TraceWriteBuffer(global().markTrace);
+    markRemset = new TraceWriteBuffer(global().markTrace);
+    forwardRemset = new TraceWriteBuffer(global().forwardTrace);
   }
 
   /****************************************************************************
@@ -114,6 +118,7 @@ public class ShenandoahMutator extends ConcurrentMutator {
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == Shenandoah.PREPARE) {
       ra.reset();
+      currentRemSet = REMSET_MARK;
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -124,15 +129,30 @@ public class ShenandoahMutator extends ConcurrentMutator {
       return;
     }
 
-//    if (phaseId == Regional.EVACUATE_PREPARE) {
-//      ra.reset();
-//      super.collectionPhase(Regional.PREPARE, primary);
+    if (phaseId == Shenandoah.FORWARD_PREPARE) {
+      ra.reset();
+      currentRemSet = REMSET_FORWARD;
+      super.collectionPhase(Shenandoah.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Shenandoah.FORWARD_RELEASE) {
+      ra.reset();
+      super.collectionPhase(Shenandoah.RELEASE, primary);
+      return;
+    }
+
+
+
+//    if (phaseId == Shenandoah.SET_BARRIER_ACTIVE) {
+//      referenceUpdatingBarrierActive = true;
+//      super.collectionPhase(phaseId, primary);
 //      return;
 //    }
 //
-//    if (phaseId == Regional.EVACUATE_RELEASE) {
-//      ra.reset();
-//      super.collectionPhase(Regional.RELEASE, primary);
+//    if (phaseId == Shenandoah.CLEAR_BARRIER_ACTIVE) {
+//      referenceUpdatingBarrierActive = false;
+//      super.collectionPhase(phaseId, primary);
 //      return;
 //    }
 
@@ -141,7 +161,8 @@ public class ShenandoahMutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    remset.flush();
+    markRemset.flush();
+    forwardRemset.flush();
     ra.reset();
     assertRemsetsFlushed();
   }
@@ -149,8 +170,13 @@ public class ShenandoahMutator extends ConcurrentMutator {
   @Override
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-
-    if (Space.isInSpace(Shenandoah.RS, ref)) Shenandoah.regionSpace.traceMarkObject(remset, ref);
+    TraceWriteBuffer remset = currentRemSet == REMSET_MARK ? markRemset : forwardRemset;
+    if (Space.isInSpace(Shenandoah.RS, ref)) {
+      if (currentRemSet == REMSET_MARK)
+        Shenandoah.regionSpace.traceMarkObject(remset, ref);
+      else
+        Shenandoah.regionSpace.traceForwardObject(remset, ref);
+    }
     else if (Space.isInSpace(Shenandoah.IMMORTAL, ref)) Shenandoah.immortalSpace.traceObject(remset, ref);
     else if (Space.isInSpace(Shenandoah.LOS, ref)) Shenandoah.loSpace.traceObject(remset, ref);
     else if (Space.isInSpace(Shenandoah.NON_MOVING, ref)) Shenandoah.nonMovingSpace.traceObject(remset, ref);
@@ -161,7 +187,8 @@ public class ShenandoahMutator extends ConcurrentMutator {
   @Override
   public final void assertRemsetsFlushed() {
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(remset.isFlushed());
+      VM.assertions._assert(markRemset.isFlushed());
+      VM.assertions._assert(forwardRemset.isFlushed());
     }
   }
 

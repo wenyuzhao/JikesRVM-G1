@@ -9,9 +9,10 @@ import org.vmmagic.unboxed.ObjectReference;
 
 
 @Uninterruptible
-public class EvacuationLinearScan extends LinearScan {
+public final class EvacuationLinearScan extends LinearScan {
   @Inline
-  public void scan(ObjectReference object) {
+  @Override
+  public final void scan(ObjectReference object) {
     if (Shenandoah.regionSpace.isLive(object)) {
       ForwardingWord.forwardObject(object, Shenandoah.ALLOC_RS);
     }

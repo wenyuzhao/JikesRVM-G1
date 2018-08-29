@@ -19,12 +19,15 @@ import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -64,12 +67,24 @@ public class Shenandoah extends Concurrent {
   public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
   public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
   public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
-  protected static final short preemptConcurrentForwardClosure = Phase.createComplex("preeempt-concurrent-forward-trace", null,
+  public static final short SET_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("set-indirect-barrier-active");
+  public static final short CLEAR_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("clear-indirect-barrier-active");
+  public static final short preemptConcurrentForwardClosure = Phase.createComplex("preeempt-concurrent-forward-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
       Phase.scheduleCollector(FORWARD_CLOSURE));
   public static final short CONCURRENT_FORWARD_CLOSURE = Phase.createConcurrent("concurrent-forward-closure",
       Phase.scheduleComplex(preemptConcurrentForwardClosure));
 
+  public static final short concurrentForwardClosure = Phase.createComplex("concurrent-forward", null,
+      Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
+      Phase.scheduleGlobal    (SET_INDIRECT_BARRIER_ACTIVE),
+      Phase.scheduleMutator   (SET_BARRIER_ACTIVE),
+      Phase.scheduleCollector (FLUSH_COLLECTOR),
+      Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
+//      Phase.scheduleComplex(preemptConcurrentForwardClosure),
+      Phase.scheduleGlobal    (CLEAR_INDIRECT_BARRIER_ACTIVE),
+      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
+      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));
 
   public short _collection = Phase.createComplex("_collection", null,
     Phase.scheduleComplex  (initPhase),
@@ -82,29 +97,52 @@ public class Shenandoah extends Concurrent {
     // Evacuate
     Phase.scheduleCollector(EVACUATE),
     // Update refs
-    Phase.scheduleGlobal   (FORWARD_PREPARE),
-    Phase.scheduleCollector(FORWARD_PREPARE),
-    Phase.scheduleMutator  (PREPARE),
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-//    Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-//    Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-//    Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleComplex  (forwardPhase),
-    Phase.scheduleMutator  (RELEASE),
-    Phase.scheduleCollector(FORWARD_RELEASE),
-    Phase.scheduleGlobal   (FORWARD_RELEASE),
+//    Phase.scheduleGlobal   (FORWARD_PREPARE),
+//    Phase.scheduleCollector(FORWARD_PREPARE),
+//    Phase.scheduleMutator  (FORWARD_PREPARE),
+//    Phase.scheduleMutator  (PREPARE_STACKS),
+//    Phase.scheduleGlobal   (PREPARE_STACKS),
+//    Phase.scheduleCollector(STACK_ROOTS),
+//    Phase.scheduleGlobal   (STACK_ROOTS),
+//    Phase.scheduleCollector(ROOTS),
+//    Phase.scheduleGlobal   (ROOTS),
+//    Phase.scheduleCollector(FORWARD_CLOSURE),
+//    Phase.scheduleCollector(SOFT_REFS),
+//    Phase.scheduleCollector(FORWARD_CLOSURE),
+//    Phase.scheduleCollector(WEAK_REFS),
+//    Phase.scheduleCollector(FINALIZABLE),
+//    Phase.scheduleCollector(FORWARD_CLOSURE),
+//    Phase.scheduleCollector(PHANTOM_REFS),
+//    Phase.scheduleComplex  (forwardPhase),
+//    Phase.scheduleMutator  (FORWARD_RELEASE),
+//    Phase.scheduleCollector(FORWARD_RELEASE),
+//    Phase.scheduleGlobal   (FORWARD_RELEASE),
+
+      Phase.scheduleGlobal   (FORWARD_PREPARE),
+      Phase.scheduleCollector(FORWARD_PREPARE),
+      Phase.scheduleMutator  (FORWARD_PREPARE),
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+//      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleComplex(concurrentForwardClosure),
+      Phase.scheduleCollector(SOFT_REFS),
+//      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleComplex(concurrentForwardClosure),
+      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector(FINALIZABLE),
+//      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleComplex(concurrentForwardClosure),
+      Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleComplex  (forwardPhase),
+      Phase.scheduleComplex(concurrentForwardClosure),
+      Phase.scheduleMutator  (FORWARD_RELEASE),
+      Phase.scheduleCollector(FORWARD_RELEASE),
+      Phase.scheduleGlobal   (FORWARD_RELEASE),
+
     // Cleanup
     Phase.scheduleCollector(CLEANUP_BLOCKS),
     Phase.scheduleComplex  (finishPhase)
@@ -115,6 +153,14 @@ public class Shenandoah extends Concurrent {
    */
   public Shenandoah() {
     collection = _collection;
+  }
+
+  @Override
+  @Interruptible
+  public void processOptions() {
+    super.processOptions();
+    /* Set up the concurrent marking phase */
+//    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
   }
 
   /**
@@ -147,34 +193,29 @@ public class Shenandoah extends Concurrent {
       return;
     }
 
-//    if (phaseId == EVACUATE_PREPARE) {
-//      super.collectionPhase(PREPARE);
-//      regionSpace.prepare();
-//      forwardTrace.prepare();
-//      return;
-//    }
-//
-//    if (phaseId == EVACUATE_CLOSURE) {
-//      return;
-//    }
-//
-//    if (phaseId == EVACUATE_RELEASE) {
-//      forwardTrace.release();
-//      regionSpace.release();
-//      super.collectionPhase(RELEASE);
-//      return;
-//    }
-
     if (phaseId == FORWARD_PREPARE) {
       super.collectionPhase(PREPARE);
       forwardTrace.prepare();
       regionSpace.prepare();
+//      referenceUpdatingBarrierActive = true;
       return;
     }
+
     if (phaseId == FORWARD_RELEASE) {
+//      referenceUpdatingBarrierActive = false;
       forwardTrace.release();
       regionSpace.release();
       super.collectionPhase(RELEASE);
+      return;
+    }
+
+    if (phaseId == SET_INDIRECT_BARRIER_ACTIVE) {
+      referenceUpdatingBarrierActive = true;
+      return;
+    }
+
+    if (phaseId == CLEAR_INDIRECT_BARRIER_ACTIVE) {
+      referenceUpdatingBarrierActive = false;
       return;
     }
 
@@ -247,5 +288,29 @@ public class Shenandoah extends Concurrent {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, ShenandoahMarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_FORWARD, ShenandoahForwardTraceLocal.class);
     super.registerSpecializedMethods();
+  }
+
+//  @Override
+//  @Inline
+//  public void storeObjectReference(Address slot, ObjectReference value) {
+//    slot.store(getForwardingPointer(value));
+//  }
+//
+//  @Override
+//  @Inline
+//  public ObjectReference loadObjectReference(Address slot) {
+//    return getForwardingPointer(slot.loadObjectReference());
+//  }
+
+  static boolean referenceUpdatingBarrierActive = false;
+
+  @Inline
+  static public ObjectReference getForwardingPointer(ObjectReference object) {
+    if (referenceUpdatingBarrierActive) {
+      if (object.isNull()) return object;
+      ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
+      return forwarded.isNull() ? object : forwarded;
+    }
+    return object;
   }
 }
