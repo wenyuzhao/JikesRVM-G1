@@ -20,13 +20,13 @@ public class Region {
   public static final int SURVIVOR = 1;
   public static final int OLD = 2;
 
-  public static final int LOG_PAGES_IN_BLOCK = 8;
-  public static final int PAGES_IN_BLOCK = 1 << 8; // 256
-  public static final int LOG_BYTES_IN_BLOCK = LOG_PAGES_IN_BLOCK + LOG_BYTES_IN_PAGE;
-  public static final int BYTES_IN_BLOCK = 1 << LOG_BYTES_IN_BLOCK;//BYTES_IN_PAGE * PAGES_IN_BLOCK; // 1048576
+  public static final int LOG_PAGES_IN_REGION = 8;
+  public static final int PAGES_IN_REGION = 1 << 8; // 256
+  public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
+  public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;//BYTES_IN_PAGE * PAGES_IN_REGION; // 1048576
 
-  private static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_BLOCK - 1);// 0..011111111111
-  // elements of block metadata table
+  private static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
+  // elements of region metadata table
   public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
   public static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_BYTE;
@@ -41,36 +41,36 @@ public class Region {
   public static final int METADATA_BYTES = METADATA_FORWARDING_TABLE_OFFSET + BYTES_IN_ADDRESS;
 
   // Derived constants
-  public static final int METADATA_OFFSET_IN_REGION = 0; // 0
-  public static final int METADATA_BLOCKS_PER_REGION;
-  public static final int METADATA_PAGES_PER_REGION;
-  public static final int BLOCKS_IN_REGION;
-  public static final int BLOCKS_START_OFFSET;
+  public static final int METADATA_OFFSET_IN_CHUNK = 0; // 0
+  public static final int METADATA_REGIONS_PER_CHUNK;
+  public static final int METADATA_PAGES_PER_CHUNK;
+  public static final int REGIONS_IN_CHUNK;
+  public static final int REGIONS_START_OFFSET;
   public static final int MARKING_METADATA_START;
   public static final int MARKING_METADATA_EXTENT;
 
   static {
-    int blocksInRegion = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_BLOCK; // 1024 / 256 = 4
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(blocksInRegion == 32);
-    int metadataBlocksInRegion = ceilDiv(blocksInRegion * METADATA_BYTES, BYTES_IN_BLOCK); // 1
-    BLOCKS_IN_REGION = blocksInRegion - metadataBlocksInRegion; // 3
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(BLOCKS_IN_REGION == 31);
-    METADATA_BLOCKS_PER_REGION = metadataBlocksInRegion; // 256
-    METADATA_PAGES_PER_REGION = metadataBlocksInRegion * PAGES_IN_BLOCK; // 256
-    BLOCKS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_REGION; // 1048576
-    MARKING_METADATA_START = METADATA_BYTES * BLOCKS_IN_REGION;
-    MARKING_METADATA_EXTENT = BYTES_IN_BLOCK * metadataBlocksInRegion - MARKING_METADATA_START;
+    int regionsInChunk = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_REGION; // 1024 / 256 = 4
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(regionsInChunk == 32);
+    int metadataRegionsInChunk = ceilDiv(regionsInChunk * METADATA_BYTES, BYTES_IN_REGION); // 1
+    REGIONS_IN_CHUNK = regionsInChunk - metadataRegionsInChunk; // 3
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(REGIONS_IN_CHUNK == 31);
+    METADATA_REGIONS_PER_CHUNK = metadataRegionsInChunk; // 256
+    METADATA_PAGES_PER_CHUNK = metadataRegionsInChunk * PAGES_IN_REGION; // 256
+    REGIONS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_CHUNK; // 1048576
+    MARKING_METADATA_START = METADATA_BYTES * REGIONS_IN_CHUNK;
+    MARKING_METADATA_EXTENT = BYTES_IN_REGION * metadataRegionsInChunk - MARKING_METADATA_START;
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(MARKING_METADATA_START < (METADATA_PAGES_PER_REGION * BYTES_IN_PAGE));
+      VM.assertions._assert(MARKING_METADATA_START < (METADATA_PAGES_PER_CHUNK * BYTES_IN_PAGE));
     }
   }
 
   public static void dumpMeta() {
     Log.writeln("BYTES_IN_PAGE ", Constants.BYTES_IN_PAGE);
-    Log.writeln("LOG_PAGES_IN_BLOCK ", LOG_PAGES_IN_BLOCK);
-    Log.writeln("PAGES_IN_BLOCK ", PAGES_IN_BLOCK);
-    Log.writeln("LOG_BYTES_IN_BLOCK ", LOG_BYTES_IN_BLOCK);
-    Log.writeln("BYTES_IN_BLOCK ", BYTES_IN_BLOCK);
+    Log.writeln("LOG_PAGES_IN_REGION ", LOG_PAGES_IN_REGION);
+    Log.writeln("PAGES_IN_REGION ", PAGES_IN_REGION);
+    Log.writeln("LOG_BYTES_IN_REGION ", LOG_BYTES_IN_REGION);
+    Log.writeln("BYTES_IN_REGION ", BYTES_IN_REGION);
     Log.writeln("PAGE_MASK ", PAGE_MASK);
     Log.writeln("METADATA_ALIVE_SIZE_OFFSET ", METADATA_ALIVE_SIZE_OFFSET);
     Log.writeln("METADATA_RELOCATE_OFFSET ", METADATA_RELOCATE_OFFSET);
@@ -83,11 +83,11 @@ public class Region {
     Log.writeln("METADATA_BYTES ", METADATA_BYTES);
     Log.writeln("MARKING_METADATA_START ", MARKING_METADATA_START);
     Log.writeln("MARKING_METADATA_EXTENT ", MARKING_METADATA_EXTENT);
-    Log.writeln("METADATA_OFFSET_IN_REGION ", METADATA_OFFSET_IN_REGION);
-    Log.writeln("METADATA_PAGES_PER_REGION ", METADATA_PAGES_PER_REGION);
-    Log.writeln("METADATA_PAGES_PER_REGION ", METADATA_PAGES_PER_REGION);
-    Log.writeln("BLOCKS_IN_REGION ", BLOCKS_IN_REGION);
-    Log.writeln("BLOCKS_START_OFFSET ", BLOCKS_START_OFFSET);
+    Log.writeln("METADATA_OFFSET_IN_CHUNK ", METADATA_OFFSET_IN_CHUNK);
+    Log.writeln("METADATA_PAGES_PER_CHUNK ", METADATA_PAGES_PER_CHUNK);
+    Log.writeln("METADATA_PAGES_PER_CHUNK ", METADATA_PAGES_PER_CHUNK);
+    Log.writeln("REGIONS_IN_CHUNK ", REGIONS_IN_CHUNK);
+    Log.writeln("REGIONS_START_OFFSET ", REGIONS_START_OFFSET);
     //VM.assertions.fail("");
   }
 
@@ -102,7 +102,7 @@ public class Region {
     if (VM.VERIFY_ASSERTIONS) {
       Address base = EmbeddedMetaData.getMetaDataBase(addr);
       VM.assertions._assert(addr.GE(base));
-      VM.assertions._assert(addr.plus(size).LE(base.plus(METADATA_BYTES * BYTES_IN_BLOCK)));
+      VM.assertions._assert(addr.plus(size).LE(base.plus(METADATA_BYTES * BYTES_IN_REGION)));
     }
   }
 
@@ -143,40 +143,30 @@ public class Region {
   }
 
   @Inline
-  public static boolean isValidBlock(final Address block) {
-    int index = indexOf(block);
-    return /*block != null &&*/ !block.isZero() && isAligned(block) && index >= 0 && index < BLOCKS_IN_REGION;
+  public static void setRelocationState(Address region, boolean relocation) {
+    set(metaDataOf(region, METADATA_RELOCATE_OFFSET), (byte) (relocation ? 1 : 0));
   }
 
   @Inline
-  public static void setRelocationState(Address block, boolean relocation) {
-    // blockStateLock.acquire();
-    set(metaDataOf(block, METADATA_RELOCATE_OFFSET), (byte) (relocation ? 1 : 0));
-    // blockStateLock.release();
+  public static boolean relocationRequired(Address region) {
+    return metaDataOf(region, METADATA_RELOCATE_OFFSET).loadByte() != ((byte) 0);
   }
 
   @Inline
-  public static boolean relocationRequired(Address block) {
-    return metaDataOf(block, METADATA_RELOCATE_OFFSET).loadByte() != ((byte) 0);
-  }
-
-  @Inline
-  public static void clearMarkBitMap(Address block) {
-    Address start = EmbeddedMetaData.getMetaDataBase(block).plus(MARKING_METADATA_START);
+  public static void clearMarkBitMap(Address region) {
+    Address start = EmbeddedMetaData.getMetaDataBase(region).plus(MARKING_METADATA_START);
     VM.memory.zero(false, start, Extent.fromIntZeroExtend(MARKING_METADATA_EXTENT));
   }
 
   @Inline
-  public static void setUsedSize(Address block, int bytes) {
-    set(metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET), bytes);
+  public static void setUsedSize(Address region, int bytes) {
+    set(metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET), bytes);
   }
 
   @Inline
-  public static int usedSize(Address block) {
-    return metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET).loadInt();
+  public static int usedSize(Address region) {
+    return metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET).loadInt();
   }
-
-  static Lock blocksCountLock = VM.newLock("blocksCountLock");
 
   @Inline
   public static int kind(Address region) {
@@ -184,37 +174,28 @@ public class Region {
   }
 
   @Inline
-  public static void register(Address block, int allocationKind) {
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
-    // Handle this block
-    //blocksCountLock.acquire();
-    //count += 1;
-    //blocksCountLock.release();
-    clearState(block);
-    setAllocated(block, true);
+  public static void register(Address region, int allocationKind) {
+    clearState(region);
+    setAllocated(region, true);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
-    Region.metaDataOf(block, Region.METADATA_GENERATION_OFFSET).store(allocationKind);
+    Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).store(allocationKind);
   }
 
   @Inline
-  public static void unregister(Address block) {
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isValidBlock(block));
-    //blocksCountLock.acquire();
-    //count -= 1;
-    //blocksCountLock.release();
-    clearState(block);
+  public static void unregister(Address region) {
+    clearState(region);
   }
 
   @Inline
-  public static boolean allocated(Address block) {
-    return metaDataOf(block, METADATA_ALLOCATED_OFFSET).loadByte() != ((byte) 0);
+  public static boolean allocated(Address region) {
+    return metaDataOf(region, METADATA_ALLOCATED_OFFSET).loadByte() != ((byte) 0);
   }
 
   @Inline
-  public static void updateBlockAliveSize(Address block, ObjectReference object) {
-    Address meta = metaDataOf(block, METADATA_ALIVE_SIZE_OFFSET);
+  public static void updateRegionAliveSize(Address region, ObjectReference object) {
+    Address meta = metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET);
     int oldValue, newValue, size = VM.objectModel.getSizeWhenCopied(object);
     do {
       oldValue = meta.prepareInt();
@@ -223,8 +204,8 @@ public class Region {
   }
 
   @Inline
-  public static void setCursor(Address block, Address cursor) {
-    Address meta = metaDataOf(block, METADATA_CURSOR_OFFSET);
+  public static void setCursor(Address region, Address cursor) {
+    Address meta = metaDataOf(region, METADATA_CURSOR_OFFSET);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!meta.isZero());
     }
@@ -232,14 +213,14 @@ public class Region {
   }
 
   @Inline
-  public static Address getCursor(Address block) {
-    return metaDataOf(block, METADATA_CURSOR_OFFSET).loadAddress();
+  public static Address getCursor(Address region) {
+    return metaDataOf(region, METADATA_CURSOR_OFFSET).loadAddress();
   }
 
   @Inline
   private static void clearState(Address region) {
     Address metaData = EmbeddedMetaData.getMetaDataBase(region);
-    Address metaForRegion = metaData.plus(METADATA_OFFSET_IN_REGION + METADATA_BYTES * indexOf(region));
+    Address metaForRegion = metaData.plus(METADATA_OFFSET_IN_CHUNK + METADATA_BYTES * indexOf(region));
     // Forwarding table should not be cleared
     Address forwardingTable = metaDataOf(region, METADATA_FORWARDING_TABLE_OFFSET).loadAddress();
     VM.memory.zero(false, metaForRegion, Extent.fromIntZeroExtend(METADATA_BYTES));
@@ -252,28 +233,23 @@ public class Region {
   }
 
   @Inline
-  public static int indexOf(Address block) {
-//    if (VM.VERIFY_ASSERTIONS) {
-//      VM.assertions._assert(!block.isZero());
-//      VM.assertions._assert(isAligned(block));
-//    }
-    Address region = EmbeddedMetaData.getMetaDataBase(block);
-    int index = block.diff(region.plus(BLOCKS_START_OFFSET)).toWord().rshl(LOG_BYTES_IN_BLOCK).toInt();
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index == (int) index);
+  public static int indexOf(Address region) {
+    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+    int index = region.diff(chunk.plus(REGIONS_START_OFFSET)).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
     return index;
   }
 
   @Inline
-  public static Address metaDataOf(Address block, int metaDataOffset) {
-    Address metaData = EmbeddedMetaData.getMetaDataBase(block);
+  public static Address metaDataOf(Address region, int metaDataOffset) {
+    Address metaData = EmbeddedMetaData.getMetaDataBase(region);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(metaDataOffset >= 0 && metaDataOffset <= METADATA_BYTES);
-    return metaData.plus(METADATA_OFFSET_IN_REGION + METADATA_BYTES * indexOf(block)).plus(metaDataOffset);
+    return metaData.plus(METADATA_OFFSET_IN_CHUNK + METADATA_BYTES * indexOf(region)).plus(metaDataOffset);
   }
 
 
   @Inline
-  private static void setAllocated(Address block, boolean allocated) {
-    set(metaDataOf(block, METADATA_ALLOCATED_OFFSET), (byte) (allocated ? 1 : 0));
+  private static void setAllocated(Address region, boolean allocated) {
+    set(metaDataOf(region, METADATA_ALLOCATED_OFFSET), (byte) (allocated ? 1 : 0));
   }
 
   public static boolean USE_CARDS = false;
@@ -354,8 +330,8 @@ public class Region {
 
     @Inline
     public static int indexOf(Address card) {
-      Address block = Region.of(card);
-      int index = card.diff(block).toInt() >>> LOG_BYTES_IN_CARD;
+      Address region = Region.of(card);
+      int index = card.diff(region).toInt() >>> LOG_BYTES_IN_CARD;
       return index;
     }
 
@@ -433,23 +409,12 @@ public class Region {
       int i = hash(card);
       ObjectReference.fromObject(anchors).toAddress().plus(i).store((byte) -1);
       ObjectReference.fromObject(limits).toAddress().plus(i).store((byte) -1);
-//      byte oldByte;
-//
-//      do {
-//        oldByte = getByte(anchors, i);
-//        if (oldByte == (byte) -1) break;
-//      } while (!compareAndSwapByteInBuffer(anchors, i, oldByte, (byte) -1));
-//
-//      do {
-//        oldByte = getByte(limits, i);
-//        if (oldByte == (byte) -1) break;
-//      } while (!compareAndSwapByteInBuffer(limits, i, oldByte, (byte) -1));
     }
 
     @Inline
-    public static void clearCardMetaForBlock(Address block) {
-      Address end = block.plus(Region.BYTES_IN_BLOCK);
-      for (Address c = block; c.LT(end); c = c.plus(Card.BYTES_IN_CARD)) {
+    public static void clearCardMetaForRegion(Address region) {
+      Address end = region.plus(Region.BYTES_IN_REGION);
+      for (Address c = region; c.LT(end); c = c.plus(Card.BYTES_IN_CARD)) {
         clearCardMeta(c);
       }
     }
@@ -509,7 +474,7 @@ public class Region {
 
     @Inline
     @Uninterruptible
-    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean skipDeadBlock) {
+    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean skipDeadRegion) {
       final int RS = regionSpace.getDescriptor();
 
       Address end = getCardLimit(card);
@@ -582,9 +547,9 @@ public class Region {
   }
 
   @Inline
-  public static void linearScan(LinearScan scan, Address block) {
-    Address end = getCursor(block);
-    Address cursor = block;
+  public static void linearScan(LinearScan scan, Address region) {
+    Address end = getCursor(region);
+    Address cursor = region;
     if (cursor.GE(end)) return;
     ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
     do {

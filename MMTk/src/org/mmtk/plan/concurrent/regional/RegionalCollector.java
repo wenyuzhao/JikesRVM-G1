@@ -19,9 +19,7 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
 import org.mmtk.utility.Atomic;
-import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -159,7 +157,7 @@ public class RegionalCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Regional.CLEANUP_BLOCKS) {
-      Regional.regionSpace.cleanupBlocks(Regional.relocationSet, false);
+      Regional.regionSpace.cleanupRegions(Regional.relocationSet, false);
       return;
     }
 

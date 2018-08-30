@@ -17,6 +17,7 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.concurrent.Concurrent;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
@@ -66,7 +67,19 @@ public class Shenandoah extends Concurrent {
   public static final short FORWARD_PREPARE = Phase.createSimple("forward-prepare");
   public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
   public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+
+  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
+  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preeempt-concurrent-eager-cleanup", null,
+      Phase.scheduleCollector(EAGER_CLEANUP));
+  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
+      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
+
+  public static final short CLEANUP = Phase.createSimple("cleanup");
+  public static final short preemptConcurrentCleanup = Phase.createComplex("preeempt-concurrent-cleanup", null,
+      Phase.scheduleCollector(CLEANUP));
+  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
+      Phase.scheduleComplex(preemptConcurrentCleanup));
+
   public static final short SET_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("set-indirect-barrier-active");
   public static final short CLEAR_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("clear-indirect-barrier-active");
   public static final short preemptConcurrentForwardClosure = Phase.createComplex("preeempt-concurrent-forward-trace", null,
@@ -81,7 +94,6 @@ public class Shenandoah extends Concurrent {
       Phase.scheduleMutator   (SET_BARRIER_ACTIVE),
       Phase.scheduleCollector (FLUSH_COLLECTOR),
       Phase.scheduleConcurrent(CONCURRENT_FORWARD_CLOSURE),
-//      Phase.scheduleComplex(preemptConcurrentForwardClosure),
       Phase.scheduleGlobal    (CLEAR_INDIRECT_BARRIER_ACTIVE),
       Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
       Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));
@@ -94,57 +106,33 @@ public class Shenandoah extends Concurrent {
     Phase.scheduleComplex  (completeClosurePhase),
     // Select relocation sets
     Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+    Phase.scheduleCollector(EAGER_CLEANUP),
     // Evacuate
     Phase.scheduleCollector(EVACUATE),
     // Update refs
-//    Phase.scheduleGlobal   (FORWARD_PREPARE),
-//    Phase.scheduleCollector(FORWARD_PREPARE),
-//    Phase.scheduleMutator  (FORWARD_PREPARE),
-//    Phase.scheduleMutator  (PREPARE_STACKS),
-//    Phase.scheduleGlobal   (PREPARE_STACKS),
-//    Phase.scheduleCollector(STACK_ROOTS),
-//    Phase.scheduleGlobal   (STACK_ROOTS),
-//    Phase.scheduleCollector(ROOTS),
-//    Phase.scheduleGlobal   (ROOTS),
-//    Phase.scheduleCollector(FORWARD_CLOSURE),
-//    Phase.scheduleCollector(SOFT_REFS),
-//    Phase.scheduleCollector(FORWARD_CLOSURE),
-//    Phase.scheduleCollector(WEAK_REFS),
-//    Phase.scheduleCollector(FINALIZABLE),
-//    Phase.scheduleCollector(FORWARD_CLOSURE),
-//    Phase.scheduleCollector(PHANTOM_REFS),
-//    Phase.scheduleComplex  (forwardPhase),
-//    Phase.scheduleMutator  (FORWARD_RELEASE),
-//    Phase.scheduleCollector(FORWARD_RELEASE),
-//    Phase.scheduleGlobal   (FORWARD_RELEASE),
-
-      Phase.scheduleGlobal   (FORWARD_PREPARE),
-      Phase.scheduleCollector(FORWARD_PREPARE),
-      Phase.scheduleMutator  (FORWARD_PREPARE),
-      Phase.scheduleMutator  (PREPARE_STACKS),
-      Phase.scheduleGlobal   (PREPARE_STACKS),
-      Phase.scheduleCollector(STACK_ROOTS),
-      Phase.scheduleGlobal   (STACK_ROOTS),
-      Phase.scheduleCollector(ROOTS),
-      Phase.scheduleGlobal   (ROOTS),
-//      Phase.scheduleCollector(FORWARD_CLOSURE),
-      Phase.scheduleComplex(concurrentForwardClosure),
-      Phase.scheduleCollector(SOFT_REFS),
-//      Phase.scheduleCollector(FORWARD_CLOSURE),
-      Phase.scheduleComplex(concurrentForwardClosure),
-      Phase.scheduleCollector(WEAK_REFS),
-      Phase.scheduleCollector(FINALIZABLE),
-//      Phase.scheduleCollector(FORWARD_CLOSURE),
-      Phase.scheduleComplex(concurrentForwardClosure),
-      Phase.scheduleCollector(PHANTOM_REFS),
-      Phase.scheduleComplex  (forwardPhase),
-      Phase.scheduleComplex(concurrentForwardClosure),
-      Phase.scheduleMutator  (FORWARD_RELEASE),
-      Phase.scheduleCollector(FORWARD_RELEASE),
-      Phase.scheduleGlobal   (FORWARD_RELEASE),
-
+    Phase.scheduleGlobal   (FORWARD_PREPARE),
+    Phase.scheduleCollector(FORWARD_PREPARE),
+    Phase.scheduleMutator  (FORWARD_PREPARE),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
+    Phase.scheduleCollector(STACK_ROOTS),
+    Phase.scheduleGlobal   (STACK_ROOTS),
+    Phase.scheduleCollector(ROOTS),
+    Phase.scheduleGlobal   (ROOTS),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+    Phase.scheduleCollector(SOFT_REFS),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+    Phase.scheduleCollector(WEAK_REFS),
+    Phase.scheduleCollector(FINALIZABLE),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+    Phase.scheduleCollector(PHANTOM_REFS),
+    Phase.scheduleComplex  (forwardPhase),
+    Phase.scheduleCollector(FORWARD_CLOSURE),
+    Phase.scheduleMutator  (FORWARD_RELEASE),
+    Phase.scheduleCollector(FORWARD_RELEASE),
+    Phase.scheduleGlobal   (FORWARD_RELEASE),
     // Cleanup
-    Phase.scheduleCollector(CLEANUP_BLOCKS),
+    Phase.scheduleCollector(CLEANUP),
     Phase.scheduleComplex  (finishPhase)
   );
 
@@ -160,7 +148,9 @@ public class Shenandoah extends Concurrent {
   public void processOptions() {
     super.processOptions();
     /* Set up the concurrent marking phase */
-//    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
+    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
+    replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
+    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
   }
 
   /**
@@ -187,9 +177,31 @@ public class Shenandoah extends Concurrent {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      AddressArray blocksSnapshot = regionSpace.snapshotBlocks(false);
-      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false, false);
+      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
+      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
       RegionSpace.markRegionsAsRelocate(relocationSet);
+
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.writeln("Relocation set size ", relocationSet.length());
+      }
+      return;
+    }
+
+    if (phaseId == EAGER_CLEANUP) {
+      int c = 0;
+      for (int i = 0; i < relocationSet.length(); i++) {
+        Address region = relocationSet.get(i);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          relocationSet.set(i, Address.zero());
+          regionSpace.release(region);
+          c++;
+        }
+      }
+      if (VM.VERIFY_ASSERTIONS) {
+        Log.write("Eager cleanup ", c);
+        Log.write("/", relocationSet.length());
+        Log.writeln(" regions ");
+      }
       return;
     }
 
@@ -197,12 +209,10 @@ public class Shenandoah extends Concurrent {
       super.collectionPhase(PREPARE);
       forwardTrace.prepare();
       regionSpace.prepare();
-//      referenceUpdatingBarrierActive = true;
       return;
     }
 
     if (phaseId == FORWARD_RELEASE) {
-//      referenceUpdatingBarrierActive = false;
       forwardTrace.release();
       regionSpace.release();
       super.collectionPhase(RELEASE);
@@ -229,8 +239,8 @@ public class Shenandoah extends Concurrent {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    int usedPages = getPagesUsed();// - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages();// - metaDataSpace.reservedPages();
     if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
       return true;
     }
@@ -239,13 +249,13 @@ public class Shenandoah extends Concurrent {
 
   @Override
   protected boolean concurrentCollectionRequired() {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    int usedPages = getPagesUsed();
+    int totalPages = getTotalPages();
     return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
   }
 
-  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
-  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
+  final float RESERVE_PERCENT = 5 / 100;//Options.g1ReservePercent.getValue() / 100;
+  final float INIT_HEAP_OCCUPANCY_PERCENT = 20f;//Options.g1InitiatingHeapOccupancyPercent.getValue();
 
   /**
    * Return the number of pages reserved for copying.

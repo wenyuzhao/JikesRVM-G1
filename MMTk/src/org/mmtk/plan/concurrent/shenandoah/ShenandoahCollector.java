@@ -80,8 +80,10 @@ public class ShenandoahCollector extends ConcurrentCollector {
     rendezvous();
     int index;
     while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
-      Log.writeln("Evacuating ", Shenandoah.relocationSet.get(index));
-      Region.linearScan(evacuationLinearScan, Shenandoah.relocationSet.get(index));
+      Address region = Shenandoah.relocationSet.get(index);
+      if (region.isZero()) continue;
+      Log.writeln("Evacuating ", region);
+      Region.linearScan(evacuationLinearScan, region);
     }
   }
 
@@ -131,6 +133,20 @@ public class ShenandoahCollector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == Shenandoah.EAGER_CLEANUP) {
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+        Address region = Shenandoah.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          Shenandoah.relocationSet.set(index, Address.zero());
+          Shenandoah.regionSpace.release(region);
+        }
+      }
+      return;
+    }
+
     if (phaseId == Shenandoah.EVACUATE) {
       evacuateRegions();
       rendezvous();
@@ -157,8 +173,15 @@ public class ShenandoahCollector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == Shenandoah.CLEANUP_BLOCKS) {
-      Shenandoah.regionSpace.cleanupBlocks(Shenandoah.relocationSet, false);
+    if (phaseId == Shenandoah.CLEANUP) {
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+        Address region = Shenandoah.relocationSet.get(index);
+        Shenandoah.relocationSet.set(index, Address.zero());
+        if (!region.isZero()) Shenandoah.regionSpace.release(region);
+      }
       return;
     }
 
@@ -188,6 +211,58 @@ public class ShenandoahCollector extends ConcurrentCollector {
       super.concurrentCollectionPhase(Shenandoah.CONCURRENT_CLOSURE);
       return;
     }
+
+    if (phaseId == Shenandoah.CONCURRENT_EAGER_CLEANUP) {
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+        Address region = Shenandoah.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          Shenandoah.relocationSet.set(index, Address.zero());
+          Shenandoah.regionSpace.release(region);
+        }
+        if (group.isAborted()) {
+          break;
+        }
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+
+    if (phaseId == Shenandoah.CONCURRENT_CLEANUP) {
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+        Address region = Shenandoah.relocationSet.get(index);
+        Shenandoah.relocationSet.set(index, Address.zero());
+        if (!region.isZero()) Shenandoah.regionSpace.release(region);
+        if (group.isAborted()) {
+          break;
+        }
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+  }
+
+  @Inline
+  @Unpreemptible
+  private void notifyConcurrentPhaseEnd() {
+    if (rendezvous() == 0) {
+      continueCollecting = false;
+      if (!group.isAborted()) {
+        VM.collection.requestMutatorFlush();
+        if (concurrentTraceComplete()) {
+          continueCollecting = Phase.notifyConcurrentPhaseComplete();
+        } else {
+          continueCollecting = true;
+          Phase.notifyConcurrentPhaseIncomplete();
+        }
+      }
+    }
+    rendezvous();
   }
 
   /****************************************************************************

@@ -196,7 +196,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       }*/
       if (source.isNull() || ref.isNull()) return;
       Word tmp = VM.objectModel.objectStartRef(source).toWord().xor(value.toWord());
-      tmp = tmp.rshl(Region.LOG_BYTES_IN_BLOCK);
+      tmp = tmp.rshl(Region.LOG_BYTES_IN_REGION);
       //tmp = ref.isNull() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {

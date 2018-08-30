@@ -52,6 +52,6 @@ public class G1Constraints extends ConcurrentConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return Region.BYTES_IN_BLOCK;
+    return Region.BYTES_IN_REGION;
   }
 }

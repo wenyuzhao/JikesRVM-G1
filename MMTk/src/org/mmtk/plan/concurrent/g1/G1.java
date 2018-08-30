@@ -269,7 +269,7 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
-      blocksSnapshot = regionSpace.snapshotBlocks(currentGCKind == YOUNG_GC);
+      blocksSnapshot = regionSpace.snapshotRegions(currentGCKind == YOUNG_GC);
       return;
     }
 
@@ -278,7 +278,7 @@ public class G1 extends Concurrent {
         // blocksSnapshot is already and only contains young & survivor regions
         relocationSet = blocksSnapshot;
       } else {
-        relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, true, false);
+        relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, true, false);
       }
       if (currentGCKind == MIXED_GC) {
         PauseTimePredictor.predict(relocationSet);
@@ -359,7 +359,7 @@ public class G1 extends Concurrent {
    * Accounting
    */
 
-  final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+  final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {

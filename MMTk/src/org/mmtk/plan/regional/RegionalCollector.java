@@ -15,13 +15,11 @@ package org.mmtk.plan.regional;
 import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -134,7 +132,7 @@ public class RegionalCollector extends StopTheWorldCollector {
     }
 
     if (phaseId == Regional.CLEANUP_BLOCKS) {
-      Regional.regionSpace.cleanupBlocks(Regional.relocationSet, false);
+      Regional.regionSpace.cleanupRegions(Regional.relocationSet, false);
       return;
     }
 

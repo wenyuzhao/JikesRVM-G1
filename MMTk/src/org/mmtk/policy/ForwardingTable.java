@@ -3,7 +3,6 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
-import org.mmtk.vm.Memory;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -19,7 +18,7 @@ public class ForwardingTable {
   private static final AddressArray forwardingTables;
 
   static {
-    int regions = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+    int regions = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
     forwardingTables = AddressArray.create(regions);
   }
 
@@ -35,7 +34,7 @@ public class ForwardingTable {
 
   @Inline
   private static int regionIndex(Address region) {
-    return region.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+    return region.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
   }
 
   @Inline

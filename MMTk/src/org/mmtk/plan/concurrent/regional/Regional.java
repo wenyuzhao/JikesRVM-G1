@@ -133,8 +133,8 @@ public class Regional extends Concurrent {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      AddressArray blocksSnapshot = regionSpace.snapshotBlocks(false);
-      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false, false);
+      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
+      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
       RegionSpace.markRegionsAsRelocate(relocationSet);
       return;
     }

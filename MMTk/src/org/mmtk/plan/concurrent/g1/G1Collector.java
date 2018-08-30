@@ -169,7 +169,7 @@ public class G1Collector extends ConcurrentCollector {
     if (phaseId == G1.CLEANUP_BLOCKS) {
       RemSet.cleanupRemSetRefsToRelocationSet(G1.regionSpace, G1.relocationSet, false);
       rendezvous();
-      G1.regionSpace.cleanupBlocks(G1.relocationSet, false);
+      G1.regionSpace.cleanupRegions(G1.relocationSet, false);
       rendezvous();
       return;
     }

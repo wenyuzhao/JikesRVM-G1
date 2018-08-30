@@ -14,8 +14,6 @@ package org.mmtk.plan.regional;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
-import org.mmtk.plan.TraceWriteBuffer;
-import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.alloc.Allocator;
@@ -74,7 +72,7 @@ public class RegionalMutator extends StopTheWorldMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == Regional.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return ra.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);

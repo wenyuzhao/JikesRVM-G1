@@ -16,8 +16,6 @@ package org.mmtk.utility.alloc;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.RegionSpace;
-import org.mmtk.utility.Log;
-import org.mmtk.vm.Assert;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -124,7 +122,7 @@ public class RegionAllocator extends Allocator {
     /* we have been given a clean block */
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
-    limit = ptr.plus(Region.BYTES_IN_BLOCK);
+    limit = ptr.plus(Region.BYTES_IN_REGION);
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
     return alloc(bytes, align, offset);
   }

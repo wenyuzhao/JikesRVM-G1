@@ -76,7 +76,7 @@ public class RegionalMutator extends ConcurrentMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == Regional.ALLOC_RS) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return ra.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);

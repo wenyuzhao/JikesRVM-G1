@@ -87,15 +87,15 @@ public class G1Mutator extends ConcurrentMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == G1.ALLOC_EDEN) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return g1Eden.alloc(bytes, align, offset);
     } else if (allocator == G1.ALLOC_SURVIVOR) {
       VM.assertions.fail("");
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return g1Survivor.alloc(bytes, align, offset);
     } else if (allocator == G1.ALLOC_OLD) {
       VM.assertions.fail("");
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_BLOCK);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return g1Old.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
@@ -234,7 +234,7 @@ public class G1Mutator extends ConcurrentMutator {
     if (!ref.isNull() && !src.isNull()) {
       Word x = VM.objectModel.objectStartRef(src).toWord();
       Word y = VM.objectModel.objectStartRef(ref).toWord();
-      Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
+      Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
       if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
         Region.Card.updateCardMeta(src);
         Address card = Region.Card.of(src);
@@ -300,7 +300,7 @@ public class G1Mutator extends ConcurrentMutator {
 //        if (!element.isNull()) {
 //          Word x = VM.objectModel.objectStartRef(dst).toWord();
 //          Word y = VM.objectModel.objectStartRef(element).toWord();
-//          Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_BLOCK);
+//          Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
 //          if (!tmp.isZero() && Space.isInSpace(G1.G1, element)) {
 //            containsCrossRegionPointer = true;
 //          }

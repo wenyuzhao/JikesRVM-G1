@@ -13,7 +13,6 @@
 package org.mmtk.plan.regional;
 
 import org.mmtk.plan.*;
-import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.heap.VMRequest;
@@ -153,8 +152,8 @@ public class Regional extends StopTheWorld {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
-      AddressArray blocksSnapshot = regionSpace.snapshotBlocks(false);
-      relocationSet = RegionSpace.computeRelocationBlocks(blocksSnapshot, false, false);
+      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
+      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
       RegionSpace.markRegionsAsRelocate(relocationSet);
       return;
     }

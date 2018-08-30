@@ -2,7 +2,6 @@ package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
@@ -22,10 +21,10 @@ public class RemSet {
   static {
     if (Region.USE_CARDS) {
       Word heapSize = VM.HEAP_END.diff(VM.HEAP_START).toWord();
-      TOTAL_REGIONS = heapSize.rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+      TOTAL_REGIONS = heapSize.rshl(Region.LOG_BYTES_IN_REGION).toInt();
       rememberedSets = AddressArray.create(TOTAL_REGIONS);//new int[TOTAL_REGIONS][][];
       REMSET_PAGES = ceilDiv(TOTAL_REGIONS << Constants.LOG_BYTES_IN_ADDRESS, Constants.BYTES_IN_PAGE);
-      int cardsPerRegion = Region.BYTES_IN_BLOCK >>> Region.Card.LOG_BYTES_IN_CARD;
+      int cardsPerRegion = Region.BYTES_IN_REGION >>> Region.Card.LOG_BYTES_IN_CARD;
       int bytesInPRT = cardsPerRegion >>> Constants.LOG_BITS_IN_BYTE;
       INTS_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_INT);
       PAGES_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_PAGE);
@@ -112,9 +111,9 @@ public class RemSet {
   @Inline
   private static Address preparePRT(Address region, Address card, boolean create) {
     // Get region index
-    int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+    int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
     // Get card region index
-    int cardRegionIndex = Region.of(card).diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+    int cardRegionIndex = Region.of(card).diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
     // Get PerRegionTable list, this is a page size
     Address prtList = rememberedSets.get(regionIndex);//rememberedSets[regionIndex];
     if (prtList.isZero()) { // create remset
@@ -261,13 +260,13 @@ public class RemSet {
         if (totalRemSetSize == 0) continue;
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
         // Iterate all its PRTs
-        int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();
+        int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
         Address prtList = rememberedSets.get(regionIndex);
         if (prtList.isZero()) continue;
         for (int j = 0; j < TOTAL_REGIONS; j++) {
           Address prt = prtList.plus(j << Constants.LOG_BYTES_IN_ADDRESS).loadAddress();
           if (prt.isZero()) continue;
-          Address currentRegion = VM.HEAP_START.plus(j << Region.LOG_BYTES_IN_BLOCK);
+          Address currentRegion = VM.HEAP_START.plus(j << Region.LOG_BYTES_IN_REGION);
           // Iterate all entries in prt
           for (int k = 0; k < INTS_IN_PRT; k++) {
             if (prt.plus(k << Constants.LOG_BYTES_IN_INT).loadInt() == 0) continue;
@@ -295,7 +294,7 @@ public class RemSet {
 
   @Inline
   public static void removeRemsetForRegion(RegionSpace regionSpace, Address region) {
-    int cursor = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_BLOCK).toInt();//..plus(cursor << Region.LOG_BYTES_IN_BLOCK);
+    int cursor = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();//..plus(cursor << Region.LOG_BYTES_IN_REGION);
     Address prtList = rememberedSets.get(cursor);
     if (!prtList.isZero()) {
       Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
@@ -323,7 +322,7 @@ public class RemSet {
     for (int i = 0; i < regionsToVisit; i++) {
       int cursor = regionsToVisit * id + i;
       if (cursor >= TOTAL_REGIONS) break;
-      Address visitedRegion = VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_BLOCK);
+      Address visitedRegion = VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_REGION);
       // If this is a relocation region, clear its rem-sets
       if (Space.isInSpace(regionSpace.getDescriptor(), visitedRegion) && Region.of(visitedRegion).NE(EmbeddedMetaData.getMetaDataBase(visitedRegion)) && Region.relocationRequired(visitedRegion)) {
         Address prtList = rememberedSets.get(cursor);
@@ -348,7 +347,7 @@ public class RemSet {
       for (int j = 0; j < relocationSet.length(); j++) {
         Address cRegion = relocationSet.get(j);
         if (cRegion.isZero()) continue;
-        int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_BLOCK;
+        int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION;
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {
           Plan.metaDataSpace.release(prtEntry.loadAddress());

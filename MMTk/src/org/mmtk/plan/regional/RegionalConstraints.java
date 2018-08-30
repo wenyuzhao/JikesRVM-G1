@@ -13,7 +13,6 @@
 package org.mmtk.plan.regional;
 
 import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.plan.concurrent.ConcurrentConstraints;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
@@ -45,6 +44,6 @@ public class RegionalConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return Region.BYTES_IN_BLOCK;
+    return Region.BYTES_IN_REGION;
   }
 }
