@@ -578,6 +578,15 @@ class Barriers {
     if (pushResult) asm.emitPUSH_Reg(T0);
   }
 
+  static void compileACMPBarrier(Assembler asm) {
+    //  on entry java stack contains ...|target_ref|
+    //  SP -> target_ref
+    BaselineCompilerImpl.genParameterRegisterLoad(asm, 2);
+    asm.generateJTOCcall(Entrypoints.objectAddressComparisonBarrierMethod.getOffset());
+    asm.emitPUSH_Reg(T0);
+    asm.emitPUSH_Imm(1);
+  }
+
   static void compileGetfieldBarrier(Assembler asm, GPR reg, int locationMetadata) {
     //  on entry java stack contains ...|target_ref|
     //  SP -> target_ref

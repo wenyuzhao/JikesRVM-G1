@@ -2104,25 +2104,33 @@ public final class BaselineCompilerImpl extends BaselineCompiler {
 
   @Override
   protected void emit_if_acmpeq(int bTarget) {
-    asm.emitPOP_Reg(S0);
-    asm.emitPOP_Reg(T0);
-    if (VM.BuildFor32Addr) {
-      asm.emitCMP_Reg_Reg(T0, S0);
-    } else {
-      asm.emitCMP_Reg_Reg_Quad(T0, S0);
+    if (NEEDS_OBJECT_ADDRESS_COMPARISON_BARRIER) {
+      Barriers.compileACMPBarrier(asm);
     }
+      asm.emitPOP_Reg(S0);
+      asm.emitPOP_Reg(T0);
+      if (VM.BuildFor32Addr) {
+        asm.emitCMP_Reg_Reg(T0, S0);
+      } else {
+        asm.emitCMP_Reg_Reg_Quad(T0, S0);
+      }
+//    }
     genCondBranch(EQ, bTarget);
   }
 
   @Override
   protected void emit_if_acmpne(int bTarget) {
-    asm.emitPOP_Reg(S0);
-    asm.emitPOP_Reg(T0);
-    if (VM.BuildFor32Addr) {
-      asm.emitCMP_Reg_Reg(T0, S0);
-    } else {
-      asm.emitCMP_Reg_Reg_Quad(T0, S0);
+    if (NEEDS_OBJECT_ADDRESS_COMPARISON_BARRIER) {
+      Barriers.compileACMPBarrier(asm);
     }
+      asm.emitPOP_Reg(S0);
+      asm.emitPOP_Reg(T0);
+      if (VM.BuildFor32Addr) {
+        asm.emitCMP_Reg_Reg(T0, S0);
+      } else {
+        asm.emitCMP_Reg_Reg_Quad(T0, S0);
+      }
+//    }
     genCondBranch(NE, bTarget);
   }
 

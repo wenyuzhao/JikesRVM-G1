@@ -546,6 +546,7 @@ public class Region {
     }
   }
 
+  public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
   @Inline
   public static void linearScan(LinearScan scan, Address region) {
     Address end = getCursor(region);
@@ -553,7 +554,13 @@ public class Region {
     if (cursor.GE(end)) return;
     ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
     do {
-      Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+      Address currentObjectEnd;
+      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
+        currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
+      } else {
+        currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+      }
+//      Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
       scan.scan(ref);
       if (currentObjectEnd.GE(end)) {
         break;

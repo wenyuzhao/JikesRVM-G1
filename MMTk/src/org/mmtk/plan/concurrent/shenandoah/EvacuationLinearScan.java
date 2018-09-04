@@ -6,6 +6,7 @@ import org.mmtk.utility.alloc.LinearScan;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Word;
 
 
 @Uninterruptible
@@ -14,7 +15,10 @@ public final class EvacuationLinearScan extends LinearScan {
   @Override
   public final void scan(ObjectReference object) {
     if (Shenandoah.regionSpace.isLive(object)) {
-      ForwardingWord.forwardObject(object, Shenandoah.ALLOC_RS);
+      Word priorStatusWord = ForwardingWord.attemptToForward(object);
+      if (!ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+        ForwardingWord.forwardObject(object, Shenandoah.ALLOC_RS);
+      }
     }
   }
 }

@@ -48,13 +48,15 @@ public class ShenandoahCollector extends ConcurrentCollector {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator copy = new RegionAllocator(Shenandoah.regionSpace, Region.NORMAL);
+  protected final RegionAllocator copy = new RegionAllocator(Shenandoah.regionSpace, Region.SURVIVOR);
   protected final ShenandoahMarkTraceLocal markTrace = new ShenandoahMarkTraceLocal(global().markTrace);
+  protected final ShenandoahEvacuateTraceLocal evacuateTrace = new ShenandoahEvacuateTraceLocal(global().evacuateTrace);
   protected final ShenandoahForwardTraceLocal forwardTrace = new ShenandoahForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
-  private static final boolean TRACE_MARK = false;
-  private static final boolean TRACE_FORWARD = true;
-  private boolean currentTrace;// = TRACE_MARK;
+  private static final short TRACE_MARK = 0;
+  private static final short TRACE_EVACUATE = 1;
+  private static final short TRACE_FORWARD = 2;
+  private short currentTrace;// = TRACE_MARK;
 //  protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -71,19 +73,24 @@ public class ShenandoahCollector extends ConcurrentCollector {
    *
    * Collection-time allocation
    */
-
+  private static boolean concurrentEvacuationExecuted = false;
   private static final Atomic.Int atomicCounter = new Atomic.Int();
 
   @Inline
-  private void evacuateRegions() {
+  private void evacuateRegions(boolean concurrent) {
     atomicCounter.set(0);
+    Shenandoah.referenceUpdatingBarrierActive = true;
     rendezvous();
     int index;
     while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
       Address region = Shenandoah.relocationSet.get(index);
-      if (region.isZero()) continue;
-      Log.writeln("Evacuating ", region);
-      Region.linearScan(evacuationLinearScan, region);
+      if (!region.isZero()) {
+//        Log.writeln("Evacuating ", region);
+        Region.linearScan(evacuationLinearScan, region);
+      }
+      if (concurrent && group.isAborted()) {
+        break;
+      }
     }
   }
 
@@ -130,6 +137,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
     if (phaseId == Shenandoah.RELEASE) {
       markTrace.release();
       super.collectionPhase(phaseId, primary);
+      concurrentEvacuationExecuted = false;
       return;
     }
 
@@ -147,9 +155,33 @@ public class ShenandoahCollector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == Shenandoah.EVACUATE_PREPARE) {
+      currentTrace = TRACE_EVACUATE;
+      evacuateTrace.prepare();
+      copy.reset();
+      return;
+    }
+
     if (phaseId == Shenandoah.EVACUATE) {
-      evacuateRegions();
-      rendezvous();
+      if (!concurrentEvacuationExecuted) {
+        evacuateRegions(false);
+        rendezvous();
+      } else {
+        int index;
+        while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
+          Address region = Shenandoah.relocationSet.get(index);
+          if (!region.isZero()) {
+            Shenandoah.relocationSet.set(index, Address.zero());
+            Region.setRelocationState(region, false);
+          }
+        }
+      }
+      return;
+    }
+
+    if (phaseId == Shenandoah.EVACUATE_RELEASE) {
+      evacuateTrace.release();
+      copy.reset();
       return;
     }
 
@@ -230,6 +262,15 @@ public class ShenandoahCollector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == Shenandoah.CONCURRENT_EVACUATE) {
+      copy.reset();
+      concurrentEvacuationExecuted = true;
+      rendezvous();
+      evacuateRegions(true);
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+
     if (phaseId == Shenandoah.CONCURRENT_CLEANUP) {
       atomicCounter.set(0);
       rendezvous();
@@ -278,6 +319,14 @@ public class ShenandoahCollector extends ConcurrentCollector {
 
   @Override
   public TraceLocal getCurrentTrace() {
-    return currentTrace == TRACE_MARK ? markTrace : forwardTrace;
+    switch (currentTrace) {
+      case TRACE_MARK: return markTrace;
+      case TRACE_EVACUATE: return evacuateTrace;
+      case TRACE_FORWARD: return forwardTrace;
+      default: {
+        VM.assertions.fail("Unreachable");
+        return null;
+      }
+    }
   }
 }

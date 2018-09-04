@@ -1214,6 +1214,11 @@ public abstract class MutatorContext {
     return false;
   }
 
+  public boolean objectAddressCompare(ObjectReference lhs, ObjectReference rhs) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(false);
+    return false;
+  }
+
   /**
    * Flush mutator context, in response to a requestMutatorFlush.
    * Also called by the default implementation of deinitMutator.

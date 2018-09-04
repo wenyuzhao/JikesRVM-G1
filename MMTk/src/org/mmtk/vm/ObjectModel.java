@@ -34,6 +34,16 @@ public abstract class ObjectModel {
   public abstract ObjectReference copy(ObjectReference from, int allocator);
 
   /**
+   * Same as ObjectModel#copy but is triggered from a mutator.
+   * @see{ObjectModel#copy}
+   *
+   * @param from the address of the object to be copied
+   * @param allocator The allocator to use.
+   * @return the address of the new object
+   */
+  public abstract ObjectReference copyWithinMutatorContext(ObjectReference from, int allocator);
+
+  /**
    * Copy an object to be pointer to by the to address. This is required
    * for delayed-copy collectors such as compacting collectors. During the
    * collection, MMTk reserves a region in the heap for an object as per

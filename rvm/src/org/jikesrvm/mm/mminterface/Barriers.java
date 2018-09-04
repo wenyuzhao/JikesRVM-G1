@@ -1227,6 +1227,26 @@ public class Barriers {
   public static final boolean  NEEDS_OBJECT_ALOAD_BARRIER        = NEEDS_OBJECT_GC_READ_BARRIER;
   /** {@code true} if the garbage collector supports the bulk copy operation */
   public static final boolean OBJECT_BULK_COPY_SUPPORTED         = !(NEEDS_OBJECT_ASTORE_BARRIER || NEEDS_OBJECT_ALOAD_BARRIER) || Selected.Constraints.get().objectReferenceBulkCopySupported();
+  public static final boolean NEEDS_OBJECT_ADDRESS_COMPARISON_BARRIER = Selected.Constraints.get().needsObjectAddressComparisonBarrier();
+
+  /**
+   * Barrier for object shallow comparison (i.e. obj1 == obj2).
+   *
+   * @param lhs left hand side of the `==` operator
+   * @param rhs right hand side of the `==` operator
+   */
+  @Inline
+  @Entrypoint
+  public static boolean objectAddressCompare(Object lhs, Object rhs) {
+    if (NEEDS_OBJECT_ADDRESS_COMPARISON_BARRIER) {
+      ObjectReference lhsRef = ObjectReference.fromObject(lhs);
+      ObjectReference rhsRef = ObjectReference.fromObject(rhs);
+      return Selected.Mutator.get().objectAddressCompare(lhsRef, rhsRef);
+    } else if (VM.VerifyAssertions) {
+      VM._assert(VM.NOT_REACHED);
+    }
+    return false;
+  }
 
   /**
    * Barrier for writes of objects into fields of instances (i.e. putfield).

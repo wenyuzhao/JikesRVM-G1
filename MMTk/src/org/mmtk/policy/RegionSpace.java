@@ -335,6 +335,7 @@ public final class RegionSpace extends Space {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
         return newObject;
       } else {
+        VM.assertions.fail("Unreachable");
         long time = VM.statistics.nanoTime();
         ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
         if (evacuationTimer != null) {
@@ -355,6 +356,7 @@ public final class RegionSpace extends Space {
   public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
     ObjectReference newObject = ForwardingWord.getForwardedObject(object);
     object = newObject.isNull() ? object : newObject;
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (testAndMark(object)) {
       trace.processNode(object);
     }
@@ -714,7 +716,7 @@ public final class RegionSpace extends Space {
     public static final Word FORWARDING_MASK =  Word.fromIntZeroExtend(3); // ...11
     public static final int FORWARDING_BITS = 2;
     private static final Offset FORWARDING_POINTER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
-
+    private static final boolean DEBUG = true;
     static {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!FORWARDING_POINTER_OFFSET.isZero());
     }
@@ -736,6 +738,11 @@ public final class RegionSpace extends Space {
     }
 
     @Inline
+    public static void returnToPriorState(ObjectReference object, Word priorStatusWord) {
+      object.toAddress().store(priorStatusWord, FORWARDING_POINTER_OFFSET);
+    }
+
+    @Inline
     public static Word attemptToForward(ObjectReference object) {
       Word oldValue;
       do {
@@ -749,15 +756,48 @@ public final class RegionSpace extends Space {
     public static ObjectReference spinAndGetForwardedObject(ObjectReference object, Word statusWord) {
       while (statusWord.and(FORWARDING_MASK).EQ(BEING_FORWARDED))
         statusWord = getForwardingPointer(object);
-      if (statusWord.and(FORWARDING_MASK).EQ(FORWARDED)) {
-        return statusWord.and(FORWARDING_MASK.not()).toAddress().toObjectReference();
-      } else
-        return object;
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(statusWord.and(FORWARDING_MASK).EQ(FORWARDED));
+      //if (statusWord.and(FORWARDING_MASK).EQ(FORWARDED)) {
+      return statusWord.and(FORWARDING_MASK.not()).toAddress().toObjectReference();
+//      } else
+//        return object;
+    }
+
+    public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
+    @Inline
+    public static void zeroObject(ObjectReference object) {
+
+      Address objectEndAddress = VM.objectModel.getObjectEndAddress(object);
+      int size = VM.objectModel.getCurrentSize(object);
+
+      Address start1 = VM.objectModel.objectStartRef(object);
+      int headerSize = object.toAddress().diff(start1).toInt();
+      Extent extent1 = Extent.fromIntZeroExtend(headerSize + FORWARDING_POINTER_OFFSET.toInt());
+
+      Address start2 = object.toAddress().plus(FORWARDING_POINTER_OFFSET).plus(Constants.BYTES_IN_ADDRESS * 2);
+      Extent extent2 = Extent.fromIntZeroExtend(objectEndAddress.diff(start2).toInt());
+
+//      VM.memory.zero(false, start1, extent1);
+//      VM.memory.zero(false, start2, extent2);
+
+      object.toAddress().store(objectEndAddress, OBJECT_END_ADDRESS_OFFSET);
+
+      VM.assertions._assert(extent1.toInt() + extent2.toInt() + 8 == size);
+//      VM.memory.mprotect(start, size);
     }
 
     @Inline
     public static ObjectReference forwardObject(ObjectReference object, int allocator) {
       ObjectReference newObject = VM.objectModel.copy(object, allocator);
+      if (DEBUG) zeroObject(object);
+      setForwardingPointer(object, newObject.toAddress().toWord().or(FORWARDED));
+      return newObject;
+    }
+
+    @Inline
+    public static ObjectReference forwardObjectWithinMutatorContext(ObjectReference object, int allocator) {
+      ObjectReference newObject = VM.objectModel.copyWithinMutatorContext(object, allocator);
+      if (DEBUG) zeroObject(object);
       setForwardingPointer(object, newObject.toAddress().toWord().or(FORWARDED));
       return newObject;
     }

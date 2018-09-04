@@ -22,6 +22,11 @@ import org.vmmagic.pragma.*;
  * issues with ordering of static initialization.
  */
 @Uninterruptible public abstract class PlanConstraints {
+  /** @return {@code true} if this Plan requires object shallow comparison barriers. */
+  public boolean needsObjectAddressComparisonBarrier() {
+    return false;
+  }
+
   /** @return {@code true} if this Plan requires read barriers on java.lang.reference types. */
   public boolean needsJavaLangReferenceReadBarrier() {
     return false;

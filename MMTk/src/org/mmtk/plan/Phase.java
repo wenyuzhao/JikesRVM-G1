@@ -40,7 +40,7 @@ public abstract class Phase {
   */
 
   /** The maximum number of phases */
-  private static final int MAX_PHASES = 64;
+  private static final int MAX_PHASES = 128;
   /** The array of phase instances. Zero is unused. */
   private static final Phase[] phases = new Phase[MAX_PHASES];
   /** The id to be allocated for the next phase */

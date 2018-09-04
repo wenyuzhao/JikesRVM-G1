@@ -14,6 +14,7 @@ package org.jikesrvm.mm.mmtk;
 
 import static org.jikesrvm.objectmodel.JavaHeaderConstants.ARRAY_BASE_OFFSET;
 import static org.jikesrvm.objectmodel.JavaHeaderConstants.GC_HEADER_OFFSET;
+import static org.mmtk.utility.Constants.MIN_ALIGNMENT;
 
 import org.jikesrvm.classloader.Atom;
 import org.jikesrvm.classloader.RVMArray;
@@ -24,6 +25,7 @@ import org.jikesrvm.mm.mminterface.MemoryManager;
 import org.jikesrvm.objectmodel.TIB;
 import org.jikesrvm.runtime.Magic;
 import org.mmtk.plan.CollectorContext;
+import org.mmtk.plan.MutatorContext;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -44,6 +46,52 @@ import org.vmmagic.unboxed.Word;
   @Inline
   public boolean attemptInt(Object object, Offset offset, int oldValue, int newValue) {
     return Magic.attemptInt(object, offset, oldValue, newValue);
+  }
+
+  @Inline
+  private static Address allocateSpaceWithinMutatorContext(MutatorContext context, int bytes, int align, int offset, int allocator, ObjectReference from) {
+    bytes = org.jikesrvm.runtime.Memory.alignUp(bytes, MIN_ALIGNMENT);
+    return context.alloc(bytes, align, offset, allocator, 0);
+  }
+
+  @Override
+  @Inline
+  public ObjectReference copyWithinMutatorContext(ObjectReference from, int allocator) {
+    TIB tib = org.jikesrvm.objectmodel.ObjectModel.getTIB(from);
+    RVMType rvmType = Magic.objectAsType(tib.getType());
+
+    if (rvmType.isClassType()) {
+      RVMClass type = rvmType.asClass();
+      int bytes = org.jikesrvm.objectmodel.ObjectModel.bytesRequiredWhenCopied(from.toObject(), type);
+      int align = org.jikesrvm.objectmodel.ObjectModel.getAlignment(type, from.toObject());
+      int offset = org.jikesrvm.objectmodel.ObjectModel.getOffsetForAlignment(type, from);
+      MutatorContext context = VM.activePlan.mutator();
+//      allocator = context.checkAllocator(bytes, align, allocator);
+      Address region = allocateSpaceWithinMutatorContext(context, bytes, align, offset, allocator, from);
+      Object toObj = org.jikesrvm.objectmodel.ObjectModel.moveObject(region, from.toObject(), bytes, type);
+      ObjectReference to = ObjectReference.fromObject(toObj);
+      context.postAlloc(to, ObjectReference.fromObject(tib), bytes, allocator);
+      return to;
+    } else {
+      RVMArray type = rvmType.asArray();
+      int elements = Magic.getArrayLength(from.toObject());
+      int bytes = org.jikesrvm.objectmodel.ObjectModel.bytesRequiredWhenCopied(from.toObject(), type, elements);
+      int align = org.jikesrvm.objectmodel.ObjectModel.getAlignment(type, from.toObject());
+      int offset = org.jikesrvm.objectmodel.ObjectModel.getOffsetForAlignment(type, from);
+      MutatorContext context = VM.activePlan.mutator();
+//      allocator = context.checkAllocator(bytes, align, allocator);
+      Address region = allocateSpaceWithinMutatorContext(context, bytes, align, offset, allocator, from);
+      Object toObj = org.jikesrvm.objectmodel.ObjectModel.moveObject(region, from.toObject(), bytes, type);
+      ObjectReference to = ObjectReference.fromObject(toObj);
+      context.postAlloc(to, ObjectReference.fromObject(tib), bytes, allocator);
+      if (type == RVMType.CodeArrayType) {
+        // sync all moved code arrays to get icache and dcache in sync
+        // immediately.
+        int dataSize = bytes - org.jikesrvm.objectmodel.ObjectModel.computeHeaderSize(Magic.getObjectType(toObj));
+        org.jikesrvm.runtime.Memory.sync(to.toAddress(), dataSize);
+      }
+      return to;
+    }
   }
 
   @Override

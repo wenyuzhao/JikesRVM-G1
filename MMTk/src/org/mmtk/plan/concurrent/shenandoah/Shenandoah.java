@@ -24,6 +24,7 @@ import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -31,6 +32,7 @@ import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Word;
 
 /**
  * This class implements a simple region-based collector.
@@ -41,6 +43,7 @@ public class Shenandoah extends Concurrent {
   public static final RegionSpace regionSpace = new RegionSpace("region", VMRequest.discontiguous());
   public static final int RS = regionSpace.getDescriptor();
   public final Trace markTrace = new Trace(metaDataSpace);
+  public final Trace evacuateTrace = new Trace(metaDataSpace);
   public final Trace forwardTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
   //public static boolean concurrentMarkingInProgress = false;
@@ -63,31 +66,39 @@ public class Shenandoah extends Concurrent {
 
   /* Phases */
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
+  public static final short SET_BROOKS_BARRIER_ACTIVE = Phase.createSimple("set-brooks-barrier-active");
+  public static final short CLEAR_BROOKS_BARRIER_ACTIVE = Phase.createSimple("clear-brooks-barrier-active");
+  // Evacuation phases
+  public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
+  public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
   public static final short EVACUATE = Phase.createSimple("evacuate");
+  public static final short EVACUATE_ROOTS = Phase.createSimple("evacuate-roots");
+  public static final short preemptConcurrentEvacuate = Phase.createComplex("preempt-concurrent-evacuate", null,
+      Phase.scheduleCollector(EVACUATE));
+  public static final short CONCURRENT_EVACUATE = Phase.createConcurrent("concurrent-evacuate",
+      Phase.scheduleComplex(preemptConcurrentEvacuate));
+  public static final short concurrentEvacuate = Phase.createComplex("concurrent-evacuate", null,
+//      Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
+//      Phase.scheduleMutator   (SET_BARRIER_ACTIVE),
+//      Phase.scheduleCollector (FLUSH_COLLECTOR),
+      Phase.scheduleGlobal    (SET_BROOKS_BARRIER_ACTIVE),
+      Phase.scheduleConcurrent(CONCURRENT_EVACUATE),
+//      Phase.scheduleCollector(EVACUATE),
+      Phase.scheduleGlobal    (CLEAR_BROOKS_BARRIER_ACTIVE)
+//      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
+//      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE)
+  );
+  // Update references phases
+  public static final short SET_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("set-indirect-barrier-active");
+  public static final short CLEAR_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("clear-indirect-barrier-active");
   public static final short FORWARD_PREPARE = Phase.createSimple("forward-prepare");
   public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
   public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
-
-  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
-  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preeempt-concurrent-eager-cleanup", null,
-      Phase.scheduleCollector(EAGER_CLEANUP));
-  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
-      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
-
-  public static final short CLEANUP = Phase.createSimple("cleanup");
-  public static final short preemptConcurrentCleanup = Phase.createComplex("preeempt-concurrent-cleanup", null,
-      Phase.scheduleCollector(CLEANUP));
-  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
-      Phase.scheduleComplex(preemptConcurrentCleanup));
-
-  public static final short SET_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("set-indirect-barrier-active");
-  public static final short CLEAR_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("clear-indirect-barrier-active");
-  public static final short preemptConcurrentForwardClosure = Phase.createComplex("preeempt-concurrent-forward-trace", null,
+  public static final short preemptConcurrentForwardClosure = Phase.createComplex("preempt-concurrent-forward-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
       Phase.scheduleCollector(FORWARD_CLOSURE));
   public static final short CONCURRENT_FORWARD_CLOSURE = Phase.createConcurrent("concurrent-forward-closure",
       Phase.scheduleComplex(preemptConcurrentForwardClosure));
-
   public static final short concurrentForwardClosure = Phase.createComplex("concurrent-forward", null,
       Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
       Phase.scheduleGlobal    (SET_INDIRECT_BARRIER_ACTIVE),
@@ -97,43 +108,66 @@ public class Shenandoah extends Concurrent {
       Phase.scheduleGlobal    (CLEAR_INDIRECT_BARRIER_ACTIVE),
       Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
       Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));
+  // Eager cleanup phases
+  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
+  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preempt-concurrent-eager-cleanup", null,
+      Phase.scheduleCollector(EAGER_CLEANUP));
+  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
+      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
+  // Cleanup phases
+  public static final short CLEANUP = Phase.createSimple("cleanup");
+  public static final short preemptConcurrentCleanup = Phase.createComplex("preempt-concurrent-cleanup", null,
+      Phase.scheduleCollector(CLEANUP));
+  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
+      Phase.scheduleComplex(preemptConcurrentCleanup));
 
   public short _collection = Phase.createComplex("_collection", null,
-    Phase.scheduleComplex  (initPhase),
-    // Mark
-    Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (completeClosurePhase),
-    // Select relocation sets
-    Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
-    Phase.scheduleCollector(EAGER_CLEANUP),
-    // Evacuate
-    Phase.scheduleCollector(EVACUATE),
-    // Update refs
-    Phase.scheduleGlobal   (FORWARD_PREPARE),
-    Phase.scheduleCollector(FORWARD_PREPARE),
-    Phase.scheduleMutator  (FORWARD_PREPARE),
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleComplex  (forwardPhase),
-    Phase.scheduleCollector(FORWARD_CLOSURE),
-    Phase.scheduleMutator  (FORWARD_RELEASE),
-    Phase.scheduleCollector(FORWARD_RELEASE),
-    Phase.scheduleGlobal   (FORWARD_RELEASE),
-    // Cleanup
-    Phase.scheduleCollector(CLEANUP),
-    Phase.scheduleComplex  (finishPhase)
+      Phase.scheduleComplex  (initPhase),
+      // Mark
+      Phase.scheduleComplex  (rootClosurePhase),
+      Phase.scheduleComplex  (refTypeClosurePhase),
+      Phase.scheduleComplex  (completeClosurePhase),
+      // Select relocation sets
+      Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+      Phase.scheduleCollector(EAGER_CLEANUP),
+      // Evacuate
+      Phase.scheduleGlobal   (EVACUATE_PREPARE),
+      Phase.scheduleCollector(EVACUATE_PREPARE),
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleCollector(FLUSH_COLLECTOR),
+      Phase.scheduleCollector(EVACUATE),
+      Phase.scheduleCollector(EVACUATE_RELEASE),
+      Phase.scheduleGlobal   (EVACUATE_RELEASE),
+      // Update refs
+      Phase.scheduleGlobal   (FORWARD_PREPARE),
+      Phase.scheduleCollector(FORWARD_PREPARE),
+      Phase.scheduleMutator  (FORWARD_PREPARE),
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleCollector(SOFT_REFS),
+      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector(FINALIZABLE),
+      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleComplex  (forwardPhase),
+      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleMutator  (FORWARD_RELEASE),
+      Phase.scheduleCollector(FORWARD_RELEASE),
+      Phase.scheduleGlobal   (FORWARD_RELEASE),
+      // Cleanup
+      Phase.scheduleCollector(CLEANUP),
+      Phase.scheduleComplex  (finishPhase)
   );
 
   /**
@@ -150,6 +184,7 @@ public class Shenandoah extends Concurrent {
     /* Set up the concurrent marking phase */
     replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
     replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
+    replacePhase(Phase.scheduleCollector(EVACUATE), Phase.scheduleComplex(concurrentEvacuate));
     replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
   }
 
@@ -187,21 +222,13 @@ public class Shenandoah extends Concurrent {
       return;
     }
 
-    if (phaseId == EAGER_CLEANUP) {
-      int c = 0;
-      for (int i = 0; i < relocationSet.length(); i++) {
-        Address region = relocationSet.get(i);
-        if (!region.isZero() && Region.usedSize(region) == 0) {
-          relocationSet.set(i, Address.zero());
-          regionSpace.release(region);
-          c++;
-        }
-      }
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.write("Eager cleanup ", c);
-        Log.write("/", relocationSet.length());
-        Log.writeln(" regions ");
-      }
+    if (phaseId == EVACUATE_PREPARE) {
+      evacuateTrace.prepare();
+      return;
+    }
+
+    if (phaseId == EVACUATE_RELEASE) {
+      evacuateTrace.release();
       return;
     }
 
@@ -216,16 +243,27 @@ public class Shenandoah extends Concurrent {
       forwardTrace.release();
       regionSpace.release();
       super.collectionPhase(RELEASE);
+      referenceUpdatingBarrierActive = false;
+      return;
+    }
+
+    if (phaseId == SET_BROOKS_BARRIER_ACTIVE) {
+      brooksBarrierActive = true;
+      return;
+    }
+
+    if (phaseId == CLEAR_BROOKS_BARRIER_ACTIVE) {
+      brooksBarrierActive = false;
       return;
     }
 
     if (phaseId == SET_INDIRECT_BARRIER_ACTIVE) {
-      referenceUpdatingBarrierActive = true;
+//      referenceUpdatingBarrierActive = true;
       return;
     }
 
     if (phaseId == CLEAR_INDIRECT_BARRIER_ACTIVE) {
-      referenceUpdatingBarrierActive = false;
+//      referenceUpdatingBarrierActive = false;
       return;
     }
 
@@ -300,27 +338,66 @@ public class Shenandoah extends Concurrent {
     super.registerSpecializedMethods();
   }
 
-//  @Override
-//  @Inline
-//  public void storeObjectReference(Address slot, ObjectReference value) {
-//    slot.store(getForwardingPointer(value));
-//  }
-//
-//  @Override
-//  @Inline
-//  public ObjectReference loadObjectReference(Address slot) {
-//    return getForwardingPointer(slot.loadObjectReference());
-//  }
+  @Override
+  @Inline
+  public void storeObjectReference(Address slot, ObjectReference value) {
+    slot.store(getForwardingPointer(value, false));
+  }
+
+  @Override
+  @Inline
+  public ObjectReference loadObjectReference(Address slot) {
+    return getForwardingPointer(slot.loadObjectReference(), false);
+  }
 
   static boolean referenceUpdatingBarrierActive = false;
+  static boolean brooksBarrierActive = false;
+  static Lock barrierLock = VM.newLock("barrierLock");
 
   @Inline
-  static public ObjectReference getForwardingPointer(ObjectReference object) {
-    if (referenceUpdatingBarrierActive) {
-      if (object.isNull()) return object;
+  static public ObjectReference getForwardingPointer(ObjectReference object, boolean access) {
+    if (brooksBarrierActive) {
+      if (object.isNull() || object.toAddress().LT(VM.AVAILABLE_START)) return object;
+//      VM.assertions._assert(VM.debugging.validRef(object));
+      if (true) {
+        if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
+          ObjectReference newObject;
+          Word priorStatusWord = RegionSpace.ForwardingWord.attemptToForward(object);
+          if (RegionSpace.ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+            newObject = RegionSpace.ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+            VM.assertions._assert(VM.debugging.validRef(newObject));
+            VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
+          } else {
+            newObject = RegionSpace.ForwardingWord.forwardObjectWithinMutatorContext(object, ALLOC_RS);
+            VM.assertions._assert(VM.debugging.validRef(newObject));
+            VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
+          }
+          return newObject;
+        } else {
+          VM.assertions._assert(VM.debugging.validRef(object));
+          VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(object));
+          return object;
+//        ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
+//        return forwarded.isNull() ? object : forwarded;
+        }
+      } else {
+        return object;
+//        ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
+//        return forwarded.isNull() ? object : forwarded;
+      }
+    } else if (referenceUpdatingBarrierActive) {
+      if (object.isNull() || object.toAddress().LT(VM.AVAILABLE_START)) return object;
+//      if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
+//        VM.assertions._assert(RegionSpace.ForwardingWord.isForwarded(object));
+//      }
+//      if (!access) return object;
       ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
-      return forwarded.isNull() ? object : forwarded;
+      object = forwarded.isNull() ? object : forwarded;
+      VM.assertions._assert(VM.debugging.validRef(object));
+      return object;
+    } else {
+//      VM.assertions._assert(VM.debugging.validRef(object));
+      return object;
     }
-    return object;
   }
 }

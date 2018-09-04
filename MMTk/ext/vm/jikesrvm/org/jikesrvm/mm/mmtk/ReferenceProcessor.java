@@ -487,7 +487,7 @@ public final class ReferenceProcessor extends org.mmtk.vm.ReferenceProcessor {
 
     /* The reference object is live */
     ObjectReference newReference = trace.getForwardedReference(reference);
-    ObjectReference oldReferent = getReferent(reference);
+    ObjectReference oldReferent = getReferent(newReference);
 
     if (TRACE_DETAIL) {
       VM.sysWrite(" ~> ",oldReferent);
