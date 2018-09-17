@@ -54,27 +54,6 @@ public class ShenandoahForwardTraceLocal extends TraceLocal {
     VM.assertions.fail("Unreachable");
   }
 
-//  @Inline
-//  @Override
-//  public ObjectReference traceObject(ObjectReference object, boolean root) {
-//    if (root) {
-//      if (object.isNull()) return object;
-//      if (Space.isInSpace(Shenandoah.RS, object)) {
-////        ObjectReference newObject = Shenandoah.regionSpace.traceEvacuateObject(this, object, Shenandoah.ALLOC_RS, null);
-//        ObjectReference newObject = Shenandoah.regionSpace.traceForward2Object(this, object, Shenandoah.ALLOC_RS);
-//        if (VM.VERIFY_ASSERTIONS) {
-//          VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
-//          VM.assertions._assert(VM.debugging.validRef(newObject));
-//        }
-//        return newObject;
-//      } else {
-//        return super.traceObject(object, root);
-//      }
-//    } else {
-//      return traceObject(object);
-//    }
-//  }
-
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
@@ -84,10 +63,10 @@ public class ShenandoahForwardTraceLocal extends TraceLocal {
 
     if (Space.isInSpace(Shenandoah.RS, object)) {
       newObject = Shenandoah.regionSpace.traceForwardObject(this, object);
-      if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
-        VM.assertions._assert(VM.debugging.validRef(newObject));
-      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
+//        VM.assertions._assert(VM.debugging.validRef(newObject));
+//      }
     } else {
       newObject = super.traceObject(object);
     }

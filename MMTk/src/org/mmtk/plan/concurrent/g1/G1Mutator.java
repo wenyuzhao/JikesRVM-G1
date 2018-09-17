@@ -237,8 +237,8 @@ public class G1Mutator extends ConcurrentMutator {
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
       if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
         Region.Card.updateCardMeta(src);
-        Address card = Region.Card.of(src);
-        RemSet.addCard(Region.of(ref), card);
+//        Address card = Region.Card.of(src);
+//        RemSet.addCard(Region.of(ref), card);
         markAndEnqueueCard(Region.Card.of(src));
       }
     }

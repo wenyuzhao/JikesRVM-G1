@@ -94,6 +94,7 @@ public class ShenandoahMutator extends ShenandoahMutatorBarriers {
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
+    Shenandoah.initializeIndirectionPointer(object);
   }
 
   @Override
@@ -136,6 +137,18 @@ public class ShenandoahMutator extends ShenandoahMutatorBarriers {
     }
 
     if (phaseId == Shenandoah.FORWARD_RELEASE) {
+      ra.reset();
+      super.collectionPhase(Shenandoah.RELEASE, primary);
+      return;
+    }
+
+    if (phaseId == Shenandoah.VALIDATE_PREPARE) {
+      ra.reset();
+      super.collectionPhase(Shenandoah.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Shenandoah.VALIDATE_RELEASE) {
       ra.reset();
       super.collectionPhase(Shenandoah.RELEASE, primary);
       return;

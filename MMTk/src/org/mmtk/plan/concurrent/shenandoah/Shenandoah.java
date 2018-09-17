@@ -20,6 +20,7 @@ import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
@@ -29,10 +30,8 @@ import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.AddressArray;
-import org.vmmagic.unboxed.ObjectReference;
-import org.vmmagic.unboxed.Word;
+import org.vmmagic.unboxed.*;
+import org.vmutil.options.Option;
 
 /**
  * This class implements a simple region-based collector.
@@ -45,6 +44,7 @@ public class Shenandoah extends Concurrent {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace evacuateTrace = new Trace(metaDataSpace);
   public final Trace forwardTrace = new Trace(metaDataSpace);
+  public final Trace validateTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
   //public static boolean concurrentMarkingInProgress = false;
 
@@ -65,28 +65,27 @@ public class Shenandoah extends Concurrent {
   public static final int SCAN_FORWARD = 1;
 
   /* Phases */
-  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
   public static final short SET_BROOKS_BARRIER_ACTIVE = Phase.createSimple("set-brooks-barrier-active");
   public static final short CLEAR_BROOKS_BARRIER_ACTIVE = Phase.createSimple("clear-brooks-barrier-active");
+  // Relocation set selection phases
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
+  public static final short preemptConcurrentRelocationSetSelection = Phase.createComplex("preempt-relocation-set-selection", null,
+      Phase.scheduleCollector(RELOCATION_SET_SELECTION));
+  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection",
+      Phase.scheduleComplex(preemptConcurrentRelocationSetSelection));
   // Evacuation phases
   public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
   public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
   public static final short EVACUATE = Phase.createSimple("evacuate");
-  public static final short EVACUATE_ROOTS = Phase.createSimple("evacuate-roots");
+  public static final short HEAP_VALIDATION = Phase.createSimple("HEAP_VALIDATION");
   public static final short preemptConcurrentEvacuate = Phase.createComplex("preempt-concurrent-evacuate", null,
       Phase.scheduleCollector(EVACUATE));
   public static final short CONCURRENT_EVACUATE = Phase.createConcurrent("concurrent-evacuate",
       Phase.scheduleComplex(preemptConcurrentEvacuate));
   public static final short concurrentEvacuate = Phase.createComplex("concurrent-evacuate", null,
-//      Phase.scheduleGlobal    (SET_BARRIER_ACTIVE),
-//      Phase.scheduleMutator   (SET_BARRIER_ACTIVE),
-//      Phase.scheduleCollector (FLUSH_COLLECTOR),
       Phase.scheduleGlobal    (SET_BROOKS_BARRIER_ACTIVE),
       Phase.scheduleConcurrent(CONCURRENT_EVACUATE),
-//      Phase.scheduleCollector(EVACUATE),
       Phase.scheduleGlobal    (CLEAR_BROOKS_BARRIER_ACTIVE)
-//      Phase.scheduleGlobal    (CLEAR_BARRIER_ACTIVE),
-//      Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE)
   );
   // Update references phases
   public static final short SET_INDIRECT_BARRIER_ACTIVE = Phase.createSimple("set-indirect-barrier-active");
@@ -121,6 +120,35 @@ public class Shenandoah extends Concurrent {
   public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
       Phase.scheduleComplex(preemptConcurrentCleanup));
 
+  public static final short VALIDATE_PREPARE = Phase.createSimple("validate-prepare");
+  public static final short VALIDATE_CLOSURE = Phase.createSimple("validate-closure");
+  public static final short VALIDATE_RELEASE = Phase.createSimple("validate-release");
+
+
+  public short validationPhase = Phase.createComplex("validation-phase", null,
+      Phase.scheduleGlobal   (VALIDATE_PREPARE),
+      Phase.scheduleCollector(VALIDATE_PREPARE),
+      Phase.scheduleMutator  (VALIDATE_PREPARE),
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleCollector(VALIDATE_CLOSURE),
+      Phase.scheduleCollector(SOFT_REFS),
+      Phase.scheduleCollector(VALIDATE_CLOSURE),
+      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector(FINALIZABLE),
+      Phase.scheduleCollector(VALIDATE_CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleComplex  (forwardPhase),
+      Phase.scheduleCollector(VALIDATE_CLOSURE),
+      Phase.scheduleMutator  (VALIDATE_RELEASE),
+      Phase.scheduleCollector(VALIDATE_RELEASE),
+      Phase.scheduleGlobal   (VALIDATE_RELEASE)
+  );
+
   public short _collection = Phase.createComplex("_collection", null,
       Phase.scheduleComplex  (initPhase),
       // Mark
@@ -128,7 +156,7 @@ public class Shenandoah extends Concurrent {
       Phase.scheduleComplex  (refTypeClosurePhase),
       Phase.scheduleComplex  (completeClosurePhase),
       // Select relocation sets
-      Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+      Phase.scheduleCollector(RELOCATION_SET_SELECTION),
       Phase.scheduleCollector(EAGER_CLEANUP),
       // Evacuate
       Phase.scheduleGlobal   (EVACUATE_PREPARE),
@@ -162,9 +190,18 @@ public class Shenandoah extends Concurrent {
       Phase.scheduleCollector(PHANTOM_REFS),
       Phase.scheduleComplex  (forwardPhase),
       Phase.scheduleCollector(FORWARD_CLOSURE),
+//      Phase.scheduleMutator  (PREPARE_STACKS),
+//      Phase.scheduleGlobal   (PREPARE_STACKS),
+//      Phase.scheduleCollector(STACK_ROOTS),
+//      Phase.scheduleGlobal   (STACK_ROOTS),
+//      Phase.scheduleCollector(ROOTS),
+//      Phase.scheduleGlobal   (ROOTS),
+//      Phase.scheduleCollector(FLUSH_COLLECTOR),
       Phase.scheduleMutator  (FORWARD_RELEASE),
       Phase.scheduleCollector(FORWARD_RELEASE),
       Phase.scheduleGlobal   (FORWARD_RELEASE),
+
+//      Phase.scheduleComplex  (validationPhase),
       // Cleanup
       Phase.scheduleCollector(CLEANUP),
       Phase.scheduleComplex  (finishPhase)
@@ -182,6 +219,7 @@ public class Shenandoah extends Concurrent {
   public void processOptions() {
     super.processOptions();
     /* Set up the concurrent marking phase */
+    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
     replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
     replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
     replacePhase(Phase.scheduleCollector(EVACUATE), Phase.scheduleComplex(concurrentEvacuate));
@@ -211,16 +249,16 @@ public class Shenandoah extends Concurrent {
       return;
     }
 
-    if (phaseId == RELOCATION_SET_SELECTION) {
-      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
-      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
-      RegionSpace.markRegionsAsRelocate(relocationSet);
-
-      if (VM.VERIFY_ASSERTIONS) {
-        Log.writeln("Relocation set size ", relocationSet.length());
-      }
-      return;
-    }
+//    if (phaseId == RELOCATION_SET_SELECTION) {
+//      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
+//      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+//      RegionSpace.markRegionsAsRelocate(relocationSet);
+//
+//      if (VM.VERIFY_ASSERTIONS) {
+//        Log.writeln("Relocation set size ", relocationSet.length());
+//      }
+//      return;
+//    }
 
     if (phaseId == EVACUATE_PREPARE) {
       evacuateTrace.prepare();
@@ -243,7 +281,6 @@ public class Shenandoah extends Concurrent {
       forwardTrace.release();
       regionSpace.release();
       super.collectionPhase(RELEASE);
-      referenceUpdatingBarrierActive = false;
       return;
     }
 
@@ -258,12 +295,26 @@ public class Shenandoah extends Concurrent {
     }
 
     if (phaseId == SET_INDIRECT_BARRIER_ACTIVE) {
-//      referenceUpdatingBarrierActive = true;
+      referenceUpdatingBarrierActive = true;
       return;
     }
 
     if (phaseId == CLEAR_INDIRECT_BARRIER_ACTIVE) {
-//      referenceUpdatingBarrierActive = false;
+      referenceUpdatingBarrierActive = false;
+      return;
+    }
+
+    if (phaseId == VALIDATE_PREPARE) {
+      super.collectionPhase(PREPARE);
+      validateTrace.prepare();
+      regionSpace.prepare();
+      return;
+    }
+
+    if (phaseId == VALIDATE_RELEASE) {
+      validateTrace.release();
+      regionSpace.release();
+      super.collectionPhase(RELEASE);
       return;
     }
 
@@ -275,11 +326,14 @@ public class Shenandoah extends Concurrent {
    * Accounting
    */
 
+  final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
+  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
+  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
+
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int usedPages = getPagesUsed();// - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages();// - metaDataSpace.reservedPages();
-    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
+    int totalPages = getTotalPages();
+    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);
@@ -287,13 +341,13 @@ public class Shenandoah extends Concurrent {
 
   @Override
   protected boolean concurrentCollectionRequired() {
-    int usedPages = getPagesUsed();
     int totalPages = getTotalPages();
-    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    int availPages = getPagesAvail() - BOOT_PAGES;
+    return !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
   }
 
-  final float RESERVE_PERCENT = 5 / 100;//Options.g1ReservePercent.getValue() / 100;
-  final float INIT_HEAP_OCCUPANCY_PERCENT = 20f;//Options.g1InitiatingHeapOccupancyPercent.getValue();
+//  final float RESERVE_PERCENT = 5 / 100;//Options.g1ReservePercent.getValue() / 100;
+//  final float INIT_HEAP_OCCUPANCY_PERCENT = 20f;//Options.g1InitiatingHeapOccupancyPercent.getValue();
 
   /**
    * Return the number of pages reserved for copying.
@@ -341,63 +395,44 @@ public class Shenandoah extends Concurrent {
   @Override
   @Inline
   public void storeObjectReference(Address slot, ObjectReference value) {
-    slot.store(getForwardingPointer(value, false));
+    slot.store(value);
   }
 
   @Override
   @Inline
   public ObjectReference loadObjectReference(Address slot) {
-    return getForwardingPointer(slot.loadObjectReference(), false);
+    return slot.loadObjectReference();
   }
 
   static boolean referenceUpdatingBarrierActive = false;
   static boolean brooksBarrierActive = false;
-  static Lock barrierLock = VM.newLock("barrierLock");
 
   @Inline
-  static public ObjectReference getForwardingPointer(ObjectReference object, boolean access) {
+  static public ObjectReference getForwardingPointer(ObjectReference object) {
     if (brooksBarrierActive) {
-      if (object.isNull() || object.toAddress().LT(VM.AVAILABLE_START)) return object;
-//      VM.assertions._assert(VM.debugging.validRef(object));
-      if (true) {
-        if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
-          ObjectReference newObject;
-          Word priorStatusWord = RegionSpace.ForwardingWord.attemptToForward(object);
-          if (RegionSpace.ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
-            newObject = RegionSpace.ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-            VM.assertions._assert(VM.debugging.validRef(newObject));
-            VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
-          } else {
-            newObject = RegionSpace.ForwardingWord.forwardObjectWithinMutatorContext(object, ALLOC_RS);
-            VM.assertions._assert(VM.debugging.validRef(newObject));
-            VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(newObject));
-          }
-          return newObject;
+      if (object.toAddress().LT(VM.AVAILABLE_START)) return object;
+
+      if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
+        Word priorStatusWord = RegionSpace.ForwardingWord.attemptToForward(object);
+        if (RegionSpace.ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+          return RegionSpace.ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
         } else {
-          VM.assertions._assert(VM.debugging.validRef(object));
-          VM.assertions._assert(!RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(object));
-          return object;
-//        ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
-//        return forwarded.isNull() ? object : forwarded;
+          return RegionSpace.ForwardingWord.forwardObjectWithinMutatorContext(object, ALLOC_RS);
         }
       } else {
         return object;
-//        ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
-//        return forwarded.isNull() ? object : forwarded;
       }
     } else if (referenceUpdatingBarrierActive) {
-      if (object.isNull() || object.toAddress().LT(VM.AVAILABLE_START)) return object;
-//      if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
-//        VM.assertions._assert(RegionSpace.ForwardingWord.isForwarded(object));
-//      }
-//      if (!access) return object;
-      ObjectReference forwarded = RegionSpace.ForwardingWord.getForwardedObject(object);
-      object = forwarded.isNull() ? object : forwarded;
-      VM.assertions._assert(VM.debugging.validRef(object));
-      return object;
+      return object.toAddress().LT(VM.AVAILABLE_START) ? object : RegionSpace.ForwardingWord.getForwardedObject(object);
     } else {
-//      VM.assertions._assert(VM.debugging.validRef(object));
       return object;
     }
+  }
+
+  final static Offset GC_HEADER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
+
+  @Inline
+  final public static void initializeIndirectionPointer(ObjectReference object) {
+    object.toAddress().store(object.toAddress().toWord(), GC_HEADER_OFFSET);
   }
 }

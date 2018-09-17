@@ -15,6 +15,7 @@ package org.mmtk.plan.concurrent.shenandoah;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
@@ -24,6 +25,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -52,10 +54,12 @@ public class ShenandoahCollector extends ConcurrentCollector {
   protected final ShenandoahMarkTraceLocal markTrace = new ShenandoahMarkTraceLocal(global().markTrace);
   protected final ShenandoahEvacuateTraceLocal evacuateTrace = new ShenandoahEvacuateTraceLocal(global().evacuateTrace);
   protected final ShenandoahForwardTraceLocal forwardTrace = new ShenandoahForwardTraceLocal(global().forwardTrace);
+  protected final ShenandoahValidateTraceLocal validateTrace = new ShenandoahValidateTraceLocal(global().validateTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   private static final short TRACE_MARK = 0;
   private static final short TRACE_EVACUATE = 1;
   private static final short TRACE_FORWARD = 2;
+  private static final short TRACE_VALIDATE = 3;
   private short currentTrace;// = TRACE_MARK;
 //  protected TraceLocal currentTrace;
 
@@ -79,7 +83,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Inline
   private void evacuateRegions(boolean concurrent) {
     atomicCounter.set(0);
-    Shenandoah.referenceUpdatingBarrierActive = true;
+//    Shenandoah.referenceUpdatingBarrierActive = true;
     rendezvous();
     int index;
     while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
@@ -108,6 +112,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Shenandoah.regionSpace.initializeHeader(object);
+    Shenandoah.initializeIndirectionPointer(object);
   }
 
   /****************************************************************************
@@ -138,6 +143,16 @@ public class ShenandoahCollector extends ConcurrentCollector {
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       concurrentEvacuationExecuted = false;
+      return;
+    }
+
+    if (phaseId == Shenandoah.RELOCATION_SET_SELECTION) {
+      if (primary) {
+        AddressArray blocksSnapshot = Shenandoah.regionSpace.snapshotRegions(false);
+        Shenandoah.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+        RegionSpace.markRegionsAsRelocate(Shenandoah.relocationSet);
+      }
+      rendezvous();
       return;
     }
 
@@ -205,6 +220,27 @@ public class ShenandoahCollector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == Shenandoah.VALIDATE_PREPARE) {
+      currentTrace = TRACE_VALIDATE;
+      validateTrace.prepare();
+      copy.reset();
+      super.collectionPhase(Shenandoah.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Shenandoah.VALIDATE_CLOSURE) {
+      validateTrace.completeTrace();
+      return;
+    }
+
+    if (phaseId == Shenandoah.VALIDATE_RELEASE) {
+      validateTrace.release();
+      copy.reset();
+      super.collectionPhase(Shenandoah.RELEASE, primary);
+      return;
+    }
+
+
     if (phaseId == Shenandoah.CLEANUP) {
       atomicCounter.set(0);
       rendezvous();
@@ -241,6 +277,16 @@ public class ShenandoahCollector extends ConcurrentCollector {
     if (phaseId == Shenandoah.CONCURRENT_FORWARD_CLOSURE) {
       currentTrace = TRACE_FORWARD;
       super.concurrentCollectionPhase(Shenandoah.CONCURRENT_CLOSURE);
+      return;
+    }
+
+    if (phaseId == Shenandoah.CONCURRENT_RELOCATION_SET_SELECTION) {
+      if (rendezvous() == 0) {
+        AddressArray blocksSnapshot = Shenandoah.regionSpace.snapshotRegions(false);
+        Shenandoah.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+        RegionSpace.markRegionsAsRelocate(Shenandoah.relocationSet);
+      }
+      notifyConcurrentPhaseEnd();
       return;
     }
 
@@ -295,12 +341,12 @@ public class ShenandoahCollector extends ConcurrentCollector {
       continueCollecting = false;
       if (!group.isAborted()) {
         VM.collection.requestMutatorFlush();
-        if (concurrentTraceComplete()) {
+//        if (concurrentTraceComplete()) {
           continueCollecting = Phase.notifyConcurrentPhaseComplete();
-        } else {
-          continueCollecting = true;
-          Phase.notifyConcurrentPhaseIncomplete();
-        }
+//        } else {
+//          continueCollecting = true;
+//          Phase.notifyConcurrentPhaseIncomplete();
+//        }
       }
     }
     rendezvous();
@@ -323,6 +369,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
       case TRACE_MARK: return markTrace;
       case TRACE_EVACUATE: return evacuateTrace;
       case TRACE_FORWARD: return forwardTrace;
+      case TRACE_VALIDATE: return validateTrace;
       default: {
         VM.assertions.fail("Unreachable");
         return null;

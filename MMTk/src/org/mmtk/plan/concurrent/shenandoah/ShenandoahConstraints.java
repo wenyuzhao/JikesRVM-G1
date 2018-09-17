@@ -50,7 +50,7 @@ public class ShenandoahConstraints extends ConcurrentConstraints {
 
 
   public boolean needsObjectAddressComparisonBarrier() {
-    return true;
+    return false;
   }
 
   public boolean needsJavaLangReferenceReadBarrier() {

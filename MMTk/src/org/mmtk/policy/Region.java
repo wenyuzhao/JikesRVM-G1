@@ -555,11 +555,11 @@ public class Region {
     ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
     do {
       Address currentObjectEnd;
-      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
-        currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
-      } else {
+//      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
+//        currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
+//      } else {
         currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
-      }
+//      }
 //      Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
       scan.scan(ref);
       if (currentObjectEnd.GE(end)) {

@@ -19,9 +19,11 @@ import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
@@ -161,11 +163,14 @@ public class Regional extends Concurrent {
    * Accounting
    */
 
+  final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
+  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
+  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
+
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
+    int totalPages = getTotalPages();
+    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);
@@ -173,13 +178,30 @@ public class Regional extends Concurrent {
 
   @Override
   protected boolean concurrentCollectionRequired() {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    int totalPages = getTotalPages();
+    int availPages = getPagesAvail() - BOOT_PAGES;
+    return !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
   }
 
-  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
-  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
+//  @Override
+//  protected boolean collectionRequired(boolean spaceFull, Space space) {
+//    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+//    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+//    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
+//      return true;
+//    }
+//    return super.collectionRequired(spaceFull, space);
+//  }
+//
+//  @Override
+//  protected boolean concurrentCollectionRequired() {
+//    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
+//    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+//    return !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+//  }
+//
+//  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
+//  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
 
   /**
    * Return the number of pages reserved for copying.

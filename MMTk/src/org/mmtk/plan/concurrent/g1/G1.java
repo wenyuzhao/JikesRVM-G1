@@ -15,6 +15,7 @@ package org.mmtk.plan.concurrent.g1;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.*;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
@@ -360,24 +361,24 @@ public class G1 extends Concurrent {
    */
 
   final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
+  final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
+  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
+  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
+  float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
 
   @Override
+  @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     // Young GC
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(TOTAL_LOGICAL_REGIONS > 0);
-
-
     if (GENERATIONAL && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
       Log.writeln("Nursery GC ");
       collection = nurseryCollection;
       return true;
     }
-
     // Full GC
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
+    int totalPages = getTotalPages();
     boolean fullGCRequired = false;
-    if ((totalPages - usedPages) < (totalPages * RESERVE_PERCENT)) {
+    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
       fullGCRequired = true;
     }
     fullGCRequired = fullGCRequired || super.collectionRequired(spaceFull, space);
@@ -386,10 +387,11 @@ public class G1 extends Concurrent {
   }
 
   @Override
+  @Inline
   protected boolean concurrentCollectionRequired() {
-    int usedPages = getPagesUsed() - metaDataSpace.reservedPages();
-    int totalPages = getTotalPages() - metaDataSpace.reservedPages();
-    boolean mixedGCRequired = !Phase.concurrentPhaseActive() && ((usedPages * 100) > (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    int totalPages = getTotalPages();
+    int availPages = getPagesAvail() - BOOT_PAGES;
+    boolean mixedGCRequired = !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
     if (mixedGCRequired) {
       Log.write("Mixed GC ", regionSpace.youngRegions());
       Log.writeln("/", TOTAL_LOGICAL_REGIONS);
@@ -397,12 +399,6 @@ public class G1 extends Concurrent {
     }
     return mixedGCRequired;
   }
-
-  float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
-  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
-  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
-
-  //public static final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100;
 
   /**
    * Return the number of pages reserved for copying.
