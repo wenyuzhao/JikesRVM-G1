@@ -315,8 +315,7 @@ public class RemSet {
   @Inline
   public static void cleanupRemSetRefsToRelocationSet(RegionSpace regionSpace, AddressArray relocationSet, boolean concurrent) {
     int workers = VM.activePlan.collector().parallelWorkerCount();
-    int id = VM.activePlan.collector().getId();
-    if (concurrent) id -= workers;
+    int id = VM.activePlan.collector().rendezvous();
     int regionsToVisit = ceilDiv(TOTAL_REGIONS, workers);
 
     for (int i = 0; i < regionsToVisit; i++) {
@@ -355,5 +354,7 @@ public class RemSet {
         }
       }
     }
+
+    VM.activePlan.collector().rendezvous();
   }
 }

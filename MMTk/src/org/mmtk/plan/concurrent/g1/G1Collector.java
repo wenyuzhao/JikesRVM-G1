@@ -17,6 +17,7 @@ import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
+import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.Lock;
@@ -61,6 +62,8 @@ public class G1Collector extends ConcurrentCollector {
   protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected int currentTrace = 0;
+  static boolean concurrentRelocationSetSelectionExecuted = false;
+  static boolean concurrentCleanupExecuted = false;
 
   /****************************************************************************
    *
@@ -130,6 +133,7 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.RELOCATION_SET_SELECTION) {
+      if (concurrentRelocationSetSelectionExecuted) return;
       if (primary) {
         AddressArray blocksSnapshot = G1.regionSpace.snapshotRegions(G1.currentGCKind == G1.YOUNG_GC);
 
@@ -192,11 +196,10 @@ public class G1Collector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == G1.CLEANUP_BLOCKS) {
+    if (phaseId == G1.CLEANUP) {
+      if (concurrentCleanupExecuted) return;
       RemSet.cleanupRemSetRefsToRelocationSet(G1.regionSpace, G1.relocationSet, false);
-      rendezvous();
       G1.regionSpace.cleanupRegions(G1.relocationSet, false);
-      rendezvous();
       return;
     }
 
@@ -215,10 +218,52 @@ public class G1Collector extends ConcurrentCollector {
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
     Log.writeln(Phase.getName(phaseId));
+
     if (phaseId == G1.CONCURRENT_CLOSURE) {
       currentTrace = 0;
+      super.concurrentCollectionPhase(phaseId);
     }
-    super.concurrentCollectionPhase(phaseId);
+
+    if (phaseId == G1.CONCURRENT_RELOCATION_SET_SELECTION) {
+      concurrentRelocationSetSelectionExecuted = true;
+      if (rendezvous() == 0) {
+        AddressArray blocksSnapshot = G1.regionSpace.snapshotRegions(G1.currentGCKind == G1.YOUNG_GC);
+
+        if (G1.currentGCKind == G1.YOUNG_GC) {
+          // blocksSnapshot is already and only contains young & survivor regions
+          G1.relocationSet = blocksSnapshot;
+        } else {
+          G1.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, true, false);
+        }
+        if (G1.currentGCKind == G1.MIXED_GC) {
+          PauseTimePredictor.predict(G1.relocationSet);
+        }
+        RegionSpace.markRegionsAsRelocate(G1.relocationSet);
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+
+    if (phaseId == G1.CONCURRENT_CLEANUP) {
+      concurrentCleanupExecuted = true;
+      RemSet.cleanupRemSetRefsToRelocationSet(G1.regionSpace, G1.relocationSet, false);
+      G1.regionSpace.cleanupRegions(G1.relocationSet, false);
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+  }
+
+  @Inline
+  @Unpreemptible
+  private void notifyConcurrentPhaseEnd() {
+    if (rendezvous() == 0) {
+      continueCollecting = false;
+      if (!group.isAborted()) {
+        VM.collection.requestMutatorFlush();
+        continueCollecting = Phase.notifyConcurrentPhaseComplete();
+      }
+    }
+    rendezvous();
   }
 
   /****************************************************************************

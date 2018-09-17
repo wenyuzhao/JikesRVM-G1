@@ -78,6 +78,9 @@ public class ShenandoahCollector extends ConcurrentCollector {
    * Collection-time allocation
    */
   private static boolean concurrentEvacuationExecuted = false;
+  private static boolean concurrentRelocationSetSelectionExecuted = false;
+  private static boolean concurrentEagerCleanupExecuted = false;
+  private static boolean concurrentCleanupExecuted = false;
   private static final Atomic.Int atomicCounter = new Atomic.Int();
 
   @Inline
@@ -143,11 +146,14 @@ public class ShenandoahCollector extends ConcurrentCollector {
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       concurrentEvacuationExecuted = false;
+      concurrentRelocationSetSelectionExecuted = false;
+      concurrentEagerCleanupExecuted = false;
+      concurrentCleanupExecuted = false;
       return;
     }
 
     if (phaseId == Shenandoah.RELOCATION_SET_SELECTION) {
-      if (primary) {
+      if (!concurrentRelocationSetSelectionExecuted && primary) {
         AddressArray blocksSnapshot = Shenandoah.regionSpace.snapshotRegions(false);
         Shenandoah.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
         RegionSpace.markRegionsAsRelocate(Shenandoah.relocationSet);
@@ -157,8 +163,10 @@ public class ShenandoahCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Shenandoah.EAGER_CLEANUP) {
-      atomicCounter.set(0);
-      rendezvous();
+      if (!concurrentEagerCleanupExecuted) {
+        atomicCounter.set(0);
+        rendezvous();
+      }
       int index;
       while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
         Address region = Shenandoah.relocationSet.get(index);
@@ -242,8 +250,10 @@ public class ShenandoahCollector extends ConcurrentCollector {
 
 
     if (phaseId == Shenandoah.CLEANUP) {
-      atomicCounter.set(0);
-      rendezvous();
+      if (!concurrentCleanupExecuted) {
+        atomicCounter.set(0);
+        rendezvous();
+      }
       int index;
       while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
         Address region = Shenandoah.relocationSet.get(index);
@@ -281,6 +291,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Shenandoah.CONCURRENT_RELOCATION_SET_SELECTION) {
+      concurrentRelocationSetSelectionExecuted = true;
       if (rendezvous() == 0) {
         AddressArray blocksSnapshot = Shenandoah.regionSpace.snapshotRegions(false);
         Shenandoah.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
@@ -291,6 +302,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Shenandoah.CONCURRENT_EAGER_CLEANUP) {
+      concurrentEagerCleanupExecuted = true;
       atomicCounter.set(0);
       rendezvous();
       int index;
@@ -318,6 +330,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Shenandoah.CONCURRENT_CLEANUP) {
+      concurrentCleanupExecuted = true;
       atomicCounter.set(0);
       rendezvous();
       int index;

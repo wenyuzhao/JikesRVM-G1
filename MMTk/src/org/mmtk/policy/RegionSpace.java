@@ -644,8 +644,7 @@ public final class RegionSpace extends Space {
   @Inline
   public void cleanupRegions(AddressArray relocationSet, boolean concurrent) {
     int workers = VM.activePlan.collector().parallelWorkerCount();
-    int id = VM.activePlan.collector().getId();
-    if (concurrent) id -= workers;
+    int id = VM.activePlan.collector().rendezvous();
     int regionsToRelease = ceilDiv(relocationSet.length(), workers);
 
     for (int i = 0; i < regionsToRelease; i++) {
@@ -667,6 +666,7 @@ public final class RegionSpace extends Space {
         this.release(region);
       }
     }
+    VM.activePlan.collector().rendezvous();
   }
 
   /**

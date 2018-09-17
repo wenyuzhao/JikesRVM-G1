@@ -43,7 +43,7 @@ public class EvacuationLinearScan extends LinearScan {
     int index;
     while ((index = atomicCounter.add(1)) < G1.relocationSet.length()) {
       Address region = G1.relocationSet.get(index);
-      if (region.isZero()) continue;
+      if (region.isZero() || Region.usedSize(region) == 0) continue;
       Region.linearScan(this, region);
     }
     VM.activePlan.collector().rendezvous();

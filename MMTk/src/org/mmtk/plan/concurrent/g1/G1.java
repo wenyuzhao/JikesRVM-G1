@@ -92,7 +92,6 @@ public class G1 extends Concurrent {
   public static short currentGCKind = NOT_IN_GC, lastGCKind = NOT_IN_GC;
 
   /* Phases */
-  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
   public static final short EVACUATE = Phase.createSimple("evacuate");
   public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
@@ -100,7 +99,18 @@ public class G1 extends Concurrent {
   public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
   public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
   public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
+  // Relocation set selection phases
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
+  public static final short preemptConcurrentRelocationSetSelection = Phase.createComplex("preempt-relocation-set-selection", null,
+      Phase.scheduleCollector(RELOCATION_SET_SELECTION));
+  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection",
+      Phase.scheduleComplex(preemptConcurrentRelocationSetSelection));
+  // Cleanup phases
+  public static final short CLEANUP = Phase.createSimple("cleanup");
+  public static final short preemptConcurrentCleanup = Phase.createComplex("preempt-concurrent-cleanup", null,
+      Phase.scheduleCollector(CLEANUP));
+  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
+      Phase.scheduleComplex(preemptConcurrentCleanup));
 
   public static final short refineDirtyCards = Phase.createComplex("refine-cards-phase", null,
       Phase.scheduleMutator  (REFINE_CARDS),
@@ -130,7 +140,7 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(PHANTOM_REFS)
   );
   protected static final short forwardCompleteClosurePhase = Phase.createComplex("forward-release", null,
-      Phase.scheduleCollector(CLEANUP_BLOCKS),
+      Phase.scheduleCollector(CLEANUP),
       Phase.scheduleCollector(CLEAR_CARD_META),
       Phase.scheduleMutator  (FORWARD_RELEASE),
       Phase.scheduleCollector(FORWARD_RELEASE),
@@ -178,6 +188,15 @@ public class G1 extends Concurrent {
     collection = matureCollection;
   }
 
+  @Override
+  @Interruptible
+  public void processOptions() {
+    super.processOptions();
+    /* Set up the concurrent marking phase */
+    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
+    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
+  }
+
   /****************************************************************************
    *
    * Collection
@@ -196,7 +215,7 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == SET_COLLECTION_KIND) {
-      super.collectionPhase(phaseId);
+      super.collectionPhase(SET_COLLECTION_KIND);
       if (currentGCKind != 0) {
         // FULL_GC
       } else if (collection == nurseryCollection) {
@@ -204,6 +223,13 @@ public class G1 extends Concurrent {
       } else {
         currentGCKind = MIXED_GC;
       }
+      return;
+    }
+
+    if (phaseId == INITIATE) {
+      super.collectionPhase(INITIATE);
+      G1Collector.concurrentRelocationSetSelectionExecuted = false;
+      G1Collector.concurrentCleanupExecuted = false;
       return;
     }
 
