@@ -34,6 +34,8 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
+    ObjectReference oldRef = slot.loadObjectReference();
+
     super.processEdge(source, slot);
 
     ObjectReference ref = slot.loadObjectReference();
@@ -42,7 +44,6 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
       Address block = Region.of(ref);
       if (block.NE(Region.of(source))) {
         Address card = Region.Card.of(source);
-        Region.Card.updateCardMeta(source);
         RemSet.addCard(block, card);
       }
     }

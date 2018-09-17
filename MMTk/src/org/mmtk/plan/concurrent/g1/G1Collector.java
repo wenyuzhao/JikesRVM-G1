@@ -60,7 +60,7 @@ public class G1Collector extends ConcurrentCollector {
   protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
-  protected TraceLocal currentTrace;
+  protected int currentTrace = 0;
 
   /****************************************************************************
    *
@@ -112,7 +112,7 @@ public class G1Collector extends ConcurrentCollector {
   public void collectionPhase(short phaseId, boolean primary) {
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
-      currentTrace = markTrace;
+      currentTrace = 0;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
@@ -125,14 +125,23 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.RELEASE) {
-      VM.assertions.fail("Unreachable");
+      markTrace.release();
       return;
     }
 
     if (phaseId == G1.RELOCATION_SET_SELECTION) {
       if (primary) {
-        AddressArray blocksSnapshot = G1.regionSpace.snapshotRegions(false);
-        G1.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+        AddressArray blocksSnapshot = G1.regionSpace.snapshotRegions(G1.currentGCKind == G1.YOUNG_GC);
+
+        if (G1.currentGCKind == G1.YOUNG_GC) {
+          // blocksSnapshot is already and only contains young & survivor regions
+          G1.relocationSet = blocksSnapshot;
+        } else {
+          G1.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, true, false);
+        }
+        if (G1.currentGCKind == G1.MIXED_GC) {
+          PauseTimePredictor.predict(G1.relocationSet);
+        }
         RegionSpace.markRegionsAsRelocate(G1.relocationSet);
       }
       rendezvous();
@@ -144,11 +153,14 @@ public class G1Collector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == G1.REDIRECT_PREPARE) {
+    if (phaseId == G1.REFINE_CARDS) {
       ConcurrentRemSetRefinement.refineAllDirtyCards();
-      rendezvous();
-      currentTrace = global().nurseryGC() ? nurseryTrace : matureTrace;
-      currentTrace.prepare();
+      return;
+    }
+
+    if (phaseId == G1.FORWARD_PREPARE) {
+      currentTrace = global().nurseryGC() ? 1 : 2;
+      getCurrentTrace().prepare();
       g1CopySurvivor.reset();
       g1CopyOld.reset();
       if (global().nurseryGC()) {
@@ -158,23 +170,19 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.REMEMBERED_SETS) {
-      ConcurrentRemSetRefinement.refineAllDirtyCards();
-      ((G1EvacuationTraceLocal) currentTrace).processRemSets();
+      ((G1EvacuationTraceLocal) getCurrentTrace()).processRemSets();
       return;
     }
 
-    if (phaseId == G1.REDIRECT_CLOSURE) {
-      currentTrace.completeTrace();
+    if (phaseId == G1.FORWARD_CLOSURE) {
+      getCurrentTrace().completeTrace();
       return;
     }
 
-    if (phaseId == G1.REDIRECT_RELEASE) {
+    if (phaseId == G1.FORWARD_RELEASE) {
       g1CopySurvivor.reset();
       g1CopyOld.reset();
-      currentTrace.release();
-      if (!global().nurseryGC()) {
-        markTrace.release();
-      }
+      getCurrentTrace().release();
       super.collectionPhase(G1.RELEASE, primary);
       return;
     }
@@ -208,7 +216,7 @@ public class G1Collector extends ConcurrentCollector {
   public void concurrentCollectionPhase(short phaseId) {
     Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.CONCURRENT_CLOSURE) {
-      currentTrace = markTrace;
+      currentTrace = 0;
     }
     super.concurrentCollectionPhase(phaseId);
   }
@@ -226,6 +234,11 @@ public class G1Collector extends ConcurrentCollector {
 
   @Override
   public TraceLocal getCurrentTrace() {
-    return currentTrace;
+    switch (currentTrace) {
+      case 0: return markTrace;
+      case 1: return nurseryTrace;
+      case 2: return matureTrace;
+      default: return null;
+    }
   }
 }

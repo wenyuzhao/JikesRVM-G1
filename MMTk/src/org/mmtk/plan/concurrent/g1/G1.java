@@ -53,14 +53,13 @@ public class G1 extends Concurrent {
    * Class variables
    */
 
-  /** One of the two semi spaces that alternate roles at each collection */
   public static final RegionSpace regionSpace = new RegionSpace("g1", VMRequest.discontiguous());
   public static final int G1 = regionSpace.getDescriptor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace nurseryTrace = new Trace(metaDataSpace);
   public final Trace matureTrace = new Trace(metaDataSpace);
-  public static AddressArray blocksSnapshot, relocationSet;
+  public static AddressArray relocationSet;
 
   static {
     Options.g1ReservePercent = new G1ReservePercent();
@@ -75,154 +74,101 @@ public class G1 extends Concurrent {
     nonMovingSpace.makeAllocAsMarked();
   }
 
-  /**
-   *
-   */
-//  public static final int ALLOC_MATURE = Plan.ALLOC_DEFAULT;
+  /** Allocators */
   public static final int ALLOC_EDEN = Plan.ALLOC_DEFAULT;
   public static final int ALLOC_SURVIVOR = ALLOCATORS + 1;
   public static final int ALLOC_OLD = ALLOCATORS + 2;
-//  public static final int ALLOC_NURSERY = Plan.ALLOC_DEFAULT;
-//  public static final int ALLOC_RS = Plan.ALLOC_DEFAULT;
+
+  /** Specialized scans */
   public static final int SCAN_NURSERY = 0;
   public static final int SCAN_MARK = 1;
   public static final int SCAN_MATURE = 2;
 
-  /* Phases */
-  public static final short EVACUATE = Phase.createSimple("evacuate");
-  public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
-  public static final short REDIRECT_CLOSURE = Phase.createSimple("redirect-closure");
-  public static final short REDIRECT_RELEASE = Phase.createSimple("redirect-release");
-
-  public static final short RELOCATION_SET_SELECTION_PREPARE = Phase.createSimple("relocation-set-selection-prepare");
-  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-
-  public static final short relocationSetSelection = Phase.createComplex("relocationSetSelection",
-    Phase.scheduleGlobal(RELOCATION_SET_SELECTION_PREPARE),
-    Phase.scheduleMutator(RELOCATION_SET_SELECTION_PREPARE),
-    Phase.scheduleGlobal(RELOCATION_SET_SELECTION)
-  );
-
-  public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
-  public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
-
+  /** GC kinds & options */
   public static final boolean GENERATIONAL = true;
   public static final short YOUNG_GC = 1;
   public static final short MIXED_GC = 2;
   public static final short FULL_GC = 3;
   public static short currentGCKind = NOT_IN_GC, lastGCKind = NOT_IN_GC;
 
+  /* Phases */
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
+  public static final short EVACUATE = Phase.createSimple("evacuate");
+  public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
+  public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
+  public static final short FORWARD_PREPARE = Phase.createSimple("forward-prepare");
+  public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
+  public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
+  public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
+  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
 
-
-  public static final short nurseryCollection = Phase.createComplex("nursery-collection", null,
-      Phase.scheduleComplex  (initPhase),
-
-      Phase.scheduleComplex  (relocationSetSelection),
-
-      Phase.scheduleMutator  (REDIRECT_PREPARE),
-      Phase.scheduleGlobal   (REDIRECT_PREPARE),
-      Phase.scheduleCollector(REDIRECT_PREPARE),
-
-
-
-//      Phase.scheduleCollector(EVACUATE),
-      // rootClosurePhase
+  public static final short refineDirtyCards = Phase.createComplex("refine-cards-phase", null,
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS)
+  );
+  protected static final short forwardRootClosurePhase = Phase.createComplex("forward-initial-closure", null,
+      Phase.scheduleMutator  (FORWARD_PREPARE),
+      Phase.scheduleGlobal   (FORWARD_PREPARE),
+      Phase.scheduleCollector(FORWARD_PREPARE),
       Phase.scheduleMutator  (PREPARE_STACKS),
       Phase.scheduleGlobal   (PREPARE_STACKS),
       Phase.scheduleCollector(STACK_ROOTS),
       Phase.scheduleGlobal   (STACK_ROOTS),
       Phase.scheduleCollector(ROOTS),
       Phase.scheduleGlobal   (ROOTS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-      // refTypeClosurePhase
-      Phase.scheduleCollector  (SOFT_REFS),
-      Phase.scheduleGlobal     (REDIRECT_CLOSURE),
-      Phase.scheduleCollector  (REDIRECT_CLOSURE),
-      Phase.scheduleCollector  (WEAK_REFS),
-      Phase.scheduleGlobal     (REDIRECT_CLOSURE),
-      Phase.scheduleCollector  (REDIRECT_CLOSURE),
-      Phase.scheduleCollector  (PHANTOM_REFS),
-
-      Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
+      Phase.scheduleCollector(FORWARD_CLOSURE),
       Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
-      Phase.scheduleCollector  (FINALIZABLE),
-      Phase.scheduleGlobal     (REDIRECT_CLOSURE),
-      Phase.scheduleCollector  (REDIRECT_CLOSURE),
-
-      Phase.scheduleComplex  (forwardPhase),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
-      Phase.scheduleCollector(CLEANUP_BLOCKS),
-      Phase.scheduleCollector(CLEAR_CARD_META),
-
-      Phase.scheduleMutator  (REDIRECT_RELEASE),
-      Phase.scheduleCollector(REDIRECT_RELEASE),
-      Phase.scheduleGlobal   (REDIRECT_RELEASE),
-
-//      Phase.scheduleCollector(CLEAR_CARD_META),
-
-      Phase.scheduleComplex  (finishPhase)
-    );
-
-  public static final short relocationPhase = Phase.createComplex("mature-evacuation", null,
-      Phase.scheduleMutator  (REDIRECT_PREPARE),
-      Phase.scheduleGlobal   (REDIRECT_PREPARE),
-      Phase.scheduleCollector(REDIRECT_PREPARE),
-
-      Phase.scheduleMutator  (PREPARE_STACKS),
-      Phase.scheduleGlobal   (PREPARE_STACKS),
-      Phase.scheduleCollector(STACK_ROOTS),
-      Phase.scheduleGlobal   (STACK_ROOTS),
-      Phase.scheduleCollector(ROOTS),
-      Phase.scheduleGlobal   (ROOTS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(FORWARD_CLOSURE)
+  );
+  protected static final short forwardRefTypeClosurePhase = Phase.createComplex("forward-refType-closure", null,
       Phase.scheduleCollector(SOFT_REFS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
+      Phase.scheduleCollector(FORWARD_CLOSURE),
       Phase.scheduleCollector(WEAK_REFS),
       Phase.scheduleCollector(FINALIZABLE),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-      Phase.scheduleCollector(PHANTOM_REFS),
-      Phase.scheduleComplex  (forwardPhase),
-
-      Phase.scheduleMutator  (REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REMEMBERED_SETS),
-      Phase.scheduleCollector(REMEMBERED_SETS),
-      Phase.scheduleGlobal   (REDIRECT_CLOSURE),
-      Phase.scheduleCollector(REDIRECT_CLOSURE),
-
+      Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS)
+  );
+  protected static final short forwardCompleteClosurePhase = Phase.createComplex("forward-release", null,
       Phase.scheduleCollector(CLEANUP_BLOCKS),
       Phase.scheduleCollector(CLEAR_CARD_META),
-
-      Phase.scheduleMutator  (REDIRECT_RELEASE),
-      Phase.scheduleCollector(REDIRECT_RELEASE),
-      Phase.scheduleGlobal   (REDIRECT_RELEASE)
+      Phase.scheduleMutator  (FORWARD_RELEASE),
+      Phase.scheduleCollector(FORWARD_RELEASE),
+      Phase.scheduleGlobal   (FORWARD_RELEASE)
   );
 
+  /** Nursery collection phases */
+  public static final short nurseryCollection = Phase.createComplex("nursery-collection", null,
+      // Init
+      Phase.scheduleComplex  (initPhase),
+      // Evacuate
+      Phase.scheduleCollector(RELOCATION_SET_SELECTION),
+      Phase.scheduleComplex  (refineDirtyCards),
+      Phase.scheduleComplex  (forwardRootClosurePhase),
+      Phase.scheduleComplex  (forwardRefTypeClosurePhase),
+      Phase.scheduleComplex  (forwardCompleteClosurePhase),
+      // Complete
+      Phase.scheduleComplex  (finishPhase)
+  );
+
+  /** Mature collection phases */
   public short matureCollection = Phase.createComplex("mature-collection", null,
-    Phase.scheduleComplex  (initPhase),
-    // Mark
-    Phase.scheduleComplex  (rootClosurePhase),
+      // Init
+      Phase.scheduleComplex  (initPhase),
+      // Mark
+      Phase.scheduleComplex  (rootClosurePhase),
       Phase.scheduleComplex  (refTypeClosurePhase),
-
-    Phase.scheduleGlobal   (RELEASE),
-
-    Phase.scheduleComplex  (relocationSetSelection),
-
-    Phase.scheduleCollector(EVACUATE),
-
-    Phase.scheduleComplex  (relocationPhase),
-
-    Phase.scheduleComplex  (finishPhase)
+      Phase.scheduleComplex  (completeClosurePhase),
+      // Evacuate
+      Phase.scheduleCollector(RELOCATION_SET_SELECTION),
+      Phase.scheduleCollector(EVACUATE),
+      // Update pointers
+      Phase.scheduleComplex  (refineDirtyCards),
+      Phase.scheduleComplex  (forwardRootClosurePhase),
+      Phase.scheduleComplex  (forwardRefTypeClosurePhase),
+      Phase.scheduleComplex  (forwardCompleteClosurePhase),
+      // Complete
+      Phase.scheduleComplex  (finishPhase)
   );
 
   /**
@@ -231,12 +177,13 @@ public class G1 extends Concurrent {
   public G1() {
     collection = matureCollection;
   }
+
   /****************************************************************************
    *
    * Collection
    */
-  static long totalSTWTime = 0;
   static long startTime = 0;
+
   /**
    * {@inheritDoc}
    */
@@ -246,6 +193,18 @@ public class G1 extends Concurrent {
     if (VM.VERIFY_ASSERTIONS) {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
+    }
+
+    if (phaseId == SET_COLLECTION_KIND) {
+      super.collectionPhase(phaseId);
+      if (currentGCKind != 0) {
+        // FULL_GC
+      } else if (collection == nurseryCollection) {
+        currentGCKind = YOUNG_GC;
+      } else {
+        currentGCKind = MIXED_GC;
+      }
+      return;
     }
 
     if (phaseId == PREPARE) {
@@ -260,82 +219,32 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == RELEASE) {
-      //PureG1.stacksPrepared = false;
-      if (currentGCKind != 0) {
-        // FULL_GC
-      } else if (collection == nurseryCollection) {
-        currentGCKind = YOUNG_GC;
-        VM.assertions.fail("Error: Young GC required");
-      } else {
-        currentGCKind = MIXED_GC;
-      }
-
       if (currentGCKind == MIXED_GC) PauseTimePredictor.stopTheWorldStart();
       startTime = VM.statistics.nanoTime();
+      markTrace.release();
+      return;
+    }
+
+    if (phaseId == REFINE_CARDS) {
       ConcurrentRemSetRefinement.pause();
       return;
     }
 
-    if (phaseId == RELOCATION_SET_SELECTION_PREPARE) {
-      blocksSnapshot = regionSpace.snapshotRegions(currentGCKind == YOUNG_GC);
-      return;
-    }
-
-    if (phaseId == RELOCATION_SET_SELECTION) {
-      if (currentGCKind == YOUNG_GC) {
-        // blocksSnapshot is already and only contains young & survivor regions
-        relocationSet = blocksSnapshot;
-      } else {
-        relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, true, false);
-      }
-      if (currentGCKind == MIXED_GC) {
-        PauseTimePredictor.predict(relocationSet);
-      }
-      RegionSpace.markRegionsAsRelocate(relocationSet);
-      blocksSnapshot = null;
-      return;
-    }
-
-    if (phaseId == REDIRECT_PREPARE) {
-      if (collection == nurseryCollection) {
-        currentGCKind = YOUNG_GC;
-      }
+    if (phaseId == FORWARD_PREPARE) {
       if (nurseryGC()) {
         PauseTimePredictor.nurseryGCStart();
-//        regionSpace.prepare();
         VM.memory.globalPrepareVMSpace();
-      }
-      // Flush mutators
-      if (!nurseryGC()) ConcurrentRemSetRefinement.resume();
-      VM.activePlan.resetMutatorIterator();
-      G1Mutator m;
-      while ((m = (G1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.dropCurrentRSBuffer();
-      }
-      ConcurrentRemSetRefinement.pause();
-      (nurseryGC() ? nurseryTrace : matureTrace).prepare();
-      return;
-    }
-
-    if (phaseId == REMEMBERED_SETS) {
-      VM.activePlan.resetMutatorIterator();
-      G1Mutator m;
-      while ((m = (G1Mutator) VM.activePlan.getNextMutator()) != null) {
-        m.dropCurrentRSBuffer();
+        nurseryTrace.prepare();
+      } else {
+        matureTrace.prepare();
       }
       return;
     }
 
-    if (phaseId == REDIRECT_CLOSURE) {
-      return;
-    }
-
-    if (phaseId == REDIRECT_RELEASE) {
-//      regionSpace.promoteAllRegionsAsOldGeneration();
+    if (phaseId == FORWARD_RELEASE) {
       (nurseryGC() ? nurseryTrace : matureTrace).release();
       if (!nurseryGC()) {
         regionSpace.release();
-        markTrace.release();
         super.collectionPhase(RELEASE);
       } else {
         VM.memory.globalReleaseVMSpace();
@@ -345,12 +254,15 @@ public class G1 extends Concurrent {
 
     if (phaseId == COMPLETE) {
       ConcurrentRemSetRefinement.resume();
-      if (currentGCKind == MIXED_GC) PauseTimePredictor.stopTheWorldEnd();
       super.collectionPhase(COMPLETE);
-      if (nurseryGC()) PauseTimePredictor.nurseryGCEnd();
+
+      if (currentGCKind == YOUNG_GC) {
+        PauseTimePredictor.nurseryGCEnd();
+      } else if (currentGCKind == MIXED_GC) {
+        PauseTimePredictor.stopTheWorldEnd();
+      }
       lastGCKind = currentGCKind;
       currentGCKind = NOT_IN_GC;
-//      regionSpace.validate();
       return;
     }
 
@@ -369,16 +281,15 @@ public class G1 extends Concurrent {
 
   final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
   final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
-  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
   final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
   float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
 
   @Override
   @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
+    final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
     // Young GC
-    if (GENERATIONAL && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) / ((float) TOTAL_LOGICAL_REGIONS) > newSizeRatio)) {
-      Log.writeln("Nursery GC ");
+    if (GENERATIONAL && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) > newSizeRatio * ((float) TOTAL_LOGICAL_REGIONS))) {
       collection = nurseryCollection;
       return true;
     }
@@ -400,8 +311,6 @@ public class G1 extends Concurrent {
     int availPages = getPagesAvail() - BOOT_PAGES;
     boolean mixedGCRequired = !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
     if (mixedGCRequired) {
-      Log.write("Mixed GC ", regionSpace.youngRegions());
-      Log.writeln("/", TOTAL_LOGICAL_REGIONS);
       collection = matureCollection;
     }
     return mixedGCRequired;

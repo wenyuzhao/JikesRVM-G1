@@ -59,16 +59,16 @@ public class G1MarkTraceLocal extends TraceLocal {
 
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
-    if (VM.VERIFY_ASSERTIONS) {
-      if (!VM.debugging.validRef(object)) {
-        Log _log = VM.activePlan.mutator().getLog();
-        _log.write(Space.getSpaceForObject(object).getName());
-        _log.write(" ");
-        _log.flush();
-        VM.objectModel.dumpObject(object);
-      }
-      VM.assertions._assert(VM.debugging.validRef(object));
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      if (!VM.debugging.validRef(object)) {
+//        Log _log = VM.activePlan.mutator().getLog();
+//        _log.write(Space.getSpaceForObject(object).getName());
+//        _log.write(" ");
+//        _log.flush();
+//        VM.objectModel.dumpObject(object);
+//      }
+//      VM.assertions._assert(VM.debugging.validRef(object));
+//    }
 
     if (!isLive(object)) Region.Card.updateCardMeta(object);
 

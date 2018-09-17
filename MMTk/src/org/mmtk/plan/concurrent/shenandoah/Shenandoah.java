@@ -188,7 +188,7 @@ public class Shenandoah extends Concurrent {
       Phase.scheduleCollector(FINALIZABLE),
       Phase.scheduleCollector(FORWARD_CLOSURE),
       Phase.scheduleCollector(PHANTOM_REFS),
-      Phase.scheduleComplex  (forwardPhase),
+//      Phase.scheduleComplex  (forwardPhase),
       Phase.scheduleCollector(FORWARD_CLOSURE),
 //      Phase.scheduleMutator  (PREPARE_STACKS),
 //      Phase.scheduleGlobal   (PREPARE_STACKS),

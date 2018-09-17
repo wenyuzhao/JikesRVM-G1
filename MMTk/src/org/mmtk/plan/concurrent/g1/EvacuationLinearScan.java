@@ -59,8 +59,7 @@ public class EvacuationLinearScan extends LinearScan {
       PauseTimePredictor.evacuationTimer.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
 
       VM.scanning.scanObject(updateRemSetTransitiveClosure, newObject);
-      if (newObject.toAddress().NE(object.toAddress()))
-        Region.Card.updateCardMeta(newObject);
+//      Region.Card.updateCardMeta(newObject);
     }
   }
 }

@@ -16,7 +16,6 @@ import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
-import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.alloc.Allocator;
@@ -133,7 +132,6 @@ public class G1Mutator extends ConcurrentMutator {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
-//      enqueueCurrentRSBuffer(true);
       currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
       g1Eden.reset();
@@ -150,20 +148,12 @@ public class G1Mutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == G1.REMEMBERED_SETS) {
-      //Log.writeln("Mutator #", getId());
+    if (phaseId == G1.REFINE_CARDS) {
+      dropCurrentRSBuffer();
       return;
     }
 
-    if (phaseId == G1.RELOCATION_SET_SELECTION_PREPARE) {
-      g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
-      return;
-    }
-
-    if (phaseId == G1.REDIRECT_PREPARE) {
-      VM.collection.prepareMutator(this);
+    if (phaseId == G1.FORWARD_PREPARE) {
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -171,7 +161,7 @@ public class G1Mutator extends ConcurrentMutator {
       return;
     }
 
-    if (phaseId == G1.REDIRECT_RELEASE) {
+    if (phaseId == G1.FORWARD_RELEASE) {
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -237,8 +227,6 @@ public class G1Mutator extends ConcurrentMutator {
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
       if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
         Region.Card.updateCardMeta(src);
-//        Address card = Region.Card.of(src);
-//        RemSet.addCard(Region.of(ref), card);
         markAndEnqueueCard(Region.Card.of(src));
       }
     }

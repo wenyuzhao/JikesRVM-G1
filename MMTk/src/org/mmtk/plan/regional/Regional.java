@@ -86,8 +86,6 @@ public class Regional extends StopTheWorld {
     Phase.scheduleCollector(EVACUATE_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
 
-    Phase.scheduleComplex  (forwardPhase),
-
     Phase.scheduleMutator  (EVACUATE_RELEASE),
     Phase.scheduleCollector(EVACUATE_RELEASE),
     Phase.scheduleGlobal   (EVACUATE_RELEASE)
