@@ -15,6 +15,7 @@ package org.mmtk.plan.concurrent.g1;
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
@@ -24,6 +25,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -57,6 +59,7 @@ public class G1Collector extends ConcurrentCollector {
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
   protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
+  protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected TraceLocal currentTrace;
 
   /****************************************************************************
@@ -123,6 +126,21 @@ public class G1Collector extends ConcurrentCollector {
 
     if (phaseId == G1.RELEASE) {
       VM.assertions.fail("Unreachable");
+      return;
+    }
+
+    if (phaseId == G1.RELOCATION_SET_SELECTION) {
+      if (primary) {
+        AddressArray blocksSnapshot = G1.regionSpace.snapshotRegions(false);
+        G1.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+        RegionSpace.markRegionsAsRelocate(G1.relocationSet);
+      }
+      rendezvous();
+      return;
+    }
+
+    if (phaseId == G1.EVACUATE) {
+      evacuationLinearScan.evacuateRegions();
       return;
     }
 

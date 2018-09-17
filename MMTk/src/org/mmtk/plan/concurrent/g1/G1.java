@@ -89,6 +89,7 @@ public class G1 extends Concurrent {
   public static final int SCAN_MATURE = 2;
 
   /* Phases */
+  public static final short EVACUATE = Phase.createSimple("evacuate");
   public static final short REDIRECT_PREPARE = Phase.createSimple("redirect-prepare");
   public static final short REDIRECT_CLOSURE = Phase.createSimple("redirect-closure");
   public static final short REDIRECT_RELEASE = Phase.createSimple("redirect-release");
@@ -117,11 +118,15 @@ public class G1 extends Concurrent {
   public static final short nurseryCollection = Phase.createComplex("nursery-collection", null,
       Phase.scheduleComplex  (initPhase),
 
+      Phase.scheduleComplex  (relocationSetSelection),
+
       Phase.scheduleMutator  (REDIRECT_PREPARE),
       Phase.scheduleGlobal   (REDIRECT_PREPARE),
       Phase.scheduleCollector(REDIRECT_PREPARE),
 
-      Phase.scheduleComplex  (relocationSetSelection),
+
+
+//      Phase.scheduleCollector(EVACUATE),
       // rootClosurePhase
       Phase.scheduleMutator  (PREPARE_STACKS),
       Phase.scheduleGlobal   (PREPARE_STACKS),
@@ -132,7 +137,6 @@ public class G1 extends Concurrent {
       Phase.scheduleGlobal   (REDIRECT_CLOSURE),
       Phase.scheduleCollector(REDIRECT_CLOSURE),
       // refTypeClosurePhase
-
       Phase.scheduleCollector  (SOFT_REFS),
       Phase.scheduleGlobal     (REDIRECT_CLOSURE),
       Phase.scheduleCollector  (REDIRECT_CLOSURE),
@@ -208,10 +212,13 @@ public class G1 extends Concurrent {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
+      Phase.scheduleComplex  (refTypeClosurePhase),
 
     Phase.scheduleGlobal   (RELEASE),
 
     Phase.scheduleComplex  (relocationSetSelection),
+
+    Phase.scheduleCollector(EVACUATE),
 
     Phase.scheduleComplex  (relocationPhase),
 
