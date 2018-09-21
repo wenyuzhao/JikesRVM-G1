@@ -41,6 +41,7 @@ public final class Options {
   public static FragmentationStats fragmentationStats;
   public static FullHeapSystemGC fullHeapSystemGC;
   public static G1GCLiveThresholdPercent g1GCLiveThresholdPercent;
+  public static G1GenerationalMode g1GenerationalMode;
   public static G1HeapWastePercent g1HeapWastePercent;
   public static G1InitiatingHeapOccupancyPercent g1InitiatingHeapOccupancyPercent;
   public static G1MaxNewSizePercent g1MaxNewSizePercent;

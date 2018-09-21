@@ -62,6 +62,7 @@ public class G1 extends Concurrent {
   public static AddressArray relocationSet;
 
   static {
+    Options.g1GenerationalMode = new G1GenerationalMode();
     Options.g1ReservePercent = new G1ReservePercent();
     Options.g1InitiatingHeapOccupancyPercent = new G1InitiatingHeapOccupancyPercent();
     Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
@@ -85,7 +86,6 @@ public class G1 extends Concurrent {
   public static final int SCAN_MATURE = 2;
 
   /** GC kinds & options */
-  public static final boolean GENERATIONAL = true;
   public static final short YOUNG_GC = 1;
   public static final short MIXED_GC = 2;
   public static final short FULL_GC = 3;
@@ -310,12 +310,17 @@ public class G1 extends Concurrent {
   final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
   float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
 
+  @Inline
+  public final boolean generationalMode() {
+    return Options.g1GenerationalMode.getValue();
+  }
+
   @Override
   @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
     // Young GC
-    if (GENERATIONAL && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) > newSizeRatio * ((float) TOTAL_LOGICAL_REGIONS))) {
+    if (generationalMode() && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) > newSizeRatio * ((float) TOTAL_LOGICAL_REGIONS))) {
       collection = nurseryCollection;
       return true;
     }
