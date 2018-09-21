@@ -11,8 +11,8 @@ import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
 public class LatencyTimer {
-  public static final boolean ENABLED = true;//Options.enableLatencyTimer.getValue();
-  public static final boolean LOG_COLLECTION_PHASE = ENABLED && false;
+//  public static final boolean ENABLED = true;//Options.enableLatencyTimer.getValue();
+  public static final boolean LOG_COLLECTION_PHASE = false;
   public static final int LOG_MAX_THREADS = 7;
   public static final int MAX_THREADS = 1 << LOG_MAX_THREADS;
   public static final int LOG_MAX_EVENTS = 10;
@@ -27,8 +27,13 @@ public class LatencyTimer {
   private static long startTime, endTime;
   private static boolean loggingEnabled;
 
+  @Inline
+  public static boolean isEnabled() {
+    return Options.enableLatencyTimer.getValue();
+  }
+
   static {
-    Options.enableLatencyTimer = new EnableLatencyTimer();
+//    Options.enableLatencyTimer = new EnableLatencyTimer();
     data = new long[MAX_THREADS * MAX_EVENTS * 2];
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(data != null);
@@ -50,7 +55,7 @@ public class LatencyTimer {
 
   @Inline
   private static void logEvent(int threadId, int eventId) { // 0..<64 are phases, 65: mutator pause, 66: mutator end
-    if (!loggingEnabled || !ENABLED) return;
+    if (!loggingEnabled || !isEnabled()) return;
     int cursor = logCursor[threadId]++;
     int base = threadId * (MAX_EVENTS * 2) + cursor * 2;//threadId << (LOG_MAX_EVENTS + 1) + cursor << 1;
     data[base + 0] = (long) eventId;
@@ -71,13 +76,13 @@ public class LatencyTimer {
 
   @Inline
   public static void processMutator() {
-    if (!loggingEnabled || !ENABLED) return;
+    if (!loggingEnabled || !isEnabled()) return;
     processMutator(VM.activePlan.mutator().getId());
   }
 
   @Inline
   public static void processMutator(int mutatorId) {
-    if (!loggingEnabled || !ENABLED) return;
+    if (!loggingEnabled || !isEnabled()) return;
     mutatorKinds[mutatorId] = !VM.activePlan.isMutator();
   }
 

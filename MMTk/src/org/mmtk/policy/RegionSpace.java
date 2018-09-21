@@ -20,6 +20,8 @@ import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
+import org.mmtk.utility.options.EnableLatencyTimer;
+import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
@@ -733,7 +735,7 @@ public final class RegionSpace extends Space {
 
     @Inline
     private static void setForwardingPointer(ObjectReference object, Word word) {
-      VM.assertions._assert(word.GT(Word.fromIntZeroExtend(3)));
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(word.GT(Word.fromIntZeroExtend(3)));
       object.toAddress().store(word, FORWARDING_POINTER_OFFSET);
     }
 
@@ -789,7 +791,7 @@ public final class RegionSpace extends Space {
     @Inline
     public static ObjectReference forwardObject(ObjectReference object, int allocator) {
       ObjectReference newObject = VM.objectModel.copy(object, allocator);
-      if (DEBUG) zeroObject(object);
+//      if (DEBUG) zeroObject(object);
       setForwardingPointer(object, newObject.toAddress().toWord().or(FORWARDED));
       return newObject;
     }
@@ -797,7 +799,7 @@ public final class RegionSpace extends Space {
     @Inline
     public static ObjectReference forwardObjectWithinMutatorContext(ObjectReference object, int allocator) {
       ObjectReference newObject = VM.objectModel.copyWithinMutatorContext(object, allocator);
-      if (DEBUG) zeroObject(object);
+//      if (DEBUG) zeroObject(object);
       setForwardingPointer(object, newObject.toAddress().toWord().or(FORWARDED));
       return newObject;
     }

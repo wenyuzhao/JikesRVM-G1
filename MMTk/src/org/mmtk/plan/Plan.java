@@ -163,6 +163,7 @@ public abstract class Plan {
     Options.fullHeapSystemGC = new FullHeapSystemGC();
     Options.harnessAll = new HarnessAll();
     Options.ignoreSystemGC = new IgnoreSystemGC();
+    Options.enableLatencyTimer = new EnableLatencyTimer();
     Options.metaDataLimit = new MetaDataLimit();
     Options.nurserySize = new NurserySize();
     Options.nurseryZeroing = new NurseryZeroing();
@@ -785,7 +786,7 @@ public abstract class Plan {
     insideHarness = true;
     Stats.startAll();
 
-    if (LatencyTimer.ENABLED) LatencyTimer.start();
+    if (LatencyTimer.isEnabled()) LatencyTimer.start();
   }
 
   /**
@@ -797,7 +798,7 @@ public abstract class Plan {
    */
   @Interruptible
   public static void harnessEnd()  {
-    if (LatencyTimer.ENABLED) {
+    if (LatencyTimer.isEnabled()) {
       LatencyTimer.stop();
       LatencyTimer.dump();
     }

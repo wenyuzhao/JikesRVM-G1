@@ -79,7 +79,7 @@ public class RegionalCollector extends StopTheWorldCollector {
     rendezvous();
     int index;
     while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
-      Log.writeln("Evacuating ", Regional.relocationSet.get(index));
+//      Log.writeln("Evacuating ", Regional.relocationSet.get(index));
       Region.linearScan(evacuationLinearScan, Regional.relocationSet.get(index));
     }
   }
