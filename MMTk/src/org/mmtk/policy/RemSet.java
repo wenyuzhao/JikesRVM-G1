@@ -3,6 +3,7 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.VM;
@@ -279,7 +280,13 @@ public class RemSet {
               // This `card` is in rem-set of `region`
               if (!Space.isMappedAddress(card)) continue;
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
-              if (Space.isInSpace(REGION_SPACE, card) && Region.relocationRequired(Region.of(card))) continue;
+              if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
+                if (!BlockAllocator.checkBlockMeta(card)) continue;
+              }
+              if (Space.isInSpace(REGION_SPACE, card)) {
+                Address regionOfCard = Region.of(card);
+                if (!Region.allocated(regionOfCard) || Region.relocationRequired(regionOfCard)) continue;
+              }
 //              if (Region.Card.getCardAnchor(card).isZero())
 
               long time = VM.statistics.nanoTime();
@@ -313,7 +320,7 @@ public class RemSet {
 
   /** Remove cards in collection regions from remsets of other regions & Release remsets of collection regions */
   @Inline
-  public static void cleanupRemSetRefsToRelocationSet(RegionSpace regionSpace, AddressArray relocationSet, boolean concurrent) {
+  public static void cleanupRemSetRefsToRelocationSet(RegionSpace regionSpace, AddressArray relocationSet, boolean emptyRegionsOnly) {
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().rendezvous();
     int regionsToVisit = ceilDiv(TOTAL_REGIONS, workers);
@@ -323,7 +330,11 @@ public class RemSet {
       if (cursor >= TOTAL_REGIONS) break;
       Address visitedRegion = VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_REGION);
       // If this is a relocation region, clear its rem-sets
-      if (Space.isInSpace(regionSpace.getDescriptor(), visitedRegion) && Region.of(visitedRegion).NE(EmbeddedMetaData.getMetaDataBase(visitedRegion)) && Region.relocationRequired(visitedRegion)) {
+      if (Space.isInSpace(regionSpace.getDescriptor(), visitedRegion)
+          && Region.of(visitedRegion).NE(EmbeddedMetaData.getMetaDataBase(visitedRegion))
+          && Region.relocationRequired(visitedRegion)
+          && (!emptyRegionsOnly || (emptyRegionsOnly && Region.usedSize(visitedRegion) == 0))
+      ) {
         Address prtList = rememberedSets.get(cursor);
         if (!prtList.isZero()) {
           Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
@@ -346,6 +357,7 @@ public class RemSet {
       for (int j = 0; j < relocationSet.length(); j++) {
         Address cRegion = relocationSet.get(j);
         if (cRegion.isZero()) continue;
+        if (emptyRegionsOnly && Region.usedSize(visitedRegion) != 0) continue;
         int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION;
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {

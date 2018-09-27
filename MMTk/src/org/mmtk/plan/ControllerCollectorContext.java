@@ -15,6 +15,7 @@ package org.mmtk.plan;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.heap.HeapGrowthManager;
 import org.mmtk.utility.options.Options;
+import org.mmtk.utility.statistics.LatencyTimer;
 import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
 
@@ -83,7 +84,9 @@ public class ControllerCollectorContext extends CollectorContext {
 
       // Stop all mutator threads
       if (Options.verbose.getValue() >= 5) Log.writeln("[STWController: Stopping the world...]");
+      LatencyTimer.enableLogging();
       VM.collection.stopAllMutators();
+      LatencyTimer.disableLogging();
 
       // Was this user triggered?
       boolean userTriggeredCollection = Plan.isUserTriggeredCollection();
@@ -117,7 +120,9 @@ public class ControllerCollectorContext extends CollectorContext {
 
       // Resume all mutators
       if (Options.verbose.getValue() >= 5) Log.writeln("[STWController: Resuming mutators...]");
+      LatencyTimer.enableLogging();
       VM.collection.resumeAllMutators();
+      LatencyTimer.disableLogging();
 
       // Start threads that will perform concurrent collection work alongside mutators.
       if (concurrentCollection) {

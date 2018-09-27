@@ -44,6 +44,9 @@ public class Regional extends Concurrent {
   //public static boolean concurrentMarkingInProgress = false;
 
   static {
+    Options.concurrentCleanup = new ConcurrentCleanup();
+    Options.concurrentCollectionSetSelection = new ConcurrentCollectionSetSelection();
+    Options.concurrentEagerCleanup = new ConcurrentEagerCleanup();
     Options.g1ReservePercent = new G1ReservePercent();
     Options.g1InitiatingHeapOccupancyPercent = new G1InitiatingHeapOccupancyPercent();
     Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
@@ -60,13 +63,28 @@ public class Regional extends Concurrent {
   public static final int SCAN_FORWARD = 1;
 
   /* Phases */
-  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
   public static final short EVACUATE = Phase.createSimple("evacuate");
   public static final short FORWARD_PREPARE = Phase.createSimple("forward-prepare");
   public static final short FORWARD_CLOSURE = Phase.createSimple("forward-closure");
   public static final short FORWARD_RELEASE = Phase.createSimple("forward-release");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
-  public static final short UPDATE_REFS = Phase.createSimple("update-refs");
+  // Relocation set selection phases
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
+  public static final short preemptConcurrentRelocationSetSelection = Phase.createComplex("preempt-relocation-set-selection", null,
+      Phase.scheduleCollector(RELOCATION_SET_SELECTION));
+  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection",
+      Phase.scheduleComplex(preemptConcurrentRelocationSetSelection));
+  // Eager cleanup phases
+  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
+  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preempt-concurrent-eager-cleanup", null,
+      Phase.scheduleCollector(EAGER_CLEANUP));
+  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
+      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
+  // Cleanup phases
+  public static final short CLEANUP = Phase.createSimple("cleanup");
+  public static final short preemptConcurrentCleanup = Phase.createComplex("preempt-concurrent-cleanup", null,
+      Phase.scheduleCollector(CLEANUP));
+  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
+      Phase.scheduleComplex(preemptConcurrentCleanup));
 
 
   public short _collection = Phase.createComplex("_collection", null,
@@ -76,7 +94,8 @@ public class Regional extends Concurrent {
     Phase.scheduleComplex  (refTypeClosurePhase),
     Phase.scheduleComplex  (completeClosurePhase),
     // Select relocation sets
-    Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+    Phase.scheduleCollector(RELOCATION_SET_SELECTION),
+    Phase.scheduleCollector(EAGER_CLEANUP),
     // Evacuate
     Phase.scheduleCollector(EVACUATE),
     // Update refs
@@ -100,7 +119,7 @@ public class Regional extends Concurrent {
     Phase.scheduleGlobal   (FORWARD_RELEASE),
 
     // Cleanup
-    Phase.scheduleCollector(CLEANUP_BLOCKS),
+    Phase.scheduleCollector(CLEANUP),
     Phase.scheduleComplex  (finishPhase)
   );
 
@@ -111,12 +130,33 @@ public class Regional extends Concurrent {
     collection = _collection;
   }
 
+  @Override
+  @Interruptible
+  public void processOptions() {
+    super.processOptions();
+    /* Set up the concurrent marking phase */
+//    if (Options.concurrentCollectionSetSelection.getValue())
+//      replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
+//    if (Options.concurrentEagerCleanup.getValue())
+//      replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
+//    if (Options.concurrentCleanup.getValue())
+//      replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
+  }
+
   /**
    * {@inheritDoc}
    */
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
+    if (phaseId == INITIATE) {
+      super.collectionPhase(INITIATE);
+      org.mmtk.plan.concurrent.regional.RegionalCollector.concurrentRelocationSetSelectionExecuted = false;
+      org.mmtk.plan.concurrent.regional.RegionalCollector.concurrentEagerCleanupExecuted = false;
+      org.mmtk.plan.concurrent.regional.RegionalCollector.concurrentCleanupExecuted = false;
+      return;
+    }
+
     if (phaseId == PREPARE) {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
@@ -131,13 +171,6 @@ public class Regional extends Concurrent {
     if (phaseId == RELEASE) {
       markTrace.release();
       super.collectionPhase(RELEASE);
-      return;
-    }
-
-    if (phaseId == RELOCATION_SET_SELECTION) {
-      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
-      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
-      RegionSpace.markRegionsAsRelocate(relocationSet);
       return;
     }
 
@@ -241,8 +274,8 @@ public class Regional extends Concurrent {
   @Override
   @Interruptible
   protected void registerSpecializedMethods() {
-    TransitiveClosure.registerSpecializedScan(SCAN_MARK, RegionalMarkTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_FORWARD, RegionalForwardTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_MARK, org.mmtk.plan.concurrent.regional.RegionalMarkTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_FORWARD, org.mmtk.plan.concurrent.regional.RegionalForwardTraceLocal.class);
     super.registerSpecializedMethods();
   }
 }

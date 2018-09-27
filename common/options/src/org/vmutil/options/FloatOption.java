@@ -12,7 +12,6 @@
  */
 package org.vmutil.options;
 
-import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -42,7 +41,6 @@ public class FloatOption extends Option {
    * @return The option value.
    */
   @Uninterruptible
-  @Inline
   public float getValue() {
     return this.value;
   }

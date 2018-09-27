@@ -23,9 +23,9 @@ public class LatencyTimer {
   private static final int MUTATOR_RESUME = 128;
   private static final long[] data;// = new long[MAX_THREADS][MAX_LOG_SIZE][2];
   private static final int[] logCursor = new int[MAX_THREADS];
-  private static final boolean[] mutatorKinds = new boolean[MAX_THREADS];
-  private static long startTime, endTime;
-  private static boolean loggingEnabled;
+//  private static final boolean[] mutatorKinds = new boolean[MAX_THREADS];
+//  private static long startTime, endTime;
+  private static boolean loggingEnabled = false;
 
   @Inline
   public static boolean isEnabled() {
@@ -43,14 +43,24 @@ public class LatencyTimer {
   @Inline
   public static void start() {
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(startTime == 0);
+//      VM.assertions._assert(startTime == 0);
       VM.assertions._assert(data != null);
       VM.assertions._assert(logCursor != null);
-      VM.assertions._assert(mutatorKinds != null);
+//      VM.assertions._assert(mutatorKinds != null);
       Log.writeln("LatencyTimer Start");
     }
+//    loggingEnabled = true;
+//    startTime = VM.statistics.nanoTime();
+  }
+
+  @Inline
+  public static void enableLogging() {
     loggingEnabled = true;
-    startTime = VM.statistics.nanoTime();
+  }
+
+  @Inline
+  public static void disableLogging() {
+    loggingEnabled = false;
   }
 
   @Inline
@@ -63,90 +73,60 @@ public class LatencyTimer {
   }
 
   @Inline
-  public static void collectionPhaseStart(int threadId, short phaseId) {
-    processMutator();
-    logEvent(threadId, phaseId << 1);
-  }
-
-  @Inline
-  public static void collectionPhaseEnd(int threadId, short phaseId) {
-    processMutator();
-    logEvent(threadId, (phaseId << 1) + 1);
-  }
-
-  @Inline
-  public static void processMutator() {
-    if (!loggingEnabled || !isEnabled()) return;
-    processMutator(VM.activePlan.mutator().getId());
-  }
-
-  @Inline
-  public static void processMutator(int mutatorId) {
-    if (!loggingEnabled || !isEnabled()) return;
-    mutatorKinds[mutatorId] = !VM.activePlan.isMutator();
-  }
-
-  @Inline
   public static void mutatorPause(int mutatorId) {
-    processMutator();
+    if (!loggingEnabled || !isEnabled()) return;
     logEvent(mutatorId, MUTATOR_PAUSE);
   }
 
   @Inline
   public static void mutatorResume(int mutatorId) {
-    processMutator();
+    if (!loggingEnabled || !isEnabled()) return;
     logEvent(mutatorId, MUTATOR_RESUME);
   }
 
   @Inline
   public static void stop() {
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(endTime == 0);
+//      VM.assertions._assert(endTime == 0);
       Log.writeln("LatencyTimer Stop");
     }
     loggingEnabled = false;
-    endTime = VM.statistics.nanoTime();
+//    endTime = VM.statistics.nanoTime();
   }
 
   @Inline
   public static void dump() {
-    Log.writeln("===== LatencyTimer Logs =====");
+    Log.writeln("===== LatencyTimer Pause Times =====");
+    Log.writeln("PauseTime(ns)");
     for (int threadId = 0; threadId < MAX_THREADS; threadId++) {
       if (logCursor[threadId] == 0) continue;
 
-      if (mutatorKinds[threadId]) {
-        Log.write("=== Collector #", threadId);
-        Log.writeln(" ===");
-      } else {
-        Log.write("=== Mutator #", threadId);
-        Log.writeln(" ===");
-      }
+//      if (mutatorKinds[threadId]) {
+//        Log.write("=== Collector #", threadId);
+//        Log.writeln(" ===");
+//      } else {
+//        Log.write("=== Mutator #", threadId);
+//        Log.writeln(" ===");
+//      }
 
+      long pauseTime = -1l;
       for (int i = 0; i < logCursor[threadId]; i++) {
         int base = threadId * (MAX_EVENTS * 2) + i * 2;
         int eventId = (int) data[base + 0];
         long time = data[base + 1];
-        Log.write(time);
+//        Log.write(time);
 
         if (eventId == MUTATOR_PAUSE) {
-          Log.writeln(" mutator pause");
+          pauseTime = time;
         } else if (eventId == MUTATOR_RESUME) {
-          Log.writeln(" mutator resume");
-        } else if (eventId <= MAX_COLLECTION_PHASE_ID) {
-          if (eventId % 2 == 0) {
-            Log.write(" ");
-            Log.write(Phase.getName((short) (eventId / 2)));
-            Log.writeln(" start");
-          } else if (eventId % 2 == 1) {
-            Log.write(" ");
-            Log.write(Phase.getName((short) ((eventId - 1) / 2)));
-            Log.writeln(" end");
-          }
+          if (pauseTime == -1l || time < pauseTime) continue;
+          Log.writeln(time - pauseTime);
+          pauseTime = -1;
         } else {
-          Log.writeln(" unknown event id ", eventId);
+          VM.assertions.fail("Unimplemented");
         }
       }
     }
-    Log.writeln("=============================");
+    Log.writeln("===== LatencyTimer Pause Times End =====");
   }
 }

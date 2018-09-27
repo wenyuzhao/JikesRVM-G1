@@ -54,6 +54,7 @@ public class Regional extends StopTheWorld {
   public static final int SCAN_FORWARD = 1;
 
   /* Phases */
+  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
   public static final short EVACUATE = Phase.createSimple("evacuate");
   public static final short FORWARD_PREPARE = Phase.createSimple("forward-prepare");
@@ -70,6 +71,7 @@ public class Regional extends StopTheWorld {
     Phase.scheduleComplex  (completeClosurePhase),
     // Select relocation sets
     Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+    Phase.scheduleCollector(EAGER_CLEANUP),
     // Evacuate
     Phase.scheduleCollector(EVACUATE),
     // Update refs

@@ -17,6 +17,7 @@ import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Region;
+import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
@@ -51,6 +52,7 @@ public class RegionalCollector extends StopTheWorldCollector {
   protected final RegionalMarkTraceLocal markTrace = new RegionalMarkTraceLocal(global().markTrace);
   protected final RegionalEvacuateTraceLocal evacuateTrace = new RegionalEvacuateTraceLocal(global().evacuateTrace);
   protected TraceLocal currentTrace;
+  private static final Atomic.Int atomicCounter = new Atomic.Int();
 
   /****************************************************************************
    *
@@ -110,6 +112,21 @@ public class RegionalCollector extends StopTheWorldCollector {
     if (phaseId == Regional.RELEASE) {
       markTrace.release();
       super.collectionPhase(phaseId, primary);
+      return;
+    }
+
+    if (phaseId == Regional.EAGER_CLEANUP) {
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
+        Address region = Regional.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          Regional.relocationSet.set(index, Address.zero());
+          Regional.regionSpace.release(region);
+        }
+      }
+      rendezvous();
       return;
     }
 

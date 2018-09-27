@@ -485,9 +485,7 @@ public abstract class Phase {
           if (logDetails) Log.writeln(" as Global...");
           if (primary) {
             if (VM.DEBUG) VM.debugging.globalPhase(phaseId,true);
-            if (LatencyTimer.LOG_COLLECTION_PHASE) LatencyTimer.collectionPhaseStart(VM.activePlan.mutator().getId(), phaseId);
             plan.collectionPhase(phaseId);
-            if (LatencyTimer.LOG_COLLECTION_PHASE) LatencyTimer.collectionPhaseEnd(VM.activePlan.mutator().getId(), phaseId);
             if (VM.DEBUG) VM.debugging.globalPhase(phaseId,false);
           }
           break;
@@ -497,9 +495,7 @@ public abstract class Phase {
         case SCHEDULE_COLLECTOR: {
           if (logDetails) Log.writeln(" as Collector...");
           if (VM.DEBUG) VM.debugging.collectorPhase(phaseId,order,true);
-          if (LatencyTimer.LOG_COLLECTION_PHASE) LatencyTimer.collectionPhaseStart(VM.activePlan.mutator().getId(), phaseId);
           collector.collectionPhase(phaseId, primary);
-          if (LatencyTimer.LOG_COLLECTION_PHASE) LatencyTimer.collectionPhaseEnd(VM.activePlan.mutator().getId(), phaseId);
           if (VM.DEBUG) VM.debugging.collectorPhase(phaseId,order,false);
           break;
         }
@@ -511,9 +507,7 @@ public abstract class Phase {
           MutatorContext mutator;
           while ((mutator = VM.activePlan.getNextMutator()) != null) {
             if (VM.DEBUG) VM.debugging.mutatorPhase(phaseId,mutator.getId(),true);
-            if (LatencyTimer.LOG_COLLECTION_PHASE) LatencyTimer.collectionPhaseStart(mutator.getId(), phaseId);
             mutator.collectionPhase(phaseId, primary);
-            if (LatencyTimer.LOG_COLLECTION_PHASE) LatencyTimer.collectionPhaseEnd(mutator.getId(), phaseId);
             if (VM.DEBUG) VM.debugging.mutatorPhase(phaseId,mutator.getId(),false);
           }
           break;

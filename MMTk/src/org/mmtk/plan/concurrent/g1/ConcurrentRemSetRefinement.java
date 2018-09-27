@@ -152,8 +152,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   @Unpreemptible
   public void run() {
     while (true) {
-      //monitor.await();
-      refinePartial(0);
+      // Check if the collector is trying to pause refinement threads
+      controller.park(this);
+      // Do refinement
+      refinePartial(1f / 5f);
     }
   }
 
@@ -161,8 +163,12 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   @Inline
   public static void enqueueFilledRSBuffer(Address buf, boolean triggerConcurrentRefinement) {
     if (triggerConcurrentRefinement) {
-      while (!FilledRSBufferQueue.enqueue(buf)) {
-        Log.writeln("ENQUEUE FAILED");
+      boolean enqueueSuccessful = FilledRSBufferQueue.enqueue(buf);
+      if (!enqueueSuccessful || FilledRSBufferQueue.isFull()) {
+        controller.triggerCycle();
+      }
+      if (!enqueueSuccessful) {
+        refineSingleBuffer(buf);
       }
     } else if (!Plan.gcInProgress()) {
       if (!FilledRSBufferQueue.enqueue(buf)) {
@@ -171,13 +177,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     } else {
       refineSingleBuffer(buf);
     }
-//    if (FilledRSBufferQueue.enqueue(buf)) {
-//      //if (triggerConcurrentRefinement && FilledRSBufferQueue.size() >= FilledRSBufferQueue.CAPACITY * 4 / 5) trigger();
-//      if (triggerConcurrentRefinement) trigger();
-//    } else {
-//      Log.writeln("! FilledRSBufferQueue is full");
-//      refineSingleBuffer(buf);
-//    }
   }
 
   @Inline
@@ -190,96 +189,66 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       Address card = Region.Card.of(source);
       ObjectReference ref = slot.loadObjectReference();
       Address value = VM.objectModel.objectStartRef(ref);
-      /*if (VM.VERIFY_ASSERTIONS) {
-        //if (ref.isNull()) VM.assertions._assert(value.isZero());
-        VM.assertions._assert(!source.isNull() && !slot.isZero() && !value.isZero());
-      }*/
+
       if (source.isNull() || ref.isNull()) return;
       Word tmp = VM.objectModel.objectStartRef(source).toWord().xor(value.toWord());
       tmp = tmp.rshl(Region.LOG_BYTES_IN_REGION);
-      //tmp = ref.isNull() ? Word.zero() : tmp;
       if (tmp.isZero()) return;
       if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {
         Address foreignBlock = Region.of(value);
-        //if (Region.relocationRequired(foreignBlock) && Region.usedSize(foreignBlock) == 0) {
-        //  return;
-        //}
-
-//          if (CardTable.attemptToMarkCard(card, true)) {
-//            processCard(card);
-//          }
-//        } else {
-//        if (!Space.isInSpace(PureG1.G1, source) ||
-//            (!relocationSetOnly && Region.metaDataOf(foreignBlock, Region.METADATA_GENERATION_OFFSET).loadInt() == 0) ||
-//            (relocationSetOnly && (Region.relocationRequired(foreignBlock) || Region.relocationRequired(Region.of(source))))
-//        ) {
-//          if (Space.isInSpace(PureG1.G1, source) && relocationSetOnly && Region.relocationRequired(Region.of(source))) return;
-          RemSet.addCard(foreignBlock, card);
-//        }
-//        }
+        RemSet.addCard(foreignBlock, card);
       }
     }
   };
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Inline @Uninterruptible public void scan(ObjectReference object) {
-//      if (Space.isInSpace(G1.G1, object) && !G1.regionSpace.isLive(object)) {
       if (object.toAddress().loadWord(Region.Card.OBJECT_END_ADDRESS_OFFSET).isZero()) {
-        if (!VM.debugging.validRef(object)) {
-          Log.write("Space: ");
-          Log.writeln(Space.getSpaceForObject(object).getName());
-          if (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace) {
-            Log.writeln(BlockAllocator.checkBlockMeta(Region.Card.of(object)) ? " Block Live " : " Block Dead ");
+        if (VM.VERIFY_ASSERTIONS) {
+          if (!VM.debugging.validRef(object)) {
+            Log.writeln();
+            Log.write("Space: ");
+            Log.writeln(Space.getSpaceForObject(object).getName());
+            if (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace) {
+              Log.writeln(BlockAllocator.checkBlockMeta(Region.Card.of(object)) ? " Block Live " : " Block Dead ");
+            }
+            VM.objectModel.dumpObject(object);
+            VM.assertions.fail("");
           }
-          VM.objectModel.dumpObject(object);
-          VM.assertions.fail("");
         }
         VM.scanning.scanObject(scanPointers, object);
       }
-//      }
     }
   };
 
   @Inline
   public static void processCard(Address card) {
-    Address region = Region.of(card);
-    if (!Space.isMappedAddress(card) || (Space.isInSpace(G1.G1, card) && !Region.allocated(region))) {
-      return;
+//    Address region = Region.of(card);
+//    if (!Space.isMappedAddress(card) || (Space.isInSpace(G1.G1, card) && !Region.allocated(region))) {
+    if (!Space.isMappedAddress(card)) return;
+    if (card.LT(VM.AVAILABLE_START) || Space.isInSpace(Plan.VM_SPACE, card)) return;
+    if (Space.isInSpace(G1.G1, card) && !Region.allocated(Region.of(card))) return;
+    if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
+      if (!BlockAllocator.checkBlockMeta(card)) return;
     }
-//    if (relocationSetOnly && Space.isInSpace(PureG1.G1, card) && (!Region.allocated(region) || Region.relocationRequired(region))) {
-//      return;
+//    if (!Space.isInSpace(Plan.VM_SPACE, card)) {
+    long time = VM.statistics.nanoTime();
+    Region.Card.linearScan(cardLinearScan, G1.regionSpace, card, false);
+    if (Plan.gcInProgress())
+      PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
 //    }
-    if (!Space.isInSpace(Plan.VM_SPACE, card)) {
-//      if (VM.VERIFY_ASSERTIONS) {
-//        if (Region.Card.getCardAnchor(card).isZero()) {
-//          Log.write("Space ");
-//          Log.writeln(Space.getSpaceForAddress(card).getName());
-//          if (Space.isInSpace(PureG1.G1, card)) {
-//            Log.writeln(Region.relocationRequired(region) ? "relocationRequired=true" : "relocationRequired=false");
-//            Log.writeln("Used size: ", Region.usedSize(region));
-//          }
-//        }
-//        VM.assertions._assert(!Region.Card.getCardAnchor(card).isZero());
-//      }
-      long time = VM.statistics.nanoTime();
-      Region.Card.linearScan(cardLinearScan, G1.regionSpace, card, false);
-      if (Plan.gcInProgress())
-        PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
-    }
   }
 
   @Inline
   public static void refineSingleBuffer(Address buffer) {
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!buffer.isZero());
     for (int i = 0; i < REMSET_LOG_BUFFER_SIZE; i++) {
       Address card = buffer.plus(i << Constants.LOG_BYTES_IN_ADDRESS).loadAddress();
       if (!card.isZero()) {
         if (CardTable.cardIsMarked(card) && CardTable.increaseHotness(card)) {
-          HotCardsQueue.enqueue(card);
+//          HotCardsQueue.enqueue(card);
         } else {
           if (CardTable.attemptToMarkCard(card, false)) {
             processCard(card);
-//            Region.Card.clearCardMeta(card);
           }
         }
       }
@@ -291,22 +260,29 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   public static void refineAllDirtyCards() {
     int workers = VM.activePlan.collector().parallelWorkerCount();
     int id = VM.activePlan.collector().getId();
-//    if (concurrent) id -= workers;
     int totalCards = VM.HEAP_END.diff(VM.HEAP_START).toInt() >>> Region.Card.LOG_BYTES_IN_CARD;
     int cardsToClear = RemSet.ceilDiv(totalCards, workers);
 
-    for (int i = 0; i < cardsToClear; i++) {
-//      int index = cardsToClear * id + i;
-      int index = i * workers + id;
-      if (index >= totalCards) break;
-      Address c = VM.HEAP_START.plus(index << Region.Card.LOG_BYTES_IN_CARD);
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.Card.isAligned(c));
-//      if (!CardTable.cardIsMarked(c)) {
-        if (CardTable.attemptToMarkCard(c, false)) {
-          processCard(c);
-//          Region.Card.clearCardMeta(c);
-        }
-//      };
+//    for (int i = 0; i < cardsToClear; i++) {
+//      int index = i * workers + id;
+//      if (index >= totalCards) break;
+//      Address c = VM.HEAP_START.plus(index << Region.Card.LOG_BYTES_IN_CARD);
+//      if (CardTable.attemptToMarkCard(c, false)) {
+//        processCard(c);
+//      }
+//    }
+    int startIndex = id * cardsToClear, endIndex = id * cardsToClear + cardsToClear;
+    for (int i = startIndex; i < endIndex; i++) {
+      if (i >= totalCards) break;
+      int bufferIndex = i >>> Constants.LOG_BITS_IN_INT;
+      if (CardTable.cardTable[bufferIndex] == 0) {
+        i = (bufferIndex << Constants.LOG_BITS_IN_INT) + Constants.BITS_IN_INT - 1;
+        continue;
+      }
+      Address c = VM.HEAP_START.plus(i << Region.Card.LOG_BYTES_IN_CARD);
+      if (CardTable.attemptToMarkCard(c, false)) {
+        processCard(c);
+      }
     }
 
     int rendezvousID = VM.activePlan.collector().rendezvous();
@@ -320,52 +296,65 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     VM.activePlan.collector().rendezvous();
   }
 
+  int lastTriggerCount = 0;
   @Uninterruptible
   static class Controller {
-    boolean pause = false;
-    int paused = 0;
-    Monitor pauseMonitor = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadPausdsadasseLock");
-    Monitor pausedMonitor = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadPausedLock");
-    final int NUM_WORKERS;
+    private final Monitor lock = VM.newHeavyCondLock("lock");
+    private final int NUM_WORKERS;
+    private volatile boolean pauseRequested = false;
+    private volatile int triggerCount = 1, contextsParked = 0;
 
     public Controller(int numWorkers) {
       this.NUM_WORKERS = numWorkers;
     }
 
-    void check() {
-      pauseMonitor.lock();
-      if (pause) {
-        pausedMonitor.lock();
-        paused++;
-        pausedMonitor.broadcast();
-        pausedMonitor.unlock();
-        //Log.writeln("Pause refine thread ", paused);
-        pauseMonitor.await();
+    public void park(ConcurrentRemSetRefinement context) {
+      lock.lock();
+      context.lastTriggerCount++;
+      if (context.lastTriggerCount == triggerCount) {
+        contextsParked++;
+        lock.broadcast();
+        while (context.lastTriggerCount == triggerCount) {
+          lock.await();
+        }
       }
-      pauseMonitor.unlock();
+      lock.unlock();
     }
-    void pause() {
-//      Log.writeln("=== PAUSE ===");
-      // Request a block
-      pauseMonitor.lock();
-      paused = 0;
-      pause = true;
-      pauseMonitor.unlock();
-      // Wait for all thread blocked
-//      Log.writeln("Wait for blocked");
-      pausedMonitor.lock();
-      while (paused < NUM_WORKERS) {
-        pausedMonitor.await();
+
+    public void triggerCycle() {
+      lock.lock();
+      if (pauseRequested) {
+        lock.unlock();
+        return;
       }
-      pausedMonitor.unlock();
-//      Log.writeln("All refine threads blocked");
-      //VM.assertions.fail("");
+      triggerCount++;
+      contextsParked = 0;
+      lock.broadcast();
+      lock.unlock();
     }
-    void resume() {
-      pauseMonitor.lock();
-      pause = false;
-      pauseMonitor.broadcast();
-      pauseMonitor.unlock();
+
+    public void pause() {
+      lock.lock();
+      pauseRequested = true;
+      lock.unlock();
+      waitForCycle();
+    }
+
+    /**
+     * Wait until the group is idle.
+     */
+    private void waitForCycle() {
+      lock.lock();
+      while (contextsParked < NUM_WORKERS) {
+        lock.await();
+      }
+      lock.unlock();
+    }
+
+    public void resume() {
+      lock.lock();
+      pauseRequested = false;
+      lock.unlock();
     }
   }
 
@@ -385,49 +374,11 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     controller.resume();
   }
 
-  ///boolean currentThreadPaused = false;
-
-  private static void checkPause() {
-//    pauseMonitor.lock();
-//    if (pause) {
-//      pausedMonitor.lock();
-//      paused++;
-//      pausedMonitor.broadcast();
-//      pausedMonitor.unlock();
-//      //Log.writeln("Pause refine thread ", paused);
-//      pauseMonitor.await();
-//    }
-//    pauseMonitor.unlock();
-  }
-
   @Inline
   private void refinePartial(float untilRatio) {
     while (true) {
-      // Wait until pause = false
-      //Log.writeln("Try Enter ", getId());
-      //checkPause();
-      controller.check();
-      //Log.writeln("Enter ", getId());
-//      while (pause) {
-//        pausedMonitor.lock();
-//        if (!currentThreadPaused) {
-//          currentThreadPaused = true;
-//          paused++;
-//          if (paused >= NUM_WORKERS) {
-//            pausedMonitor.broadcast();
-//          }
-//        }
-//        pausedMonitor.unlock();
-//        Log.writeln("Await ", getId());
-//        pauseMonitor.await();
-//      }
-      //lock.acquire();
-      //Log.writeln("Exit ", getId());
-      //currentThreadPaused = false;
-
       if (FilledRSBufferQueue.size() <= FilledRSBufferQueue.CAPACITY * untilRatio) {
-        //lock.release();
-        continue;
+        return;
       }
       // Dequeue one buffer
       Address buffer = FilledRSBufferQueue.tryDequeue();
@@ -435,7 +386,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         // Process this buffer
         refineSingleBuffer(buffer);
       }
-      //lock.release();
     }
   }
 

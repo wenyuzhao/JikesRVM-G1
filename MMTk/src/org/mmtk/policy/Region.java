@@ -8,6 +8,7 @@ import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
@@ -342,18 +343,23 @@ public class Region {
 
     static Lock lock = VM.newLock("asfghgjnxcsae");
 
+    @NoInline
+    public static void updateCardMetaNoInline(ObjectReference ref) {
+      updateCardMeta(ref);
+    }
+
     @Inline
     public static void updateCardMeta(ObjectReference ref) {
       // set anchor value
       final Address objectStartAddress = VM.objectModel.objectStartRef(ref);
       final Address card = Card.of(objectStartAddress);
       final int cardIndex = hash(card);
-      if ((cardIndex >>> 2) >= anchors.length) {
-        Log.write("Overflow cardIndex=", cardIndex);
-        Log.write(" card=", card);
-        Log.write(" ref=", ref);
-        Log.writeln(" length=", anchors.length);
-      }
+//      if ((cardIndex >>> 2) >= anchors.length) {
+//        Log.write("Overflow cardIndex=", cardIndex);
+//        Log.write(" card=", card);
+//        Log.write(" ref=", ref);
+//        Log.writeln(" length=", anchors.length);
+//      }
       // CAS anchor value
       byte oldStartOffset, newStartOffset;
       do {

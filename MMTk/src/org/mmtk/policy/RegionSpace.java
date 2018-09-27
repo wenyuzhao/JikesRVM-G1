@@ -329,7 +329,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationTimer evacuationTimer) {
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
 
@@ -422,9 +422,11 @@ public final class RegionSpace extends Space {
     }
 
     while (true) {
-      if (chunk.isZero()) return Address.zero();
-
+      if (chunk.isZero() || !Space.isMappedAddress(chunk)) return Address.zero();
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedAddress(chunk));
+      // Get allocated state of the next region in chunk
       Address allocated = chunk.plus(Region.METADATA_OFFSET_IN_CHUNK + i * Region.METADATA_BYTES + Region.METADATA_ALLOCATED_OFFSET);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedAddress(allocated));
       if (allocated.loadByte() != ((byte) 0)) {
         return chunk.plus(Region.REGIONS_START_OFFSET + i * Region.BYTES_IN_REGION);
       }
@@ -522,8 +524,10 @@ public final class RegionSpace extends Space {
     AddressArrayQuickSort.sort(regions, regionsSizes);
 
     // select relocation regions
-    int availRegions = ((int) (VM.activePlan.global().getPagesAvail() / EmbeddedMetaData.PAGES_IN_REGION)) * Region.REGIONS_IN_CHUNK;
-    int usableBytesForCopying = (int) (availRegions * Region.BYTES_IN_REGION * 0.9);
+    final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
+    int availPages = VM.activePlan.global().getPagesAvail() - BOOT_PAGES;
+    int availRegions = ((int) (availPages / EmbeddedMetaData.PAGES_IN_REGION)) * Region.REGIONS_IN_CHUNK;
+    int usableBytesForCopying = (int) ((availRegions << Region.LOG_BYTES_IN_REGION) * 0.8);
 
     int currentSize = 0;
     int relocationRegions = 0;
@@ -589,7 +593,7 @@ public final class RegionSpace extends Space {
       sort(regions, regionSizes, 0, regions.length() - 1);
     }
 
-    @Inline
+    @NoInline
     private static void sort(AddressArray regions, AddressArray regionSizes, int lo, int hi) {
       if (hi <= lo) return;
       int j = partition(regions, regionSizes, lo, hi);

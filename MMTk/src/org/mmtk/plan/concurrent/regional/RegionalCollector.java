@@ -18,6 +18,7 @@ import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
@@ -26,6 +27,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
+import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -55,6 +57,10 @@ public class RegionalCollector extends ConcurrentCollector {
   protected final RegionalForwardTraceLocal forwardTrace = new RegionalForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected TraceLocal currentTrace;
+  static boolean concurrentRelocationSetSelectionExecuted = false;
+  static boolean concurrentEagerCleanupExecuted = false;
+  static boolean concurrentCleanupExecuted = false;
+  private static final Atomic.Int atomicCounter = new Atomic.Int();
 
   /****************************************************************************
    *
@@ -70,19 +76,6 @@ public class RegionalCollector extends ConcurrentCollector {
    *
    * Collection-time allocation
    */
-
-  private static final Atomic.Int atomicCounter = new Atomic.Int();
-
-  @Inline
-  private void evacuateRegions() {
-    atomicCounter.set(0);
-    rendezvous();
-    int index;
-    while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
-//      Log.writeln("Evacuating ", Regional.relocationSet.get(index));
-      Region.linearScan(evacuationLinearScan, Regional.relocationSet.get(index));
-    }
-  }
 
   /**
    * {@inheritDoc}
@@ -130,9 +123,33 @@ public class RegionalCollector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == Regional.EVACUATE) {
-      evacuateRegions();
+    if (phaseId == Regional.RELOCATION_SET_SELECTION) {
+      if (!concurrentRelocationSetSelectionExecuted && primary) {
+        AddressArray blocksSnapshot = Regional.regionSpace.snapshotRegions(false);
+        Regional.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+        RegionSpace.markRegionsAsRelocate(Regional.relocationSet);
+      }
       rendezvous();
+      return;
+    }
+
+    if (phaseId == Regional.EAGER_CLEANUP) {
+      if (concurrentEagerCleanupExecuted) return;
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
+        Address region = Regional.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          Regional.relocationSet.set(index, Address.zero());
+          Regional.regionSpace.release(region);
+        }
+      }
+      return;
+    }
+
+    if (phaseId == Regional.EVACUATE) {
+      evacuationLinearScan.evacuateRegions();
       return;
     }
 
@@ -156,7 +173,8 @@ public class RegionalCollector extends ConcurrentCollector {
       return;
     }
 
-    if (phaseId == Regional.CLEANUP_BLOCKS) {
+    if (phaseId == Regional.CLEANUP) {
+      if (concurrentCleanupExecuted) return;
       Regional.regionSpace.cleanupRegions(Regional.relocationSet, false);
       return;
     }
@@ -175,11 +193,68 @@ public class RegionalCollector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
+      super.concurrentCollectionPhase(Regional.CONCURRENT_CLOSURE);
+      return;
     }
-    super.concurrentCollectionPhase(phaseId);
+
+    if (phaseId == Regional.CONCURRENT_RELOCATION_SET_SELECTION) {
+      concurrentRelocationSetSelectionExecuted = true;
+      if (rendezvous() == 0) {
+        AddressArray blocksSnapshot = Regional.regionSpace.snapshotRegions(false);
+        Regional.relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
+        RegionSpace.markRegionsAsRelocate(Regional.relocationSet);
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+
+    if (phaseId == Regional.CONCURRENT_EAGER_CLEANUP) {
+      concurrentEagerCleanupExecuted = true;
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
+        Address region = Regional.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          Regional.relocationSet.set(index, Address.zero());
+          Regional.regionSpace.release(region);
+        }
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+
+    if (phaseId == Regional.CONCURRENT_CLEANUP) {
+      concurrentCleanupExecuted = true;
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
+        Address region = Regional.relocationSet.get(index);
+        Regional.relocationSet.set(index, Address.zero());
+        if (!region.isZero()) Regional.regionSpace.release(region);
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
   }
+
+  @Inline
+  @Unpreemptible
+  private void notifyConcurrentPhaseEnd() {
+    if (rendezvous() == 0) {
+      continueCollecting = false;
+      if (!group.isAborted()) {
+        VM.collection.requestMutatorFlush();
+        continueCollecting = Phase.notifyConcurrentPhaseComplete();
+      }
+    }
+    rendezvous();
+  }
+
 
   /****************************************************************************
    *

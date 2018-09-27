@@ -60,6 +60,8 @@ public class EvacuationLinearScan extends LinearScan {
 
       VM.scanning.scanObject(updateRemSetTransitiveClosure, newObject);
 //      Region.Card.updateCardMeta(newObject);
+    } else {
+      object.toAddress().store(VM.objectModel.getObjectEndAddress(object), Region.Card.OBJECT_END_ADDRESS_OFFSET);
     }
   }
 }

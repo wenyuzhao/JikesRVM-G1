@@ -22,6 +22,7 @@ import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
@@ -208,7 +209,7 @@ public class G1Mutator extends ConcurrentMutator {
     ConcurrentRemSetRefinement.enqueueFilledRSBuffer(buf, triggerConcurrentRefinement);
   }
 
-  @Inline
+  @NoInline
   public void markAndEnqueueCard(Address card) {
     if (CardTable.attemptToMarkCard(card, true)) {
       remSetLogBuffer().plus(remSetLogBufferCursor << Constants.LOG_BYTES_IN_ADDRESS).store(card);
@@ -226,7 +227,7 @@ public class G1Mutator extends ConcurrentMutator {
       Word y = VM.objectModel.objectStartRef(ref).toWord();
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
       if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
-        Region.Card.updateCardMeta(src);
+        Region.Card.updateCardMetaNoInline(src);
         markAndEnqueueCard(Region.Card.of(src));
       }
     }

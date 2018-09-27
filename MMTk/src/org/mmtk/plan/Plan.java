@@ -798,6 +798,8 @@ public abstract class Plan {
    */
   @Interruptible
   public static void harnessEnd()  {
+    Log.writeln("harnessEnd");
+    Log.writeln(LatencyTimer.isEnabled() ? "1" : "0");
     if (LatencyTimer.isEnabled()) {
       LatencyTimer.stop();
       LatencyTimer.dump();

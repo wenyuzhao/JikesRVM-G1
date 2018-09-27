@@ -21,6 +21,9 @@ public final class Options {
   public static OptionSet set;
 
   /* Other options */
+  public static ConcurrentCleanup concurrentCleanup;
+  public static ConcurrentCollectionSetSelection concurrentCollectionSetSelection;
+  public static ConcurrentEagerCleanup concurrentEagerCleanup;
   public static ConcurrentTrigger concurrentTrigger;
   public static CycleFilterThreshold cycleFilterThreshold;
   public static CycleMetaDataLimit cycleMetaDataLimit;

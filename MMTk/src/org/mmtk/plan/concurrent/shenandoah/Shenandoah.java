@@ -29,6 +29,7 @@ import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 import org.vmutil.options.Option;
@@ -45,15 +46,12 @@ public class Shenandoah extends Concurrent {
   public final Trace evacuateTrace = new Trace(metaDataSpace);
   public final Trace forwardTrace = new Trace(metaDataSpace);
   public final Trace validateTrace = new Trace(metaDataSpace);
-  public static AddressArray blocksSnapshot, relocationSet;
-  //public static boolean concurrentMarkingInProgress = false;
+  public static AddressArray relocationSet;
 
   static {
     Options.g1ReservePercent = new G1ReservePercent();
     Options.g1InitiatingHeapOccupancyPercent = new G1InitiatingHeapOccupancyPercent();
     Options.g1GCLiveThresholdPercent = new G1GCLiveThresholdPercent();
-    Options.g1MaxNewSizePercent = new G1MaxNewSizePercent();
-    Options.g1NewSizePercent = new G1NewSizePercent();
     Options.g1HeapWastePercent = new G1HeapWastePercent();
     regionSpace.makeAllocAsMarked();
     smallCodeSpace.makeAllocAsMarked();
@@ -69,15 +67,14 @@ public class Shenandoah extends Concurrent {
   public static final short CLEAR_BROOKS_BARRIER_ACTIVE = Phase.createSimple("clear-brooks-barrier-active");
   // Relocation set selection phases
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-  public static final short preemptConcurrentRelocationSetSelection = Phase.createComplex("preempt-relocation-set-selection", null,
-      Phase.scheduleCollector(RELOCATION_SET_SELECTION));
-  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection",
-      Phase.scheduleComplex(preemptConcurrentRelocationSetSelection));
+//  public static final short preemptConcurrentRelocationSetSelection = Phase.createComplex("preempt-relocation-set-selection", null,
+//      Phase.scheduleCollector(RELOCATION_SET_SELECTION));
+//  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection",
+//      Phase.scheduleComplex(preemptConcurrentRelocationSetSelection));
   // Evacuation phases
   public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
   public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
   public static final short EVACUATE = Phase.createSimple("evacuate");
-  public static final short HEAP_VALIDATION = Phase.createSimple("HEAP_VALIDATION");
   public static final short preemptConcurrentEvacuate = Phase.createComplex("preempt-concurrent-evacuate", null,
       Phase.scheduleCollector(EVACUATE));
   public static final short CONCURRENT_EVACUATE = Phase.createConcurrent("concurrent-evacuate",
@@ -109,45 +106,45 @@ public class Shenandoah extends Concurrent {
       Phase.scheduleMutator   (CLEAR_BARRIER_ACTIVE));
   // Eager cleanup phases
   public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
-  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preempt-concurrent-eager-cleanup", null,
-      Phase.scheduleCollector(EAGER_CLEANUP));
-  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
-      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
+//  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preempt-concurrent-eager-cleanup", null,
+//      Phase.scheduleCollector(EAGER_CLEANUP));
+//  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
+//      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
   // Cleanup phases
   public static final short CLEANUP = Phase.createSimple("cleanup");
-  public static final short preemptConcurrentCleanup = Phase.createComplex("preempt-concurrent-cleanup", null,
-      Phase.scheduleCollector(CLEANUP));
-  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
-      Phase.scheduleComplex(preemptConcurrentCleanup));
+//  public static final short preemptConcurrentCleanup = Phase.createComplex("preempt-concurrent-cleanup", null,
+//      Phase.scheduleCollector(CLEANUP));
+//  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
+//      Phase.scheduleComplex(preemptConcurrentCleanup));
 
-  public static final short VALIDATE_PREPARE = Phase.createSimple("validate-prepare");
-  public static final short VALIDATE_CLOSURE = Phase.createSimple("validate-closure");
-  public static final short VALIDATE_RELEASE = Phase.createSimple("validate-release");
+//  public static final short VALIDATE_PREPARE = Phase.createSimple("validate-prepare");
+//  public static final short VALIDATE_CLOSURE = Phase.createSimple("validate-closure");
+//  public static final short VALIDATE_RELEASE = Phase.createSimple("validate-release");
 
 
-  public short validationPhase = Phase.createComplex("validation-phase", null,
-      Phase.scheduleGlobal   (VALIDATE_PREPARE),
-      Phase.scheduleCollector(VALIDATE_PREPARE),
-      Phase.scheduleMutator  (VALIDATE_PREPARE),
-      Phase.scheduleMutator  (PREPARE_STACKS),
-      Phase.scheduleGlobal   (PREPARE_STACKS),
-      Phase.scheduleCollector(STACK_ROOTS),
-      Phase.scheduleGlobal   (STACK_ROOTS),
-      Phase.scheduleCollector(ROOTS),
-      Phase.scheduleGlobal   (ROOTS),
-      Phase.scheduleCollector(VALIDATE_CLOSURE),
-      Phase.scheduleCollector(SOFT_REFS),
-      Phase.scheduleCollector(VALIDATE_CLOSURE),
-      Phase.scheduleCollector(WEAK_REFS),
-      Phase.scheduleCollector(FINALIZABLE),
-      Phase.scheduleCollector(VALIDATE_CLOSURE),
-      Phase.scheduleCollector(PHANTOM_REFS),
-      Phase.scheduleComplex  (forwardPhase),
-      Phase.scheduleCollector(VALIDATE_CLOSURE),
-      Phase.scheduleMutator  (VALIDATE_RELEASE),
-      Phase.scheduleCollector(VALIDATE_RELEASE),
-      Phase.scheduleGlobal   (VALIDATE_RELEASE)
-  );
+//  public short validationPhase = Phase.createComplex("validation-phase", null,
+//      Phase.scheduleGlobal   (VALIDATE_PREPARE),
+//      Phase.scheduleCollector(VALIDATE_PREPARE),
+//      Phase.scheduleMutator  (VALIDATE_PREPARE),
+//      Phase.scheduleMutator  (PREPARE_STACKS),
+//      Phase.scheduleGlobal   (PREPARE_STACKS),
+//      Phase.scheduleCollector(STACK_ROOTS),
+//      Phase.scheduleGlobal   (STACK_ROOTS),
+//      Phase.scheduleCollector(ROOTS),
+//      Phase.scheduleGlobal   (ROOTS),
+//      Phase.scheduleCollector(VALIDATE_CLOSURE),
+//      Phase.scheduleCollector(SOFT_REFS),
+//      Phase.scheduleCollector(VALIDATE_CLOSURE),
+//      Phase.scheduleCollector(WEAK_REFS),
+//      Phase.scheduleCollector(FINALIZABLE),
+//      Phase.scheduleCollector(VALIDATE_CLOSURE),
+//      Phase.scheduleCollector(PHANTOM_REFS),
+//      Phase.scheduleComplex  (forwardPhase),
+//      Phase.scheduleCollector(VALIDATE_CLOSURE),
+//      Phase.scheduleMutator  (VALIDATE_RELEASE),
+//      Phase.scheduleCollector(VALIDATE_RELEASE),
+//      Phase.scheduleGlobal   (VALIDATE_RELEASE)
+//  );
 
   public short _collection = Phase.createComplex("_collection", null,
       Phase.scheduleComplex  (initPhase),
@@ -219,11 +216,11 @@ public class Shenandoah extends Concurrent {
   public void processOptions() {
     super.processOptions();
     /* Set up the concurrent marking phase */
-    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
-    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
-    replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
-    replacePhase(Phase.scheduleCollector(EVACUATE), Phase.scheduleComplex(concurrentEvacuate));
-    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
+//    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
+//    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
+//    replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
+//    replacePhase(Phase.scheduleCollector(EVACUATE), Phase.scheduleComplex(concurrentEvacuate));
+//    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
   }
 
   /**
@@ -248,17 +245,6 @@ public class Shenandoah extends Concurrent {
       super.collectionPhase(RELEASE);
       return;
     }
-
-//    if (phaseId == RELOCATION_SET_SELECTION) {
-//      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
-//      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
-//      RegionSpace.markRegionsAsRelocate(relocationSet);
-//
-//      if (VM.VERIFY_ASSERTIONS) {
-//        Log.writeln("Relocation set size ", relocationSet.length());
-//      }
-//      return;
-//    }
 
     if (phaseId == EVACUATE_PREPARE) {
       evacuateTrace.prepare();
@@ -304,19 +290,19 @@ public class Shenandoah extends Concurrent {
       return;
     }
 
-    if (phaseId == VALIDATE_PREPARE) {
-      super.collectionPhase(PREPARE);
-      validateTrace.prepare();
-      regionSpace.prepare();
-      return;
-    }
-
-    if (phaseId == VALIDATE_RELEASE) {
-      validateTrace.release();
-      regionSpace.release();
-      super.collectionPhase(RELEASE);
-      return;
-    }
+//    if (phaseId == VALIDATE_PREPARE) {
+//      super.collectionPhase(PREPARE);
+//      validateTrace.prepare();
+//      regionSpace.prepare();
+//      return;
+//    }
+//
+//    if (phaseId == VALIDATE_RELEASE) {
+//      validateTrace.release();
+//      regionSpace.release();
+//      super.collectionPhase(RELEASE);
+//      return;
+//    }
 
     super.collectionPhase(phaseId);
   }
@@ -345,9 +331,6 @@ public class Shenandoah extends Concurrent {
     int availPages = getPagesAvail() - BOOT_PAGES;
     return !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
   }
-
-//  final float RESERVE_PERCENT = 5 / 100;//Options.g1ReservePercent.getValue() / 100;
-//  final float INIT_HEAP_OCCUPANCY_PERCENT = 20f;//Options.g1InitiatingHeapOccupancyPercent.getValue();
 
   /**
    * Return the number of pages reserved for copying.
@@ -392,36 +375,41 @@ public class Shenandoah extends Concurrent {
     super.registerSpecializedMethods();
   }
 
-  @Override
-  @Inline
-  public void storeObjectReference(Address slot, ObjectReference value) {
-    slot.store(value);
-  }
-
-  @Override
-  @Inline
-  public ObjectReference loadObjectReference(Address slot) {
-    return slot.loadObjectReference();
-  }
+//  @Override
+//  @Inline
+//  public void storeObjectReference(Address slot, ObjectReference value) {
+//    slot.store(value);
+//  }
+//
+//  @Override
+//  @Inline
+//  public ObjectReference loadObjectReference(Address slot) {
+//    return slot.loadObjectReference();
+//  }
 
   static boolean referenceUpdatingBarrierActive = false;
   static boolean brooksBarrierActive = false;
+
+  @NoInline
+  static public ObjectReference getForwardingPointerAndForwardIfNecessary(ObjectReference object) {
+    if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
+      Word priorStatusWord = RegionSpace.ForwardingWord.attemptToForward(object);
+      if (RegionSpace.ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+        return RegionSpace.ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+      } else {
+        return RegionSpace.ForwardingWord.forwardObjectWithinMutatorContext(object, ALLOC_RS);
+      }
+    } else {
+      return object;
+    }
+  }
 
   @Inline
   static public ObjectReference getForwardingPointer(ObjectReference object) {
     if (brooksBarrierActive) {
       if (object.toAddress().LT(VM.AVAILABLE_START)) return object;
-
-      if (Space.isInSpace(RS, object) && Region.relocationRequired(Region.of(object))) {
-        Word priorStatusWord = RegionSpace.ForwardingWord.attemptToForward(object);
-        if (RegionSpace.ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
-          return RegionSpace.ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-        } else {
-          return RegionSpace.ForwardingWord.forwardObjectWithinMutatorContext(object, ALLOC_RS);
-        }
-      } else {
-        return object;
-      }
+//      return getForwardingPointerAndForwardIfNecessary(object);
+      return ObjectReference.nullReference();
     } else if (referenceUpdatingBarrierActive) {
       return object.toAddress().LT(VM.AVAILABLE_START) ? object : RegionSpace.ForwardingWord.getForwardedObject(object);
     } else {

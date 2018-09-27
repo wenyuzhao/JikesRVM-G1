@@ -135,20 +135,26 @@ public class PauseTimePredictor {
     float averageCardScanningTime = totalNurseryCardScanningTime / totalNurseryCount;
     float evacuationTimePerRegion = totalNurseryEvacuationTime / totalNurseryRegions;
     int newEdenRegions = (int) ((EXPECTED_PAUSE_TIME() - averageCardScanningTime) / evacuationTimePerRegion);
-    Log.write("newEdenRegions0=");
-    Log.writeln(newEdenRegions);
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.write("newEdenRegions0=");
+      Log.writeln(newEdenRegions);
+    }
     int maxEdenRegions = (int) ((Options.g1MaxNewSizePercent.getValue() / 100f) * global().TOTAL_LOGICAL_REGIONS);
     if (newEdenRegions > maxEdenRegions) newEdenRegions = maxEdenRegions;
     if (newEdenRegions < 1) newEdenRegions = 1;
     global().newSizeRatio = ((float) newEdenRegions) / ((float) global().TOTAL_LOGICAL_REGIONS);
-    Log.write("averageCardScanningTime=");
-    Log.writeln(averageCardScanningTime);
-    Log.write("evacuationTimePerRegion=");
-    Log.writeln(evacuationTimePerRegion);
-    Log.write("newEdenRegions=");
-    Log.writeln(newEdenRegions);
-    Log.write("NewSizeRatio=");
-    Log.writeln(global().newSizeRatio);
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.write("averageCardScanningTime=");
+      Log.writeln(averageCardScanningTime);
+      Log.write("averageCardScanningTime=");
+      Log.writeln(averageCardScanningTime);
+      Log.write("evacuationTimePerRegion=");
+      Log.writeln(evacuationTimePerRegion);
+      Log.write("newEdenRegions=");
+      Log.writeln(newEdenRegions);
+      Log.write("NewSizeRatio=");
+      Log.writeln(global().newSizeRatio);
+    }
   }
 
 

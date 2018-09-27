@@ -17,7 +17,7 @@ public class CardTable {
   static final int TOTAL_CARDS;
   static final int HOTNESS_TABLE_PAGES;
   static final byte HOTNESS_THRESHOLD = 4;
-  static final int[] cardTable;
+  public static final int[] cardTable;
   static final int[] dirtyCards = new int[] { 0 };
   static Address cardHotnessTable = Address.zero();
   static final Lock cardHotnessTableLock = VM.newLock("cardHotnessTableLock");
@@ -70,7 +70,7 @@ public class CardTable {
 
   @Inline
   private static int hash(Address card) {
-    return card.diff(VM.HEAP_START).toWord().rsha(Region.Card.LOG_BYTES_IN_CARD).toInt();
+    return card.diff(VM.HEAP_START).toWord().rshl(Region.Card.LOG_BYTES_IN_CARD).toInt();
   }
 
   @Inline

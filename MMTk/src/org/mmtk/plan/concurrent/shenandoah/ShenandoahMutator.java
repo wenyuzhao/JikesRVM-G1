@@ -142,17 +142,17 @@ public class ShenandoahMutator extends ShenandoahMutatorBarriers {
       return;
     }
 
-    if (phaseId == Shenandoah.VALIDATE_PREPARE) {
-      ra.reset();
-      super.collectionPhase(Shenandoah.PREPARE, primary);
-      return;
-    }
-
-    if (phaseId == Shenandoah.VALIDATE_RELEASE) {
-      ra.reset();
-      super.collectionPhase(Shenandoah.RELEASE, primary);
-      return;
-    }
+//    if (phaseId == Shenandoah.VALIDATE_PREPARE) {
+//      ra.reset();
+//      super.collectionPhase(Shenandoah.PREPARE, primary);
+//      return;
+//    }
+//
+//    if (phaseId == Shenandoah.VALIDATE_RELEASE) {
+//      ra.reset();
+//      super.collectionPhase(Shenandoah.RELEASE, primary);
+//      return;
+//    }
 
 
 

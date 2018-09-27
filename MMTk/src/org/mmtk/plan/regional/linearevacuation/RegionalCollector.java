@@ -16,7 +16,6 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.plan.concurrent.ConcurrentCollector;
 import org.mmtk.policy.Region;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
@@ -24,7 +23,6 @@ import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -55,6 +53,7 @@ public class RegionalCollector extends StopTheWorldCollector {
   protected final RegionalForwardTraceLocal forwardTrace = new RegionalForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected TraceLocal currentTrace;
+  private static final Atomic.Int atomicCounter = new Atomic.Int();
 
   /****************************************************************************
    *
@@ -70,19 +69,6 @@ public class RegionalCollector extends StopTheWorldCollector {
    *
    * Collection-time allocation
    */
-
-  private static final Atomic.Int atomicCounter = new Atomic.Int();
-
-  @Inline
-  private void evacuateRegions() {
-    atomicCounter.set(0);
-    rendezvous();
-    int index;
-    while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
-//      Log.writeln("Evacuating ", Regional.relocationSet.get(index));
-      Region.linearScan(evacuationLinearScan, Regional.relocationSet.get(index));
-    }
-  }
 
   /**
    * {@inheritDoc}
@@ -130,9 +116,23 @@ public class RegionalCollector extends StopTheWorldCollector {
       return;
     }
 
-    if (phaseId == Regional.EVACUATE) {
-      evacuateRegions();
+    if (phaseId == Regional.EAGER_CLEANUP) {
+      atomicCounter.set(0);
       rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < Regional.relocationSet.length()) {
+        Address region = Regional.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          Regional.relocationSet.set(index, Address.zero());
+          Regional.regionSpace.release(region);
+        }
+      }
+      rendezvous();
+      return;
+    }
+
+    if (phaseId == Regional.EVACUATE) {
+      evacuationLinearScan.evacuateRegions();
       return;
     }
 

@@ -15,10 +15,10 @@ package org.mmtk.utility.options;
 /**
  * Should we enable a return barrier?
  */
-public final class G1GenerationalMode extends org.vmutil.options.BooleanOption {
-  public G1GenerationalMode() {
-    super(Options.set, "G1 Generational Mode",
-          "Enable G1 generational mode?",
+public final class ConcurrentCollectionSetSelection extends org.vmutil.options.BooleanOption {
+  public ConcurrentCollectionSetSelection() {
+    super(Options.set, "Concurrent Collection Set Selection",
+          "Enable Concurrent Collection Set Selection ?",
         true);
   }
 }

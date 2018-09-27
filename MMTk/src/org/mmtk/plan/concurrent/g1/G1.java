@@ -92,6 +92,11 @@ public class G1 extends Concurrent {
   public static short currentGCKind = NOT_IN_GC, lastGCKind = NOT_IN_GC;
 
   /* Phases */
+  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
+  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preempt-concurrent-eager-cleanup", null,
+      Phase.scheduleCollector(EAGER_CLEANUP));
+  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
+      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
   public static final short EVACUATE = Phase.createSimple("evacuate");
   public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
@@ -171,6 +176,7 @@ public class G1 extends Concurrent {
       Phase.scheduleComplex  (completeClosurePhase),
       // Evacuate
       Phase.scheduleCollector(RELOCATION_SET_SELECTION),
+      Phase.scheduleCollector(EAGER_CLEANUP),
       Phase.scheduleCollector(EVACUATE),
       // Update pointers
       Phase.scheduleComplex  (refineDirtyCards),
@@ -193,8 +199,9 @@ public class G1 extends Concurrent {
   public void processOptions() {
     super.processOptions();
     /* Set up the concurrent marking phase */
-    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
-    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
+//    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
+//    replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
+//    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
   }
 
   /****************************************************************************
@@ -216,9 +223,10 @@ public class G1 extends Concurrent {
 
     if (phaseId == SET_COLLECTION_KIND) {
       super.collectionPhase(SET_COLLECTION_KIND);
-      if (currentGCKind != 0) {
-        // FULL_GC
+      if (Plan.isUserTriggeredCollection()) {
+        currentGCKind = FULL_GC;
       } else if (collection == nurseryCollection) {
+        PauseTimePredictor.nurseryGCStart();
         currentGCKind = YOUNG_GC;
       } else {
         currentGCKind = MIXED_GC;
@@ -229,6 +237,7 @@ public class G1 extends Concurrent {
     if (phaseId == INITIATE) {
       super.collectionPhase(INITIATE);
       G1Collector.concurrentRelocationSetSelectionExecuted = false;
+      G1Collector.concurrentEagerCleanupExecuted = false;
       G1Collector.concurrentCleanupExecuted = false;
       return;
     }
@@ -258,7 +267,6 @@ public class G1 extends Concurrent {
 
     if (phaseId == FORWARD_PREPARE) {
       if (nurseryGC()) {
-        PauseTimePredictor.nurseryGCStart();
         VM.memory.globalPrepareVMSpace();
         nurseryTrace.prepare();
       } else {
@@ -289,6 +297,7 @@ public class G1 extends Concurrent {
       }
       lastGCKind = currentGCKind;
       currentGCKind = NOT_IN_GC;
+      collection = matureCollection;
       return;
     }
 

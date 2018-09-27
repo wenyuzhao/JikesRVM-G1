@@ -26,9 +26,9 @@ public abstract class ShenandoahMutatorBarriers extends ConcurrentMutator {
     ObjectReference newTarget = getForwardingPointer(tgt);
     ObjectReference newSrc = getForwardingPointer(tgt);
     boolean result = VM.barriers.objectReferenceTryCompareAndSwap(newSrc, old, newTarget, metaDataA, metaDataB, mode);
-    if (!result) {
-      result = VM.barriers.objectReferenceTryCompareAndSwap(newSrc, getForwardingPointer(old), newTarget, metaDataA, metaDataB, mode);
-    }
+//    if (!result) {
+//      result = VM.barriers.objectReferenceTryCompareAndSwap(newSrc, getForwardingPointer(old), newTarget, metaDataA, metaDataB, mode);
+//    }
     if (barrierActive) checkAndEnqueueReference(old);
     return result;
   }

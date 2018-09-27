@@ -63,7 +63,9 @@ public class G1Collector extends ConcurrentCollector {
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected int currentTrace = 0;
   static boolean concurrentRelocationSetSelectionExecuted = false;
+  static boolean concurrentEagerCleanupExecuted = false;
   static boolean concurrentCleanupExecuted = false;
+  private static final Atomic.Int atomicCounter = new Atomic.Int();
 
   /****************************************************************************
    *
@@ -152,6 +154,24 @@ public class G1Collector extends ConcurrentCollector {
       return;
     }
 
+    if (phaseId == G1.EAGER_CLEANUP) {
+      if (concurrentEagerCleanupExecuted) return;
+
+      RemSet.cleanupRemSetRefsToRelocationSet(G1.regionSpace, G1.relocationSet, true);
+      atomicCounter.set(0);
+      rendezvous();
+
+      int index;
+      while ((index = atomicCounter.add(1)) < G1.relocationSet.length()) {
+        Address region = G1.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          G1.relocationSet.set(index, Address.zero());
+          G1.regionSpace.release(region);
+        }
+      }
+      return;
+    }
+
     if (phaseId == G1.EVACUATE) {
       evacuationLinearScan.evacuateRegions();
       return;
@@ -217,7 +237,7 @@ public class G1Collector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
-    Log.writeln(Phase.getName(phaseId));
+    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
 
     if (phaseId == G1.CONCURRENT_CLOSURE) {
       currentTrace = 0;
@@ -239,6 +259,23 @@ public class G1Collector extends ConcurrentCollector {
           PauseTimePredictor.predict(G1.relocationSet);
         }
         RegionSpace.markRegionsAsRelocate(G1.relocationSet);
+      }
+      notifyConcurrentPhaseEnd();
+      return;
+    }
+
+    if (phaseId == G1.CONCURRENT_EAGER_CLEANUP) {
+      concurrentEagerCleanupExecuted = true;
+      RemSet.cleanupRemSetRefsToRelocationSet(G1.regionSpace, G1.relocationSet, true);
+      atomicCounter.set(0);
+      rendezvous();
+      int index;
+      while ((index = atomicCounter.add(1)) < G1.relocationSet.length()) {
+        Address region = G1.relocationSet.get(index);
+        if (!region.isZero() && Region.usedSize(region) == 0) {
+          G1.relocationSet.set(index, Address.zero());
+          G1.regionSpace.release(region);
+        }
       }
       notifyConcurrentPhaseEnd();
       return;

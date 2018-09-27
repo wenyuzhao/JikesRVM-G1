@@ -57,6 +57,7 @@ public class Regional extends StopTheWorld {
   public static final int SCAN_EVACUATE = 1;
 
   /* Phases */
+  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
   public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
   public static final short EVACUATE_CLOSURE = Phase.createSimple("evacuate-closure");
   public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
@@ -98,20 +99,12 @@ public class Regional extends StopTheWorld {
     Phase.scheduleComplex  (initPhase),
     // Mark
     Phase.scheduleComplex  (rootClosurePhase),
-
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleGlobal   (CLOSURE),
-    Phase.scheduleCollector(CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleGlobal   (CLOSURE),
-    Phase.scheduleCollector(CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleGlobal   (RELEASE),
-
+    Phase.scheduleComplex  (refTypeClosurePhase),
     Phase.scheduleComplex  (completeClosurePhase),
 
     // Select relocation sets
     Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+    Phase.scheduleCollector(EAGER_CLEANUP),
 
     // Evacuate
     Phase.scheduleComplex  (evacuatePhase),
