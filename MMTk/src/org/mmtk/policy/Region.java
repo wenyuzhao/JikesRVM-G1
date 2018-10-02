@@ -453,19 +453,29 @@ public class Region {
 //        if (nursery) continue;
         if (Space.isInSpace(G1_SPACE, firstCard)) continue;
 
+
         Space space = Space.getSpaceForAddress(firstCard);
-        if (space instanceof SegregatedFreeListSpace) {
-          if (!BlockAllocator.checkBlockMeta(firstCard)) {
+        if (!nursery) {
+          if (space instanceof SegregatedFreeListSpace) {
+            if (!BlockAllocator.checkBlockMeta(firstCard)) {
+              anchors[index] = 0xFFFFFFFF;
+              limits[index] = 0xFFFFFFFF;
+            }
+          } else if (space instanceof LargeObjectSpace) {
+            if (!((LargeObjectSpace) space).isInToSpace(firstCard)) {
+              anchors[index] = 0xFFFFFFFF;
+              limits[index] = 0xFFFFFFFF;
+            }
+          } else if (space instanceof RawPageSpace) {
             anchors[index] = 0xFFFFFFFF;
             limits[index] = 0xFFFFFFFF;
           }
-        } if (space instanceof LargeObjectSpace) {
-          if (!((LargeObjectSpace) space).isInToSpace(firstCard)) {
+        } else {
+          if (space instanceof RawPageSpace) {
             anchors[index] = 0xFFFFFFFF;
             limits[index] = 0xFFFFFFFF;
           }
         }
-
 //          if (Space.isInSpace(G1_SPACE, firstCard)) continue;
 //          anchors[index] = 0xFFFFFFFF;
 //          limits[index] = 0xFFFFFFFF;
@@ -532,18 +542,30 @@ public class Region {
           if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
             currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
           } else {
+//            if (VM.VERIFY_ASSERTIONS) {
+//              if (!VM.debugging.validRef(ref)) {
+//                Log.writeln();
+//                Log.write("Space: ");
+//                Log.writeln(Space.getSpaceForObject(ref).getName());
+//                if (Space.getSpaceForObject(ref) instanceof SegregatedFreeListSpace) {
+//                  Log.writeln(BlockAllocator.checkBlockMeta(Region.Card.of(ref)) ? " Block Live " : " Block Dead ");
+//                }
+//                VM.objectModel.dumpObject(ref);
+//                VM.assertions.fail("");
+//              }
+//            }
             currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
           }
         }
 
         if (currentObjectEnd.GE(end)) {
-//          if (ref.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
+//          if (ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
             scan.scan(ref);
 //          }
           break;
         } else {
           ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-//          if (ref.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
+//          if (ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
             scan.scan(ref);
 //          }
           ref = next;

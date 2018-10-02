@@ -195,8 +195,10 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       tmp = tmp.rshl(Region.LOG_BYTES_IN_REGION);
       if (tmp.isZero()) return;
       if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {
-        Address foreignBlock = Region.of(value);
+        Address foreignBlock = Region.of(ref);
+        Region.Card.updateCardMeta(source);
         RemSet.addCard(foreignBlock, card);
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.contains(foreignBlock, card));
       }
     }
   };
@@ -228,9 +230,9 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     if (!Space.isMappedAddress(card)) return;
     if (card.LT(VM.AVAILABLE_START) || Space.isInSpace(Plan.VM_SPACE, card)) return;
     if (Space.isInSpace(G1.G1, card) && !Region.allocated(Region.of(card))) return;
-    if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
-      if (!BlockAllocator.checkBlockMeta(card)) return;
-    }
+//    if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
+//      if (!BlockAllocator.checkBlockMeta(card)) return;
+//    }
 //    if (!Space.isInSpace(Plan.VM_SPACE, card)) {
     long time = VM.statistics.nanoTime();
     Region.Card.linearScan(cardLinearScan, G1.regionSpace, card, false);
@@ -264,7 +266,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     int cardsToClear = RemSet.ceilDiv(totalCards, workers);
 
 //    for (int i = 0; i < cardsToClear; i++) {
-//      int index = i * workers + id;
+//      int index = id * cardsToClear + i;
 //      if (index >= totalCards) break;
 //      Address c = VM.HEAP_START.plus(index << Region.Card.LOG_BYTES_IN_CARD);
 //      if (CardTable.attemptToMarkCard(c, false)) {

@@ -258,7 +258,7 @@ public class Shenandoah extends Concurrent {
 
     if (phaseId == FORWARD_PREPARE) {
       super.collectionPhase(PREPARE);
-      forwardTrace.prepare();
+      forwardTrace.prepareNonBlocking();
       regionSpace.prepare();
       return;
     }

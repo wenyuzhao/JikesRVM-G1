@@ -57,7 +57,7 @@ public class G1MarkTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
 
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
 //    if (VM.VERIFY_ASSERTIONS) {
 //      if (!VM.debugging.validRef(object)) {

@@ -245,6 +245,7 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public void release(Address region) {
+    if (VM.VERIFY_ASSERTIONS) Log.writeln("Release region ", region);
     committedRegions.add(-1);
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
 
@@ -266,6 +267,7 @@ public final class RegionSpace extends Space {
     } else {
       VM.objectModel.writeAvailableByte(object, (byte) 0);
     }
+    Region.updateRegionAliveSize(Region.of(object), object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
   }
 
@@ -329,7 +331,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationTimer evacuationTimer) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
 
@@ -659,13 +661,6 @@ public final class RegionSpace extends Space {
       Address region = relocationSet.get(cursor);
       relocationSet.set(cursor, Address.zero());
       if (!region.isZero()) {
-        if (VM.VERIFY_ASSERTIONS) {
-          VM.assertions._assert(Region.relocationRequired(region));
-          Log.write("Region ", region);
-          Log.write(": ", Region.usedSize(region));
-          Log.write("/", Region.BYTES_IN_REGION);
-          Log.writeln(" released");
-        }
         if (Region.USE_CARDS) {
           Region.Card.clearCardMetaForRegion(region);
         }

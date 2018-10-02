@@ -59,6 +59,7 @@ public class G1 extends Concurrent {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace nurseryTrace = new Trace(metaDataSpace);
   public final Trace matureTrace = new Trace(metaDataSpace);
+  public final Trace validateTrace = new Trace(metaDataSpace);
   public static AddressArray relocationSet;
 
   static {
@@ -133,6 +134,9 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(ROOTS),
       Phase.scheduleGlobal   (ROOTS),
       Phase.scheduleCollector(FORWARD_CLOSURE),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
       Phase.scheduleCollector(REMEMBERED_SETS),
       Phase.scheduleCollector(FORWARD_CLOSURE)
   );
@@ -142,7 +146,8 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(WEAK_REFS),
       Phase.scheduleCollector(FINALIZABLE),
       Phase.scheduleCollector(FORWARD_CLOSURE),
-      Phase.scheduleCollector(PHANTOM_REFS)
+      Phase.scheduleCollector(PHANTOM_REFS),
+      Phase.scheduleCollector(FORWARD_CLOSURE)
   );
   protected static final short forwardCompleteClosurePhase = Phase.createComplex("forward-release", null,
       Phase.scheduleCollector(CLEANUP),
@@ -158,10 +163,14 @@ public class G1 extends Concurrent {
       Phase.scheduleComplex  (initPhase),
       // Evacuate
       Phase.scheduleCollector(RELOCATION_SET_SELECTION),
+      Phase.scheduleMutator  (RELOCATION_SET_SELECTION),
       Phase.scheduleComplex  (refineDirtyCards),
       Phase.scheduleComplex  (forwardRootClosurePhase),
       Phase.scheduleComplex  (forwardRefTypeClosurePhase),
       Phase.scheduleComplex  (forwardCompleteClosurePhase),
+
+//      Phase.scheduleComplex  (Validator.validationPhase),
+//      Phase.scheduleCollector(CLEAR_CARD_META),
       // Complete
       Phase.scheduleComplex  (finishPhase)
   );
@@ -183,6 +192,12 @@ public class G1 extends Concurrent {
       Phase.scheduleComplex  (forwardRootClosurePhase),
       Phase.scheduleComplex  (forwardRefTypeClosurePhase),
       Phase.scheduleComplex  (forwardCompleteClosurePhase),
+
+//      Phase.scheduleMutator  (REFINE_CARDS),
+//      Phase.scheduleGlobal   (REFINE_CARDS),
+//      Phase.scheduleCollector(REFINE_CARDS),
+//      Phase.scheduleComplex  (Validator.validationPhase),
+//      Phase.scheduleCollector(CLEAR_CARD_META),
       // Complete
       Phase.scheduleComplex  (finishPhase)
   );
@@ -268,8 +283,10 @@ public class G1 extends Concurrent {
     if (phaseId == FORWARD_PREPARE) {
       if (nurseryGC()) {
         VM.memory.globalPrepareVMSpace();
+//        regionSpace.prepare();
         nurseryTrace.prepare();
       } else {
+//        regionSpace.prepareNursery();
         matureTrace.prepare();
       }
       return;
@@ -278,10 +295,17 @@ public class G1 extends Concurrent {
     if (phaseId == FORWARD_RELEASE) {
       (nurseryGC() ? nurseryTrace : matureTrace).release();
       if (!nurseryGC()) {
-        regionSpace.release();
+//        regionSpace.release();
         super.collectionPhase(RELEASE);
       } else {
+//        regionSpace.release();
         VM.memory.globalReleaseVMSpace();
+      }
+
+      if (currentGCKind == YOUNG_GC) {
+        PauseTimePredictor.nurseryGCEnd();
+      } else if (currentGCKind == MIXED_GC) {
+        PauseTimePredictor.stopTheWorldEnd();
       }
       return;
     }
@@ -290,14 +314,23 @@ public class G1 extends Concurrent {
       ConcurrentRemSetRefinement.resume();
       super.collectionPhase(COMPLETE);
 
-      if (currentGCKind == YOUNG_GC) {
-        PauseTimePredictor.nurseryGCEnd();
-      } else if (currentGCKind == MIXED_GC) {
-        PauseTimePredictor.stopTheWorldEnd();
-      }
       lastGCKind = currentGCKind;
       currentGCKind = NOT_IN_GC;
       collection = matureCollection;
+      return;
+    }
+
+    if (phaseId == Validator.VALIDATE_PREPARE) {
+      super.collectionPhase(PREPARE);
+      validateTrace.prepare();
+      regionSpace.prepare();
+      return;
+    }
+
+    if (phaseId == Validator.VALIDATE_RELEASE) {
+      validateTrace.release();
+      regionSpace.release();
+      super.collectionPhase(RELEASE);
       return;
     }
 
@@ -351,6 +384,7 @@ public class G1 extends Concurrent {
     int availPages = getPagesAvail() - BOOT_PAGES;
     boolean mixedGCRequired = !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
     if (mixedGCRequired) {
+      Log.writeln("Mixed GC Required");
       collection = matureCollection;
     }
     return mixedGCRequired;

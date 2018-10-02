@@ -18,6 +18,7 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
@@ -130,9 +131,10 @@ public class G1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    //Log.write("[Mutator] ");
-    //Log.writeln(Phase.getName(phaseId));
+//    Log.write("[Mutator] ");
+//    Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
+//      VM.collection.prepareMutator(this);
       currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
       g1Eden.reset();
@@ -149,12 +151,20 @@ public class G1Mutator extends ConcurrentMutator {
       return;
     }
 
+    if (phaseId == G1.RELOCATION_SET_SELECTION) {
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
+      return;
+    }
+
     if (phaseId == G1.REFINE_CARDS) {
       dropCurrentRSBuffer();
       return;
     }
 
     if (phaseId == G1.FORWARD_PREPARE) {
+//      VM.collection.prepareMutator(this);
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -163,6 +173,22 @@ public class G1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == G1.FORWARD_RELEASE) {
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
+      super.collectionPhase(G1.RELEASE, primary);
+      return;
+    }
+
+    if (phaseId == Validator.VALIDATE_PREPARE) {
+      g1Eden.reset();
+      g1Survivor.reset();
+      g1Old.reset();
+      super.collectionPhase(G1.PREPARE, primary);
+      return;
+    }
+//
+    if (phaseId == Validator.VALIDATE_RELEASE) {
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();

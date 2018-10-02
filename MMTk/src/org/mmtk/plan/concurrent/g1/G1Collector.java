@@ -14,6 +14,7 @@ package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
+import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
@@ -60,8 +61,13 @@ public class G1Collector extends ConcurrentCollector {
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
   protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
+  protected final Validator validateTrace = new Validator(global().matureTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected int currentTrace = 0;
+  public static final int TRACE_MAKR = 0;
+  public static final int TRACE_NURSERY = 1;
+  public static final int TRACE_MATURE = 2;
+  public static final int TRACE_VALIDATE = 3;
   static boolean concurrentRelocationSetSelectionExecuted = false;
   static boolean concurrentEagerCleanupExecuted = false;
   static boolean concurrentCleanupExecuted = false;
@@ -117,7 +123,7 @@ public class G1Collector extends ConcurrentCollector {
   public void collectionPhase(short phaseId, boolean primary) {
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
-      currentTrace = 0;
+      currentTrace = TRACE_MAKR;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
@@ -183,7 +189,7 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.FORWARD_PREPARE) {
-      currentTrace = global().nurseryGC() ? 1 : 2;
+      currentTrace = global().nurseryGC() ? TRACE_NURSERY : TRACE_MATURE;
       getCurrentTrace().prepare();
       g1CopySurvivor.reset();
       g1CopyOld.reset();
@@ -194,6 +200,17 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.REMEMBERED_SETS) {
+      if (primary && global().nurseryGC()) {
+//        ConcurrentRemSetRefinement.refineAllDirtyCards();
+////        if (VM.VERIFY_ASSERTIONS) {
+////          CardTable.assertAllCardsAreNotMarked();
+////          Address card = Region.Card.of(Address.fromIntZeroExtend(0x6c031688));
+////          Address region = Region.of(Address.fromIntZeroExtend(0x6f771768));
+////          VM.objectModel.dumpObject(Address.fromIntZeroExtend(0x6c031688).toObjectReference());
+////          VM.objectModel.dumpObject(Address.fromIntZeroExtend(0x6f771768).toObjectReference());
+////          VM.assertions._assert(RemSet.contains(region, card));
+////        }
+      }
       ((G1EvacuationTraceLocal) getCurrentTrace()).processRemSets();
       return;
     }
@@ -223,6 +240,34 @@ public class G1Collector extends ConcurrentCollector {
       return;
     }
 
+
+    if (phaseId == Validator.VALIDATE_PREPARE) {
+      currentTrace = TRACE_VALIDATE;
+      validateTrace.prepare();
+      g1CopySurvivor.reset();
+      g1CopyOld.reset();
+      super.collectionPhase(G1.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Validator.VALIDATE_CLOSURE) {
+//      if (global().validateTrace.hasWork()){
+//        rendezvous();
+//        validateTrace.processRoots();
+//        rendezvous();
+        validateTrace.completeTrace();
+//      }
+      return;
+    }
+
+    if (phaseId == Validator.VALIDATE_RELEASE) {
+      validateTrace.release();
+      g1CopySurvivor.reset();
+      g1CopyOld.reset();
+      super.collectionPhase(G1.RELEASE, primary);
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
 
@@ -240,7 +285,7 @@ public class G1Collector extends ConcurrentCollector {
     if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
 
     if (phaseId == G1.CONCURRENT_CLOSURE) {
-      currentTrace = 0;
+      currentTrace = TRACE_MAKR;
       super.concurrentCollectionPhase(phaseId);
     }
 
@@ -317,9 +362,10 @@ public class G1Collector extends ConcurrentCollector {
   @Override
   public TraceLocal getCurrentTrace() {
     switch (currentTrace) {
-      case 0: return markTrace;
-      case 1: return nurseryTrace;
-      case 2: return matureTrace;
+      case TRACE_MAKR: return markTrace;
+      case TRACE_NURSERY: return nurseryTrace;
+      case TRACE_MATURE: return matureTrace;
+      case TRACE_VALIDATE: return validateTrace;
       default: return null;
     }
   }

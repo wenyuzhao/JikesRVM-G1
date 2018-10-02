@@ -2,7 +2,9 @@ package org.mmtk.policy;
 
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
@@ -208,10 +210,12 @@ public class RemSet {
   public static class Processor {
     RegionSpace regionSpace;
     TraceLocal redirectPointerTrace;
+    final boolean nursery;
 
-    public Processor(TraceLocal redirectPointerTrace, RegionSpace regionSpace) {
+    public Processor(TraceLocal redirectPointerTrace, RegionSpace regionSpace, boolean nursery) {
       this.redirectPointerTrace = redirectPointerTrace;
       this.regionSpace = regionSpace;
+      this.nursery = nursery;
     }
 
     private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
@@ -222,17 +226,37 @@ public class RemSet {
       }
     }
 
+    TransitiveClosure tc = new TransitiveClosure() {
+      @Override @Uninterruptible @Inline
+      public void processEdge(ObjectReference source, Address slot) {
+        ObjectReference ref = slot.loadObjectReference();
+        if (regionSpace.contains(ref) && Region.relocationRequired(Region.of(ref))) {
+          redirectPointerTrace.traceObject(ref, true);
+        }
+      }
+    };
+
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
         if (!object.isNull()) {
-          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
           if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
+//            Log.writeln("REMSET Skip Dead ", object);
 //            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).EQ(Word.one()));
             return;
           } else if (redirectPointerTrace.isLive(object)) {
+//            VM.scanning.scanObject(tc, object);
+//            Log.writeln("REMSET Trace ", object);
+//            if (nursery && (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace)) {
+//              VM.objectModel.dumpObject(object);
+//            }
+//            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!regionSpace.contains(object) || !Region.relocationRequired());
+//            VM.scanning.scanObject(redirectPointerTrace, object);
             redirectPointerTrace.traceObject(object, true);
           } else {
+//            Log.write("REMSET Not Trace Dead ", object);
+//            Log.writeln(Space.getSpaceForObject(object).getName());
             // This is a dead object. During next card scanning this object may have a invalid TIB pointing
             // to a released region. So we set the objectEndAddress into the header to allow skipping this object.
 //            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
@@ -244,7 +268,7 @@ public class RemSet {
 
     /** Scan all cards in remsets of collection regions */
     @Inline
-    public void processRemSets(AddressArray relocationSet, boolean concurrent, boolean skipDeadBlock, RegionSpace regionSpace, RemSetCardScanningTimer remSetCardScanningTimer) {
+    public void processRemSets(AddressArray relocationSet, boolean concurrent, boolean _nursery, RegionSpace regionSpace, RemSetCardScanningTimer remSetCardScanningTimer) {
       int workers = VM.activePlan.collector().parallelWorkerCount();
       int id = VM.activePlan.collector().getId();
       if (concurrent) id -= workers;
@@ -279,18 +303,31 @@ public class RemSet {
               Address card = currentRegion.plus(cardIndex << Region.Card.LOG_BYTES_IN_CARD);
               // This `card` is in rem-set of `region`
               if (!Space.isMappedAddress(card)) continue;
+              if (card.LT(VM.AVAILABLE_START)) continue;
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
-              if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
-                if (!BlockAllocator.checkBlockMeta(card)) continue;
-              }
+              if (Space.isInSpace(Plan.META, card)) continue;
+//              if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
+//                if (!nursery && !BlockAllocator.checkBlockMeta(card)) {
+//                  if (nursery) Log.writeln("Skip MS card ", card);
+//                  continue;
+//                }
+//              }
               if (Space.isInSpace(REGION_SPACE, card)) {
                 Address regionOfCard = Region.of(card);
-                if (!Region.allocated(regionOfCard) || Region.relocationRequired(regionOfCard)) continue;
+                if (!Region.allocated(regionOfCard) || Region.relocationRequired(regionOfCard)) {
+//                  if (nursery) Log.writeln("Skip G1 card ", card);
+                  continue;
+                }
               }
 //              if (Region.Card.getCardAnchor(card).isZero())
 
               long time = VM.statistics.nanoTime();
-              Region.Card.linearScan(cardLinearScan, regionSpace, card, skipDeadBlock);
+//              if (nursery) {
+//                Log.write("Scan card ", card);
+//                Log.write(" ", Region.Card.getCardAnchor(card));
+//                Log.writeln("..<", Region.Card.getCardLimit(card));
+//              }
+              Region.Card.linearScan(cardLinearScan, regionSpace, card, false);
               remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
             }
           }
@@ -331,7 +368,7 @@ public class RemSet {
       Address visitedRegion = VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_REGION);
       // If this is a relocation region, clear its rem-sets
       if (Space.isInSpace(regionSpace.getDescriptor(), visitedRegion)
-          && Region.of(visitedRegion).NE(EmbeddedMetaData.getMetaDataBase(visitedRegion))
+          && visitedRegion.NE(EmbeddedMetaData.getMetaDataBase(visitedRegion))
           && Region.relocationRequired(visitedRegion)
           && (!emptyRegionsOnly || (emptyRegionsOnly && Region.usedSize(visitedRegion) == 0))
       ) {
@@ -357,7 +394,7 @@ public class RemSet {
       for (int j = 0; j < relocationSet.length(); j++) {
         Address cRegion = relocationSet.get(j);
         if (cRegion.isZero()) continue;
-        if (emptyRegionsOnly && Region.usedSize(visitedRegion) != 0) continue;
+        if (emptyRegionsOnly && Region.usedSize(cRegion) != 0) continue;
         int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION;
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {

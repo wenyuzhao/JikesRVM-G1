@@ -60,7 +60,7 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
   private static final byte MARK_COUNT_INCREMENT = (byte) (1 << COUNT_BASE);
   private static final byte MARK_COUNT_MASK = (byte) (((1 << MAX_MARKCOUNT_BITS) - 1) << COUNT_BASE);
 
-  private static final boolean EAGER_MARK_CLEAR = HeaderByte.NEEDS_UNLOGGED_BIT;
+  private static final boolean EAGER_MARK_CLEAR = true;//HeaderByte.NEEDS_UNLOGGED_BIT;
 
   /* header requirements */
   public static final int LOCAL_GC_BITS_REQUIRED = MAX_MARKCOUNT_BITS;
