@@ -455,7 +455,7 @@ public class Region {
 
 
         Space space = Space.getSpaceForAddress(firstCard);
-        if (!nursery) {
+        if (true) {
           if (space instanceof SegregatedFreeListSpace) {
             if (!BlockAllocator.checkBlockMeta(firstCard)) {
               anchors[index] = 0xFFFFFFFF;
@@ -471,6 +471,12 @@ public class Region {
             limits[index] = 0xFFFFFFFF;
           }
         } else {
+          if (space instanceof SegregatedFreeListSpace) {
+            if (!BlockAllocator.checkBlockMeta(firstCard)) {
+              anchors[index] = 0xFFFFFFFF;
+              limits[index] = 0xFFFFFFFF;
+            }
+          }
           if (space instanceof RawPageSpace) {
             anchors[index] = 0xFFFFFFFF;
             limits[index] = 0xFFFFFFFF;

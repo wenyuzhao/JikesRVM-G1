@@ -15,6 +15,7 @@ package org.mmtk.policy;
 import static org.mmtk.utility.Constants.*;
 
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.options.Options;
 import org.mmtk.utility.options.MarkSweepMarkBits;
@@ -359,6 +360,7 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
       byte oldValue = VM.objectModel.readAvailableByte(object);
       byte newValue = (byte) ((oldValue & ~MARK_COUNT_MASK) | (alloc && !isAllocAsMarked ? allocState : markState));
       VM.objectModel.writeAvailableByte(object, newValue);
+      if (isAllocAsMarked) BlockAllocator.markBlockMeta(object);
     } else if (HeaderByte.NEEDS_UNLOGGED_BIT)
       HeaderByte.markAsUnlogged(object);
   }

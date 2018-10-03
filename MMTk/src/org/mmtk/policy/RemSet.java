@@ -254,12 +254,27 @@ public class RemSet {
 //            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!regionSpace.contains(object) || !Region.relocationRequired());
 //            VM.scanning.scanObject(redirectPointerTrace, object);
             redirectPointerTrace.traceObject(object, true);
+//            redirectPointerTrace.processNode(object);
           } else {
 //            Log.write("REMSET Not Trace Dead ", object);
 //            Log.writeln(Space.getSpaceForObject(object).getName());
             // This is a dead object. During next card scanning this object may have a invalid TIB pointing
             // to a released region. So we set the objectEndAddress into the header to allow skipping this object.
 //            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
+            if (!Space.isMappedObject(object) || (Space.isInSpace(regionSpace.getDescriptor(), object) && !Region.allocated(Region.of(object)))) {
+              return;
+            }
+            Space space = Space.getSpaceForObject(object);
+            if ((space instanceof SegregatedFreeListSpace)) {
+              object.toAddress().store(Address.fromIntZeroExtend(1), LIVE_STATE_OFFSET);
+              return;
+            }
+//            if (!VM.debugging.validRef(object)) {
+//              Log.write("Space: ");
+//              Log.write(space.getName());
+//              Log.writeln(space.isLive(object) ? " live " : " dead ");
+//              Log.writeln(space.isLive(object) ? " live " : " dead ");
+//            }
             object.toAddress().store(VM.objectModel.getObjectEndAddress(object), LIVE_STATE_OFFSET);
           }
         }

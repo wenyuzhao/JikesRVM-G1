@@ -196,7 +196,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       if (tmp.isZero()) return;
       if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {
         Address foreignBlock = Region.of(ref);
-        Region.Card.updateCardMeta(source);
+//        Region.Card.updateCardMeta(source);
         RemSet.addCard(foreignBlock, card);
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.contains(foreignBlock, card));
       }

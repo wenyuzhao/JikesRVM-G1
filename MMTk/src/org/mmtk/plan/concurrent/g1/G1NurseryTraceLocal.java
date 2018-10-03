@@ -36,9 +36,6 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-//    Region.Card.updateCardMeta(object);
-
-//    ObjectReference newObject = object;
 
     if (Space.isInSpace(G1.G1, object)) {
       int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
@@ -64,35 +61,35 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
   /**
    * {@inheritDoc}
    */
-  @Inline
-  @Override
-  public ObjectReference getForwardedReference(ObjectReference object) {
-    ObjectReference rtn = traceObject(object);
-    if (!rtn.isNull()) processNode(rtn);
-    return rtn;
-  }
+//  @Inline
+//  @Override
+//  public ObjectReference getForwardedReference(ObjectReference object) {
+//    ObjectReference rtn = traceObject(object);
+////    if (!rtn.isNull()) processNode(rtn);
+//    return rtn;
+//  }
 
   /**
    * {@inheritDoc}
    */
-  @Inline
-  @Override
-  public ObjectReference retainReferent(ObjectReference object) {
-    ObjectReference rtn = traceObject(object);
-    if (!rtn.isNull()) processNode(rtn);
-    return rtn;
-  }
+//  @Inline
+//  @Override
+//  public ObjectReference retainReferent(ObjectReference object) {
+//    ObjectReference rtn = traceObject(object);
+////    if (!rtn.isNull()) processNode(rtn);
+//    return rtn;
+//  }
 
   /**
    * {@inheritDoc}
    */
-  @Inline
-  @Override
-  public ObjectReference retainForFinalize(ObjectReference object) {
-    ObjectReference rtn = traceObject(object);
-    if (!rtn.isNull()) processNode(rtn);
-    return rtn;
-  }
+//  @Inline
+//  @Override
+//  public ObjectReference retainForFinalize(ObjectReference object) {
+//    ObjectReference rtn = traceObject(object);
+////    if (!rtn.isNull()) processNode(rtn);
+//    return rtn;
+//  }
 
   public final RemSet.Processor processor = new RemSet.Processor(this, G1.regionSpace, true);
   @Inline

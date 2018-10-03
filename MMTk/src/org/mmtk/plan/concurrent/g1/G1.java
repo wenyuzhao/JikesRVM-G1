@@ -164,7 +164,7 @@ public class G1 extends Concurrent {
       // Evacuate
       Phase.scheduleCollector(RELOCATION_SET_SELECTION),
       Phase.scheduleMutator  (RELOCATION_SET_SELECTION),
-      Phase.scheduleComplex  (refineDirtyCards),
+//      Phase.scheduleComplex  (refineDirtyCards),
       Phase.scheduleComplex  (forwardRootClosurePhase),
       Phase.scheduleComplex  (forwardRefTypeClosurePhase),
       Phase.scheduleComplex  (forwardCompleteClosurePhase),
@@ -188,7 +188,7 @@ public class G1 extends Concurrent {
       Phase.scheduleCollector(EAGER_CLEANUP),
       Phase.scheduleCollector(EVACUATE),
       // Update pointers
-      Phase.scheduleComplex  (refineDirtyCards),
+//      Phase.scheduleComplex  (refineDirtyCards),
       Phase.scheduleComplex  (forwardRootClosurePhase),
       Phase.scheduleComplex  (forwardRefTypeClosurePhase),
       Phase.scheduleComplex  (forwardCompleteClosurePhase),
@@ -295,18 +295,11 @@ public class G1 extends Concurrent {
     if (phaseId == FORWARD_RELEASE) {
       (nurseryGC() ? nurseryTrace : matureTrace).release();
       if (!nurseryGC()) {
-//        regionSpace.release();
         super.collectionPhase(RELEASE);
       } else {
-//        regionSpace.release();
         VM.memory.globalReleaseVMSpace();
       }
 
-      if (currentGCKind == YOUNG_GC) {
-        PauseTimePredictor.nurseryGCEnd();
-      } else if (currentGCKind == MIXED_GC) {
-        PauseTimePredictor.stopTheWorldEnd();
-      }
       return;
     }
 
@@ -314,6 +307,11 @@ public class G1 extends Concurrent {
       ConcurrentRemSetRefinement.resume();
       super.collectionPhase(COMPLETE);
 
+      if (currentGCKind == YOUNG_GC) {
+        PauseTimePredictor.nurseryGCEnd();
+      } else if (currentGCKind == MIXED_GC) {
+        PauseTimePredictor.stopTheWorldEnd();
+      }
       lastGCKind = currentGCKind;
       currentGCKind = NOT_IN_GC;
       collection = matureCollection;
@@ -357,10 +355,12 @@ public class G1 extends Concurrent {
     return Options.g1GenerationalMode.getValue();
   }
 
+  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
+
   @Override
   @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
+//    final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
     // Young GC
     if (generationalMode() && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) > newSizeRatio * ((float) TOTAL_LOGICAL_REGIONS))) {
       collection = nurseryCollection;
@@ -384,7 +384,7 @@ public class G1 extends Concurrent {
     int availPages = getPagesAvail() - BOOT_PAGES;
     boolean mixedGCRequired = !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
     if (mixedGCRequired) {
-      Log.writeln("Mixed GC Required");
+//      Log.writeln("Mixed GC Required");
       collection = matureCollection;
     }
     return mixedGCRequired;
