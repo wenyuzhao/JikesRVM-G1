@@ -344,8 +344,47 @@ public class Region {
     static Lock lock = VM.newLock("asfghgjnxcsae");
 
     @NoInline
-    public static void updateCardMetaNoInline(ObjectReference ref) {
-      updateCardMeta(ref);
+    public static void assertCardMeta(ObjectReference ref) {
+      Log log = VM.activePlan.mutator().getLog();
+
+//      if (!VM.debugging.validRef(ref)) {
+//        log.write("Invalid object: ");
+//        log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
+//        log.writeln(" ", ref);
+//        VM.assertions.fail("");
+//      }
+      Address card = Card.of(ref);
+
+      if (!getCardAnchor(card).LE(VM.objectModel.objectStartRef(ref))) {
+        log.write("Card anchor ", getCardAnchor(card));
+        log.write(" ");
+        log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
+        log.write(" object ", VM.objectModel.objectStartRef(ref));
+        log.writeln(" ..< ", VM.objectModel.objectStartRef(ref));
+        VM.assertions.fail("");
+      }
+//      VM.assertions._assert(getCardAnchor(card).LE(VM.objectModel.objectStartRef(ref)));
+      Address endAddress = VM.objectModel.getObjectEndAddress(ref);
+      if (Card.of(endAddress).EQ(card)) {
+        if (!getCardLimit(card).GE(endAddress)) {
+          log.write("Card limit ", getCardLimit(card));
+          log.write(" ");
+          log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
+          log.write(" object ", VM.objectModel.objectStartRef(ref));
+          log.writeln(" ..< ", endAddress);
+          VM.assertions.fail("");
+        }
+//        VM.assertions._assert(getCardLimit(card).GE(endAddress));
+      } else {
+        if (!getCardLimit(card).EQ(card.plus(BYTES_IN_CARD))) {
+          log.write("Card limit ", getCardLimit(card));
+          log.write(" ");
+          log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
+          log.write(" object ", VM.objectModel.objectStartRef(ref));
+          log.writeln(" ..< ", endAddress);
+          VM.assertions.fail("");
+        }
+      }
     }
 
     @Inline
@@ -462,7 +501,7 @@ public class Region {
               limits[index] = 0xFFFFFFFF;
             }
           } else if (space instanceof LargeObjectSpace) {
-            if (!((LargeObjectSpace) space).isInToSpace(firstCard)) {
+            if (((LargeObjectSpace) space).isInNurseryOrFromSpace(firstCard)) {
               anchors[index] = 0xFFFFFFFF;
               limits[index] = 0xFFFFFFFF;
             }

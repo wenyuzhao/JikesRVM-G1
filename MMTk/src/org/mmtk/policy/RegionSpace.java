@@ -225,7 +225,7 @@ public final class RegionSpace extends Space {
         Log.writeln(", in chunk ", EmbeddedMetaData.getMetaDataBase(region));
       }
 
-      if (Region.USE_CARDS) Region.Card.clearCardMetaForRegion(region);
+//      if (Region.USE_CARDS) Region.Card.clearCardMetaForRegion(region);
 
       Region.register(region, allocationKind);
 
@@ -255,6 +255,9 @@ public final class RegionSpace extends Space {
     }
 
     Region.unregister(region);
+    if (Region.USE_CARDS) {
+      Region.Card.clearCardMetaForRegion(region);
+    }
 
     ((FreeListPageResource) pr).releasePages(region);
   }
@@ -661,9 +664,6 @@ public final class RegionSpace extends Space {
       Address region = relocationSet.get(cursor);
       relocationSet.set(cursor, Address.zero());
       if (!region.isZero()) {
-        if (Region.USE_CARDS) {
-          Region.Card.clearCardMetaForRegion(region);
-        }
         this.release(region);
       }
     }

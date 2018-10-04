@@ -252,8 +252,8 @@ public class G1Mutator extends ConcurrentMutator {
       Word x = VM.objectModel.objectStartRef(src).toWord();
       Word y = VM.objectModel.objectStartRef(ref).toWord();
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
-      if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
-        Region.Card.updateCardMetaNoInline(src);
+      if (!tmp.isZero() && Space.isInSpace(G1.G1, ref) && !Space.isInSpace(G1.VM_SPACE, src)) {
+//        Region.Card.assertCardMeta(src);
         markAndEnqueueCard(Region.Card.of(src));
       }
     }

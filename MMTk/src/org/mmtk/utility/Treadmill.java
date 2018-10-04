@@ -100,6 +100,11 @@ public final class Treadmill {
   }
 
   @Inline
+  public boolean isInNurseryOrFromSpace(Address node) {
+    return fromSpace.isMember(node) || collectNursery.isMember(node);// || allocNursery.isMember(node);
+  }
+
+  @Inline
   public boolean isInToSpace(Address node) {
     return toSpace.isMember(node);// || allocNursery.isMember(node);
   }

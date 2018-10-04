@@ -209,6 +209,12 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
   }
 
   @Inline
+  public boolean isInNurseryOrFromSpace(Address address) {
+    Word node = address.toWord().and(Word.fromIntZeroExtend(Constants.BYTES_IN_PAGE - 1).not());
+    return treadmill.isInNurseryOrFromSpace(node.toAddress());
+  }
+
+  @Inline
   public boolean isInToSpace(Address address) {
     Word node = address.toWord().and(Word.fromIntZeroExtend(Constants.BYTES_IN_PAGE - 1).not());
     return treadmill.isInToSpace(node.toAddress());

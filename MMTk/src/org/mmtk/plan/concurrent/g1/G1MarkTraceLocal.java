@@ -70,7 +70,7 @@ public class G1MarkTraceLocal extends TraceLocal {
 //      VM.assertions._assert(VM.debugging.validRef(object));
 //    }
 
-    if (!isLive(object)) Region.Card.updateCardMeta(object);
+//    if (!isLive(object)) Region.Card.assertCardMeta(object);
 
     if (Space.isInSpace(G1.G1, object)) {
       return G1.regionSpace.traceMarkObject(this, object);

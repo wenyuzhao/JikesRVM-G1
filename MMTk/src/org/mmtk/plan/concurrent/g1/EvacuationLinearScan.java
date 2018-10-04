@@ -29,7 +29,7 @@ public class EvacuationLinearScan extends LinearScan {
         Address block = Region.of(ref);
         if (block.NE(Region.of(source))) {
           Address card = Region.Card.of(source);
-          Region.Card.updateCardMeta(source);
+//          Region.Card.assertCardMeta(source);
           RemSet.addCard(block, card);
         }
       }

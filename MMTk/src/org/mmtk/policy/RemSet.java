@@ -266,7 +266,7 @@ public class RemSet {
             }
             Space space = Space.getSpaceForObject(object);
             if ((space instanceof SegregatedFreeListSpace)) {
-              object.toAddress().store(Address.fromIntZeroExtend(1), LIVE_STATE_OFFSET);
+              object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
               return;
             }
 //            if (!VM.debugging.validRef(object)) {
@@ -321,12 +321,12 @@ public class RemSet {
               if (card.LT(VM.AVAILABLE_START)) continue;
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
               if (Space.isInSpace(Plan.META, card)) continue;
-//              if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
-//                if (!nursery && !BlockAllocator.checkBlockMeta(card)) {
-//                  if (nursery) Log.writeln("Skip MS card ", card);
-//                  continue;
-//                }
-//              }
+              if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
+                if (!BlockAllocator.checkBlockMeta(card)) {
+                  if (nursery) Log.writeln("Skip MS card ", card);
+                  continue;
+                }
+              }
               if (Space.isInSpace(REGION_SPACE, card)) {
                 Address regionOfCard = Region.of(card);
                 if (!Region.allocated(regionOfCard) || Region.relocationRequired(regionOfCard)) {
