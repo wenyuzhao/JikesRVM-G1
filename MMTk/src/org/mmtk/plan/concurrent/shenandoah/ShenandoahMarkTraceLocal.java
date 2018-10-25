@@ -14,6 +14,7 @@ package org.mmtk.plan.concurrent.shenandoah;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.regional.Regional;
 import org.mmtk.policy.Space;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -43,7 +44,7 @@ public class ShenandoahMarkTraceLocal extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(Shenandoah.RS, object)) {
-      return true;
+      return Regional.regionSpace.isLive(object);
     }
     return super.isLive(object);
   }

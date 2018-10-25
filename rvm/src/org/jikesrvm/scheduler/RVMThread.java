@@ -1922,16 +1922,24 @@ public final class RVMThread extends ThreadContext {
                     " has acknowledged soft handshakes");
 
     boolean hadReallyBlocked = false;
+    boolean blockedForGC = false;
 
     for (;;) {
       // deal with block requests
       acknowledgeBlockRequests();
+      if (hadReallyBlocked && blockedForGC && !gcBlockAdapter.isBlocked(this)) {
+        org.mmtk.utility.statistics.LatencyTimer.mutatorResume(getId());
+      }
       // are we blocked?
       if (!isBlocked()) {
         break;
       }
-      if (!hadReallyBlocked)
-        org.mmtk.utility.statistics.LatencyTimer.mutatorPause(getId());
+      if (!hadReallyBlocked && isBlockedForGC && !isCollectorThread()) {
+        if (!blockedForGC) org.mmtk.utility.statistics.LatencyTimer.mutatorPause(getId());
+        blockedForGC = true;
+      } else {
+        blockedForGC = false;
+      }
       hadReallyBlocked = true;
       if (traceReallyBlock) {
 //        hadReallyBlocked = true;
@@ -1961,7 +1969,7 @@ public final class RVMThread extends ThreadContext {
     // we're about to unblock, so indicate to the world that we're running
     // again.
     setExecStatus(IN_JAVA);
-    if (hadReallyBlocked) org.mmtk.utility.statistics.LatencyTimer.mutatorResume(getId());
+//    if (hadReallyBlocked && blockedForGC) org.mmtk.utility.statistics.LatencyTimer.mutatorResume(getId());
     // let everyone know that we're back to executing code
     isBlocking = false;
     // deal with requests that came up while we were blocked.

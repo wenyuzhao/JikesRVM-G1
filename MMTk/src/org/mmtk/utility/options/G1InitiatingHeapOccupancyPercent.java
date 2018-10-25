@@ -12,14 +12,14 @@
  */
 package org.mmtk.utility.options;
 
-public class G1InitiatingHeapOccupancyPercent extends org.vmutil.options.FloatOption {
+public class G1InitiatingHeapOccupancyPercent extends org.vmutil.options.IntOption {
   /**
    * Create the option.
    */
   public G1InitiatingHeapOccupancyPercent() {
     super(Options.set, "G1 Initiating Heap Occupancy Percent",
           "Sets the Java heap occupancy threshold that triggers a marking cycle. The default occupancy is 45 percent of the entire Java heap.",
-          45f);
+          45);
   }
 
   /**
@@ -27,6 +27,6 @@ public class G1InitiatingHeapOccupancyPercent extends org.vmutil.options.FloatOp
    */
   @Override
   protected void validate() {
-    failIf((this.value < 0 || this.value > 100.0), "Ratio must be a float between 0 and 100");
+    failIf((this.value < 0 || this.value > 100), "Ratio must be a float between 0 and 100");
   }
 }

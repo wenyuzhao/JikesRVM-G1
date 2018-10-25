@@ -33,6 +33,7 @@ public class RegionAllocator extends Allocator {
    */
 
   protected final RegionSpace space;
+  protected final int spaceDescriptor;
   private final int allocationKind;
   private Address cursor;
   private Address limit;
@@ -45,6 +46,7 @@ public class RegionAllocator extends Allocator {
    */
   public RegionAllocator(RegionSpace space, int allocationKind) {
     this.space = space;
+    this.spaceDescriptor = space.getDescriptor();
     this.allocationKind = allocationKind;
     reset();
   }
@@ -74,7 +76,7 @@ public class RegionAllocator extends Allocator {
    */
   @Inline
   public final Address alloc(int bytes, int align, int offset) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes > 0, "Trying to allocate negative bytes");
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes > 0, "Trying to allocate negative bytes");
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
@@ -85,9 +87,9 @@ public class RegionAllocator extends Allocator {
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
-    if (Space.isInSpace(this.space.getDescriptor(), start)) {
+//    if (Space.isInSpace(this.spaceDescriptor, start)) {
       Region.setCursor(Region.of(start), cursor);
-    }
+//    }
     /*if (VM.VERIFY_ASSERTIONS) {
       if (!Region.allocated(Region.of(start))) {
         Log.writeln("cursor: ", cursor);

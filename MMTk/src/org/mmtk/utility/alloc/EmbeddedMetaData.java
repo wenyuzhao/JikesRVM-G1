@@ -67,6 +67,7 @@ public final class EmbeddedMetaData {
    * @return The offset into the meta-data for this region, given the
    * specified address and coverage and alignment requirements.
    */
+  @Inline
   public static Extent getMetaDataOffset(Address address,
                                                   int logCoverage,
                                                   int logAlign) {

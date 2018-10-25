@@ -789,6 +789,10 @@ public abstract class Plan {
     if (LatencyTimer.isEnabled()) LatencyTimer.start();
   }
 
+  public static int gcCounts = 0, fullGCCounts = 0;
+  public static final int[] remsetLogs = new int[4096 * 2];
+  public static int remsetLogCursor = 0;
+
   /**
    * Generic hook to allow benchmarks to be harnessed.  A plan may use
    * this to perform certain actions after the completion of a
@@ -798,8 +802,19 @@ public abstract class Plan {
    */
   @Interruptible
   public static void harnessEnd()  {
-    Log.writeln("harnessEnd");
-    Log.writeln(LatencyTimer.isEnabled() ? "1" : "0");
+    Log log = VM.activePlan.mutator().getLog();
+    log.writeln("harnessEnd");
+    log.write("Full GC: ", fullGCCounts);
+    log.writeln(" / ", gcCounts);
+    log.writeln(">>>>>>>>>> REMSET LOGS START");
+    for (int i = 0; i < remsetLogCursor; i += 3) {
+      log.write(remsetLogs[i]);
+      log.write(" ", remsetLogs[i + 1]);
+      log.writeln(" ", remsetLogs[i + 2]);
+    }
+    log.writeln("<<<<<<<<<< REMSET LOGS END");
+
+
     if (LatencyTimer.isEnabled()) {
       LatencyTimer.stop();
       LatencyTimer.dump();

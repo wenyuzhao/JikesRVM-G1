@@ -24,6 +24,7 @@ import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -138,6 +139,7 @@ public class G1 extends Concurrent {
       Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
       Phase.scheduleCollector(REMEMBERED_SETS),
+      Phase.scheduleGlobal   (REMEMBERED_SETS),
       Phase.scheduleCollector(FORWARD_CLOSURE)
   );
   protected static final short forwardRefTypeClosurePhase = Phase.createComplex("forward-refType-closure", null,
@@ -224,6 +226,8 @@ public class G1 extends Concurrent {
    * Collection
    */
   static long startTime = 0;
+//  public static int totalGCs = 0;
+//  public static int fullGCs = 0;
 
   /**
    * {@inheritDoc}
@@ -245,6 +249,9 @@ public class G1 extends Concurrent {
         currentGCKind = YOUNG_GC;
       } else {
         currentGCKind = MIXED_GC;
+      }
+      if (insideHarness) {
+        Plan.gcCounts += 1;
       }
       return;
     }
@@ -280,6 +287,19 @@ public class G1 extends Concurrent {
       return;
     }
 
+    if (phaseId == REMEMBERED_SETS) {
+      int remsetPages = 0, remsetCards = 0;
+      for (Address region = regionSpace.firstRegion(); !region.isZero(); region = regionSpace.nextRegion(region)) {
+        remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
+        remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      }
+      remsetLogs[remsetLogCursor] = regionSpace.committedRegions();
+      remsetLogs[remsetLogCursor + 1] = remsetPages;
+      remsetLogs[remsetLogCursor + 2] = remsetCards;
+      remsetLogCursor += 3;
+      return;
+    }
+
     if (phaseId == FORWARD_PREPARE) {
       if (nurseryGC()) {
         VM.memory.globalPrepareVMSpace();
@@ -306,6 +326,9 @@ public class G1 extends Concurrent {
     if (phaseId == COMPLETE) {
       ConcurrentRemSetRefinement.resume();
       super.collectionPhase(COMPLETE);
+      if (insideHarness && currentGCKind == FULL_GC) {
+        Plan.fullGCCounts += 1;
+      }
 
       if (currentGCKind == YOUNG_GC) {
         PauseTimePredictor.nurseryGCEnd();
@@ -347,7 +370,7 @@ public class G1 extends Concurrent {
 
   final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
   final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
-  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
+//  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
   float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
 
   @Inline
@@ -377,14 +400,25 @@ public class G1 extends Concurrent {
     return fullGCRequired;
   }
 
+//  @Override
+//  @Inline
+//  protected boolean concurrentCollectionRequired() {
+//    int totalPages = getTotalPages();
+//    int availPages = getPagesAvail() - BOOT_PAGES;
+//    boolean mixedGCRequired = !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+//    if (mixedGCRequired) {
+////      Log.writeln("Mixed GC Required");
+//      collection = matureCollection;
+//    }
+//    return mixedGCRequired;
+//  }
+
+  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
   @Override
-  @Inline
   protected boolean concurrentCollectionRequired() {
-    int totalPages = getTotalPages();
-    int availPages = getPagesAvail() - BOOT_PAGES;
-    boolean mixedGCRequired = !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    boolean mixedGCRequired = !Phase.concurrentPhaseActive() &&
+        ((getPagesReserved() * 100) / (getTotalPages() - BOOT_PAGES)) > INIT_HEAP_OCCUPANCY_PERCENT;
     if (mixedGCRequired) {
-//      Log.writeln("Mixed GC Required");
       collection = matureCollection;
     }
     return mixedGCRequired;

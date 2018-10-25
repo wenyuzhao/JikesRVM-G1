@@ -88,38 +88,53 @@ public final class RegionSpace extends Space {
     }
     @Inline
     private static boolean setLiveBit(Address address, boolean set, boolean atomic) {
-      Word oldValue, newValue;
+      Word oldValue;
       Address liveWord = getLiveWordAddress(address);
-      Word mask = getMask(address, true);
+      Word mask = getMask(address);
       if (atomic) {
+//        if (set) {
+//          do {
+//            oldValue = liveWord.prepareWord();
+//          } while (!liveWord.attempt(oldValue, oldValue.or(mask)));
+//        } else {
+//          do {
+//            oldValue = liveWord.prepareWord();
+//          } while (!liveWord.attempt(oldValue, oldValue.and(mask.not())));
+//        }
         do {
           oldValue = liveWord.prepareWord();
-          newValue = (set) ? oldValue.or(mask) : oldValue.and(mask.not());
-        } while (!liveWord.attempt(oldValue, newValue));
+        } while (!liveWord.attempt(oldValue, oldValue.or(mask)));
+//        do {
+//          oldValue = liveWord.prepareWord();
+//          newValue = (set) ? oldValue.or(mask) : oldValue.and(mask.not());
+//        } while (!liveWord.attempt(oldValue, newValue));
       } else {
         oldValue = liveWord.loadWord();
-        liveWord.store(set ? oldValue.or(mask) : oldValue.and(mask.not()));
+//        liveWord.store(set ? oldValue.or(mask) : oldValue.and(mask.not()));
+        liveWord.store(oldValue.or(mask));
       }
       return oldValue.and(mask).NE(mask);
     }
     @Inline
     protected static boolean liveBitSet(Address address) {
       Address liveWord = getLiveWordAddress(address);
-      Word mask = getMask(address, true);
+      Word mask = getMask(address);
       Word value = liveWord.loadWord();
       return value.and(mask).EQ(mask);
     }
     @Inline
-    private static Word getMask(Address address, boolean set) {
+    private static Word getMask(Address address) {
       int shift = address.toWord().rshl(OBJECT_LIVE_SHIFT).and(WORD_SHIFT_MASK).toInt();
-      Word rtn = Word.one().lsh(shift);
-      return (set) ? rtn : rtn.not();
+//      Word rtn = Word.one().lsh(shift);
+//      return (set) ? rtn : rtn.not();
+      return Word.one().lsh(shift);
     }
+    static final int METADATA_BYTES = Region.BYTES_IN_REGION * Region.METADATA_REGIONS_PER_CHUNK;
     @Inline
     private static Address getLiveWordAddress(Address address) {
       Address chunk = EmbeddedMetaData.getMetaDataBase(address);
 //      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.NE(Region.of(address)));
-      address = address.minus(Region.BYTES_IN_REGION * Region.METADATA_REGIONS_PER_CHUNK);
+      address = address.minus(METADATA_BYTES);
       Address liveWordAddress = chunk.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
 //      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
       return liveWordAddress;
@@ -265,12 +280,12 @@ public final class RegionSpace extends Space {
   @Inline
   public void initializeHeader(ObjectReference object) {
     if (allocAsMarked) {
-      writeMarkState(object);
+      testAndMark(object);
       Region.updateRegionAliveSize(Region.of(object), object);
     } else {
       VM.objectModel.writeAvailableByte(object, (byte) 0);
     }
-    Region.updateRegionAliveSize(Region.of(object), object);
+//    Region.updateRegionAliveSize(Region.of(object), object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
   }
 

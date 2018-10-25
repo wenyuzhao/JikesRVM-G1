@@ -84,6 +84,7 @@ public class ControllerCollectorContext extends CollectorContext {
 
       // Stop all mutator threads
       if (Options.verbose.getValue() >= 5) Log.writeln("[STWController: Stopping the world...]");
+      LatencyTimer.startPausingMutators();
       LatencyTimer.enableLogging();
       VM.collection.stopAllMutators();
       LatencyTimer.disableLogging();
@@ -120,9 +121,10 @@ public class ControllerCollectorContext extends CollectorContext {
 
       // Resume all mutators
       if (Options.verbose.getValue() >= 5) Log.writeln("[STWController: Resuming mutators...]");
-      LatencyTimer.enableLogging();
+//      LatencyTimer.enableLogging();
       VM.collection.resumeAllMutators();
-      LatencyTimer.disableLogging();
+//      LatencyTimer.disableLogging();
+//      LatencyTimer.allMutatorsResumed(startTime);
 
       // Start threads that will perform concurrent collection work alongside mutators.
       if (concurrentCollection) {

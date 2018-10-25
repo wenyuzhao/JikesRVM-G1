@@ -43,7 +43,7 @@ public class RegionalMarkTraceLocal extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(Regional.RS, object)) {
-      return true;
+      return Regional.regionSpace.isLive(object);
     }
     return super.isLive(object);
   }

@@ -39,6 +39,7 @@ public class Region {
   public static final int METADATA_GENERATION_OFFSET = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
 //  public static final int METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
   public static final int METADATA_FORWARDING_TABLE_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
+//  public static final int METADATA_FORWARDING_TABLE_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
   public static final int METADATA_BYTES = METADATA_FORWARDING_TABLE_OFFSET + BYTES_IN_ADDRESS;
 
   // Derived constants
@@ -110,20 +111,20 @@ public class Region {
   @Inline
   private static void set(Address addr, Address val) {
     assertInMetadata(addr, Constants.BYTES_IN_ADDRESS);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!addr.isZero());
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!addr.isZero());
     addr.store(val);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadAddress().EQ(val));
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadAddress().EQ(val));
   }
 
   @Inline
   private static void set(Address addr, int val) {
-    assertInMetadata(addr, Constants.BYTES_IN_INT);
+//    assertInMetadata(addr, Constants.BYTES_IN_INT);
     addr.store(val);
   }
 
   @Inline
   private static void set(Address addr, byte val) {
-    assertInMetadata(addr, Constants.BYTES_IN_BYTE);
+//    assertInMetadata(addr, Constants.BYTES_IN_BYTE);
     addr.store(val);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadByte() == val);
   }
@@ -197,19 +198,18 @@ public class Region {
   @Inline
   public static void updateRegionAliveSize(Address region, ObjectReference object) {
     Address meta = metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET);
-    int oldValue, newValue, size = VM.objectModel.getSizeWhenCopied(object);
+    int oldValue, size = VM.objectModel.getSizeWhenCopied(object);
     do {
       oldValue = meta.prepareInt();
-      newValue = oldValue + size;
-    } while (!meta.attempt(oldValue, newValue));
+    } while (!meta.attempt(oldValue, oldValue + size));
   }
 
   @Inline
   public static void setCursor(Address region, Address cursor) {
     Address meta = metaDataOf(region, METADATA_CURSOR_OFFSET);
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(!meta.isZero());
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(!meta.isZero());
+//    }
     set(meta, cursor);
   }
 
@@ -243,7 +243,7 @@ public class Region {
   @Inline
   public static Address metaDataOf(Address region, int metaDataOffset) {
     Address metaData = EmbeddedMetaData.getMetaDataBase(region);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(metaDataOffset >= 0 && metaDataOffset <= METADATA_BYTES);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(metaDataOffset >= 0 && metaDataOffset <= METADATA_BYTES);
     return metaData.plus(METADATA_OFFSET_IN_CHUNK + METADATA_BYTES * indexOf(region)).plus(metaDataOffset);
   }
 

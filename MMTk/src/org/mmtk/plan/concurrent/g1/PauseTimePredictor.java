@@ -17,7 +17,7 @@ import org.vmmagic.unboxed.Offset;
 
 @Uninterruptible
 public class PauseTimePredictor {
-  public static float VFixed = 100000000f, U = 24536f, S = 729f, C = 42f; // Nanoseconds
+  public static double VFixed = 100000000f, U = 24536f, S = 729f, C = 42f; // Nanoseconds
   @Inline
   private static final int EXPECTED_PAUSE_TIME() {
     return Options.maxGCPauseMillis.getValue() * 1000000; // Nanoseconds
@@ -27,7 +27,7 @@ public class PauseTimePredictor {
     Options.maxGCPauseMillis = new MaxGCPauseMillis();
   }
 
-  public static float gcCost(int d, int rsSize, int liveBytes) {
+  public static double gcCost(int d, int rsSize, int liveBytes) {
 //    float VFixed = liveBytes * a + b;
     return VFixed + (U * d) / (G1.parallelWorkers.activeWorkerCount()) + S * rsSize + C * liveBytes;
   }
@@ -97,13 +97,13 @@ public class PauseTimePredictor {
   }
 
   /** Update prediction parameters */
-  static float a = 0, b = 0;
+  static double a = 0, b = 0;
   @Inline public static void stopTheWorldEnd() {
-    float totalTime = (float) (VM.statistics.nanoTime() - startTime);
+    double totalTime = (double) (VM.statistics.nanoTime() - startTime);
     U = UData[1] == 0 ? U : (UData[0] / UData[1]);
     S = SData[1] == 0 ? S : (SData[0] / SData[1]);
     C = CData[1] == 0 ? C : (CData[0] / CData[1]);
-    float newFixedTime = totalTime - (U * dirtyCards) / (G1.parallelWorkers.activeWorkerCount()) - S * totalRSSize - C * totalLiveBytes;
+    double newFixedTime = totalTime - (U * dirtyCards) / (G1.parallelWorkers.activeWorkerCount()) - S * totalRSSize - C * totalLiveBytes;
 //    a = (float) fixedTime / totalLiveBytes;
     VFixed = (VFixed * 0.2f + newFixedTime * 0.8f);
     if (VFixed < 0) VFixed = 0;
@@ -119,22 +119,24 @@ public class PauseTimePredictor {
     dirtyCards = CardTable.dirtyCardSize();
   }
 
-  static float totalNurseryCount;
-  static float totalNurseryCardScanningTime;
-  static float totalNurseryEvacuationTime;
-  static float totalNurseryRegions;
+  static double totalNurseryCount;
+  static double totalNurseryCardScanningTime;
+  static double totalNurseryEvacuationTime;
+  static double totalNurseryRegions;
 
   @Inline public static void nurseryGCEnd() {
-    float totalTime = (float) (VM.statistics.nanoTime() - startTime);
-    float cardScanningTime = U * dirtyCards / G1.parallelWorkers.activeWorkerCount();
+    double totalTime = (double) (VM.statistics.nanoTime() - startTime);
+    U = UData[1] == 0 ? U : (UData[0] / UData[1]);
+    double cardScanningTime = U * dirtyCards / G1.parallelWorkers.activeWorkerCount();
     totalNurseryCount += 1;
     totalNurseryCardScanningTime += cardScanningTime;
     totalNurseryEvacuationTime += totalTime - cardScanningTime;
     totalNurseryRegions += G1.relocationSet.length();
 
-    float averageCardScanningTime = totalNurseryCardScanningTime / totalNurseryCount;
-    float evacuationTimePerRegion = totalNurseryEvacuationTime / totalNurseryRegions;
+    double averageCardScanningTime = totalNurseryCardScanningTime / totalNurseryCount;
+    double evacuationTimePerRegion = totalNurseryEvacuationTime / totalNurseryRegions;
     int newEdenRegions = (int) ((EXPECTED_PAUSE_TIME() - averageCardScanningTime) / evacuationTimePerRegion);
+//    newEdenRegions /= 2;
     if (VM.VERIFY_ASSERTIONS) {
       Log.write("newEdenRegions0=");
       Log.writeln(newEdenRegions);
@@ -142,7 +144,7 @@ public class PauseTimePredictor {
     int maxEdenRegions = (int) ((Options.g1MaxNewSizePercent.getValue() / 100f) * global().TOTAL_LOGICAL_REGIONS);
     if (newEdenRegions > maxEdenRegions) newEdenRegions = maxEdenRegions;
     if (newEdenRegions < 1) newEdenRegions = 1;
-    global().newSizeRatio = ((float) newEdenRegions) / ((float) global().TOTAL_LOGICAL_REGIONS);
+    global().newSizeRatio = (float) (((double) newEdenRegions) / ((double) global().TOTAL_LOGICAL_REGIONS));
     if (VM.VERIFY_ASSERTIONS) {
       Log.write("averageCardScanningTime=");
       Log.writeln(averageCardScanningTime);

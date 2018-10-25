@@ -119,10 +119,12 @@ public class RemSet {
     int cardRegionIndex = Region.of(card).diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
     // Get PerRegionTable list, this is a page size
     Address prtList = rememberedSets.get(regionIndex);//rememberedSets[regionIndex];
+    Address remsetPagesSlot = Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET);
     if (prtList.isZero()) { // create remset
       if (create) {
         // rememberedSets[regionIndex] = new int[TOTAL_REGIONS][];
         rememberedSets.set(regionIndex, Plan.metaDataSpace.acquire(REMSET_PAGES));
+        remsetPagesSlot.store(remsetPagesSlot.loadInt() + REMSET_PAGES);
         prtList = rememberedSets.get(regionIndex); // rememberedSets[regionIndex];
       } else {
         return Address.zero();
@@ -135,6 +137,7 @@ public class RemSet {
     if (create && prtEntry.loadAddress().isZero()) {
       // prtList[cardRegionIndex] = new int[PER_REGION_TABLE_BYTES];
       prtEntry.store(Plan.metaDataSpace.acquire(PAGES_IN_PRT));
+      remsetPagesSlot.store(remsetPagesSlot.loadInt() + PAGES_IN_PRT);
     }
     // Get PerRegionTable
     return prtEntry.loadAddress();
@@ -414,6 +417,9 @@ public class RemSet {
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {
           Plan.metaDataSpace.release(prtEntry.loadAddress());
+          Address remsetPagesSlot = Region.metaDataOf(visitedRegion, Region.METADATA_REMSET_PAGES_OFFSET);
+          int n = remsetPagesSlot.loadInt() - PAGES_IN_PRT;
+          remsetPagesSlot.store(n > 0 ? n : 0);
           prtEntry.store(Address.zero());
         }
       }

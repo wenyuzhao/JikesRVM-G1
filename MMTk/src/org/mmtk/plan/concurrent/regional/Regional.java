@@ -198,7 +198,6 @@ public class Regional extends Concurrent {
 
   final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
   final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
-  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
@@ -209,11 +208,20 @@ public class Regional extends Concurrent {
     return super.collectionRequired(spaceFull, space);
   }
 
+//  @Override
+//  protected boolean concurrentCollectionRequired() {
+//    int totalPages = getTotalPages();
+//    int availPages = getPagesAvail() - BOOT_PAGES;
+//    return !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+//  }
+
+  final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
   @Override
   protected boolean concurrentCollectionRequired() {
-    int totalPages = getTotalPages();
-    int availPages = getPagesAvail() - BOOT_PAGES;
-    return !Phase.concurrentPhaseActive() && (availPages < (totalPages * INIT_HEAP_OCCUPANCY_PERCENT));
+    return !Phase.concurrentPhaseActive() &&
+        ((getPagesReserved() * 100) / (getTotalPages() - BOOT_PAGES)) > INIT_HEAP_OCCUPANCY_PERCENT;
+//    return !Phase.concurrentPhaseActive() &&
+//        ((getPagesReserved() * 100) / getTotalPages()) > INIT_HEAP_OCCUPANCY_PERCENT;
   }
 
 //  @Override
