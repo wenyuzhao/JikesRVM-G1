@@ -52,6 +52,7 @@ public abstract class SimpleCollector extends ParallelCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
+    VM.assertions.fail("Unreachable");
     if (phaseId == Simple.PREPARE) {
       // Nothing to do
       return;
