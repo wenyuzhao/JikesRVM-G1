@@ -133,10 +133,13 @@ public final class RegionSpace extends Space {
     @Inline
     private static Address getLiveWordAddress(Address address) {
       Address chunk = EmbeddedMetaData.getMetaDataBase(address);
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.NE(Region.of(address)));
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(chunk.NE(Region.of(address)));
       address = address.minus(METADATA_BYTES);
       Address liveWordAddress = chunk.plus(Region.MARKING_METADATA_START).plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(liveWordAddress.diff(rtn).toInt() < Region.MARKING_METADATA_EXTENT);
+      if (VM.VERIFY_ASSERTIONS) {
+        Address markStart = chunk.plus(Region.MARKING_METADATA_START);
+        VM.assertions._assert(liveWordAddress.diff(markStart).toInt() < Region.MARKING_METADATA_EXTENT);
+      }
       return liveWordAddress;
     }
   }
@@ -544,13 +547,26 @@ public final class RegionSpace extends Space {
     AddressArrayQuickSort.sort(regions, regionsSizes);
 
     // select relocation regions
-    final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
-    int availPages = VM.activePlan.global().getPagesAvail() - BOOT_PAGES;
+//    final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
+    int availPages = VM.activePlan.global().getPagesAvail();// - BOOT_PAGES;
     int availRegions = ((int) (availPages / EmbeddedMetaData.PAGES_IN_REGION)) * Region.REGIONS_IN_CHUNK;
-    int usableBytesForCopying = (int) ((availRegions << Region.LOG_BYTES_IN_REGION) * 0.8);
+    int usableBytesForCopying = (int) (availRegions << Region.LOG_BYTES_IN_REGION);
 
     int currentSize = 0;
     int relocationRegions = 0;
+
+//    for (int i = 0; i < regions.length(); i++) {
+//      Address region = regions.get(i);
+//      if (!region.isZero()) {
+//        if (VM.VERIFY_ASSERTIONS) {
+//          Log.write("Region ", region);
+//          float live = (float) Region.metaDataOf(region, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt();
+//          float total = (float) Region.BYTES_IN_REGION;
+//          Log.write(" live ");
+//          Log.writeln(live / total);
+//        }
+//      }
+//    }
 
     // Include all nursery regions
     if (includeAllNursery) {
@@ -589,9 +605,12 @@ public final class RegionSpace extends Space {
     int cursor = 0;
     for (int i = 0; i < regions.length(); i++) {
       Address region = regions.get(i);
-      if (!region.isZero())
+      if (!region.isZero()) {
+//        if (VM.VERIFY_ASSERTIONS) Log.writeln("Relocate ", region);
         relocationSet.set(cursor++, region);
+      }
     }
+//    if (VM.VERIFY_ASSERTIONS) Log.writeln("Relocation set size = ", cursor);
 
     return relocationSet;
   }
@@ -679,6 +698,7 @@ public final class RegionSpace extends Space {
       Address region = relocationSet.get(cursor);
       relocationSet.set(cursor, Address.zero());
       if (!region.isZero()) {
+//        if (VM.VERIFY_ASSERTIONS) Log.writeln("Release ", region);
         this.release(region);
       }
     }

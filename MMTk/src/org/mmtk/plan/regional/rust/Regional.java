@@ -389,12 +389,19 @@ public class Regional extends Plan {
   final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
 
   @Override
+  @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     int totalPages = getTotalPages();
-    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
+    if (getPagesAvail() * 10 < totalPages) {
       return true;
     }
-    return super.collectionRequired(spaceFull, space);
+    boolean heapFull = getPagesReserved() > totalPages;
+    return spaceFull || heapFull;
+//    int totalPages = getTotalPages();
+//    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
+//      return true;
+//    }
+//    return super.collectionRequired(spaceFull, space);
   }
 
 

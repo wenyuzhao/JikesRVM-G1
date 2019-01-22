@@ -45,7 +45,7 @@ public class VMLayoutConstants {
    * this determines the growth factor of the large contiguous spaces
    * that we provide.
    */
-  public static final int LOG_BYTES_IN_CHUNK = 25;
+  public static final int LOG_BYTES_IN_CHUNK = 22;
 
   /** Coarsest unit of address space allocation. */
   public static final int BYTES_IN_CHUNK = 1 << LOG_BYTES_IN_CHUNK;

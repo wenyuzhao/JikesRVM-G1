@@ -21,8 +21,8 @@ public class Region {
   public static final int SURVIVOR = 1;
   public static final int OLD = 2;
 
-  public static final int LOG_PAGES_IN_REGION = 8;
-  public static final int PAGES_IN_REGION = 1 << 8; // 256
+  public static final int LOG_PAGES_IN_REGION = 6;
+  public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION; // 256
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;//BYTES_IN_PAGE * PAGES_IN_REGION; // 1048576
 
@@ -53,10 +53,10 @@ public class Region {
 
   static {
     int regionsInChunk = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_REGION; // 1024 / 256 = 4
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(regionsInChunk == 32);
-    int metadataRegionsInChunk = ceilDiv(regionsInChunk * METADATA_BYTES, BYTES_IN_REGION); // 1
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(regionsInChunk == 16);
+    int metadataRegionsInChunk = 1; // 1
     REGIONS_IN_CHUNK = regionsInChunk - metadataRegionsInChunk; // 3
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(REGIONS_IN_CHUNK == 31);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(REGIONS_IN_CHUNK == 15);
     METADATA_REGIONS_PER_CHUNK = metadataRegionsInChunk; // 256
     METADATA_PAGES_PER_CHUNK = metadataRegionsInChunk * PAGES_IN_REGION; // 256
     REGIONS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_CHUNK; // 1048576
@@ -236,6 +236,7 @@ public class Region {
   @Inline
   public static int indexOf(Address region) {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(region.NE(chunk));
     int index = region.diff(chunk.plus(REGIONS_START_OFFSET)).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
     return index;
   }
