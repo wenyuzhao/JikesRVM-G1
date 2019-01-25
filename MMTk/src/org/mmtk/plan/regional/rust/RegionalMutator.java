@@ -74,7 +74,7 @@ public class RegionalMutator extends MutatorContext {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == Regional.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return ra.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
@@ -85,13 +85,14 @@ public class RegionalMutator extends MutatorContext {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     if (allocator == Regional.ALLOC_MC) {
-      Regional.regionSpace.initializeHeader(object);
+      Regional.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
   }
 
   @Override
+  @Inline
   public Allocator getAllocatorFromSpace(Space space) {
     if (space == Regional.regionSpace) return ra;
     return super.getAllocatorFromSpace(space);

@@ -106,7 +106,7 @@ public class G1Collector extends ConcurrentCollector {
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
-    G1.regionSpace.initializeHeader(object);
+    G1.regionSpace.initializeHeader(object, bytes);
   }
 
   /****************************************************************************

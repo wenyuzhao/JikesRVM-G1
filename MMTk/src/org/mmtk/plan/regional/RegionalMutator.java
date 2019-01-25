@@ -83,7 +83,7 @@ public class RegionalMutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     if (allocator == Regional.ALLOC_MC) {
-      Regional.regionSpace.initializeHeader(object);
+      Regional.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }

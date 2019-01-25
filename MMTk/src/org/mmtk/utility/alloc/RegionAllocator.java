@@ -35,6 +35,7 @@ public class RegionAllocator extends Allocator {
   protected final RegionSpace space;
   protected final int spaceDescriptor;
   private final int allocationKind;
+  private Address cursorSlot;
   private Address cursor;
   private Address limit;
 
@@ -55,6 +56,7 @@ public class RegionAllocator extends Allocator {
    * Reset the allocator. Note that this does not reset the space.
    */
   public void reset() {
+    cursorSlot = Address.zero();
     cursor = Address.zero();
     limit = Address.zero();
   }
@@ -88,7 +90,9 @@ public class RegionAllocator extends Allocator {
     fillAlignmentGap(cursor, start);
     cursor = end;
 //    if (Space.isInSpace(this.spaceDescriptor, start)) {
-      Region.setCursor(Region.of(start), cursor);
+//    cursorSlot.
+    cursorSlot.store(cursor);
+//     Region.setCursor(Region.of(start), cursor);
 //    }
     /*if (VM.VERIFY_ASSERTIONS) {
       if (!Region.allocated(Region.of(start))) {
@@ -124,6 +128,7 @@ public class RegionAllocator extends Allocator {
     /* we have been given a clean block */
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
+    cursorSlot = Region.metaDataOf(ptr, Region.METADATA_CURSOR_OFFSET);
     limit = ptr.plus(Region.BYTES_IN_REGION);
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
     return alloc(bytes, align, offset);

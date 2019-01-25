@@ -115,7 +115,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    Shenandoah.regionSpace.initializeHeader(object);
+    Shenandoah.regionSpace.initializeHeader(object, bytes);
     Shenandoah.initializeIndirectionPointer(object);
   }
 

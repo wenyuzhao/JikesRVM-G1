@@ -87,7 +87,7 @@ public class RegionalMutator extends ConcurrentMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     if (allocator == Regional.ALLOC_RS) {
-      Regional.regionSpace.initializeHeader(object);
+      Regional.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }

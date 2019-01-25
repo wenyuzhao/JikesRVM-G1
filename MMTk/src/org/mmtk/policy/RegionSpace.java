@@ -79,12 +79,8 @@ public final class RegionSpace extends Space {
       return setLiveBit(VM.objectModel.objectStartRef(object), true, true);
     }
     @Inline
-    public static void writeMarkState(ObjectReference object) {
-//      byte oldValue = VM.objectModel.readAvailableByte(object);
-//      byte newValue = (byte) (oldValue & ~MARK_AND_FORWARDING_MASK);
-//      if (HeaderByte.NEEDS_UNLOGGED_BIT) newValue |= HeaderByte.UNLOGGED_BIT;
-      VM.objectModel.writeAvailableByte(object, (byte) 0);
-      setLiveBit(VM.objectModel.objectStartRef(object), true, false);
+    public static boolean writeMarkState(ObjectReference object) {
+      return setLiveBit(VM.objectModel.objectStartRef(object), true, false);
     }
     @Inline
     private static boolean setLiveBit(Address address, boolean set, boolean atomic) {
@@ -92,27 +88,15 @@ public final class RegionSpace extends Space {
       Address liveWord = getLiveWordAddress(address);
       Word mask = getMask(address);
       if (atomic) {
-//        if (set) {
-//          do {
-//            oldValue = liveWord.prepareWord();
-//          } while (!liveWord.attempt(oldValue, oldValue.or(mask)));
-//        } else {
-//          do {
-//            oldValue = liveWord.prepareWord();
-//          } while (!liveWord.attempt(oldValue, oldValue.and(mask.not())));
-//        }
         do {
           oldValue = liveWord.prepareWord();
+          if (oldValue.or(mask).EQ(oldValue)) return false;
         } while (!liveWord.attempt(oldValue, oldValue.or(mask)));
-//        do {
-//          oldValue = liveWord.prepareWord();
-//          newValue = (set) ? oldValue.or(mask) : oldValue.and(mask.not());
-//        } while (!liveWord.attempt(oldValue, newValue));
       } else {
         oldValue = liveWord.loadWord();
-//        liveWord.store(set ? oldValue.or(mask) : oldValue.and(mask.not()));
         liveWord.store(oldValue.or(mask));
       }
+
       return oldValue.and(mask).NE(mask);
     }
     @Inline
@@ -125,8 +109,6 @@ public final class RegionSpace extends Space {
     @Inline
     private static Word getMask(Address address) {
       int shift = address.toWord().rshl(OBJECT_LIVE_SHIFT).and(WORD_SHIFT_MASK).toInt();
-//      Word rtn = Word.one().lsh(shift);
-//      return (set) ? rtn : rtn.not();
       return Word.one().lsh(shift);
     }
     static final int METADATA_BYTES = Region.BYTES_IN_REGION * Region.METADATA_REGIONS_PER_CHUNK;
@@ -183,7 +165,7 @@ public final class RegionSpace extends Space {
     if (newChunk) {
       Address chunk = Conversions.chunkAlign(start.plus(bytes), true);
       HeapLayout.mmapper.ensureMapped(chunk, Region.METADATA_PAGES_PER_CHUNK);
-      VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(Region.REGIONS_START_OFFSET));
+     VM.memory.zero(false, chunk, Extent.fromIntZeroExtend(Region.REGIONS_START_OFFSET));
     }
   }
 
@@ -281,20 +263,15 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
-  public void initializeHeader(ObjectReference object) {
+  public void initializeHeader(ObjectReference object, int size) {
     if (allocAsMarked) {
-      testAndMark(object);
-      Region.updateRegionAliveSize(Region.of(object), object);
+      writeMarkState(object);
+//      Region.updateRegionAliveSizeNonAtomic(Region.of(object), size);
     } else {
       VM.objectModel.writeAvailableByte(object, (byte) 0);
     }
 //    Region.updateRegionAliveSize(Region.of(object), object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
-  }
-
-  @Inline
-  public boolean isMarked(ObjectReference object) {
-    return MarkBitMap.isMarked(object);
   }
 
   /**
@@ -326,7 +303,7 @@ public final class RegionSpace extends Space {
    */
   @Inline
   public ObjectReference traceMarkObject(TransitiveClosure trace, ObjectReference object) {
-    ObjectReference rtn = object;
+//    ObjectReference rtn = object;
 
 //    if (VM.VERIFY_ASSERTIONS) {
 //      if (ForwardingWord.isForwardedOrBeingForwarded(object)) {
@@ -335,13 +312,14 @@ public final class RegionSpace extends Space {
 //      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
 //    }
 
-    if (testAndMark(rtn)) {
-      Address region = Region.of(rtn);
-      Region.updateRegionAliveSize(region, rtn);
-      trace.processNode(rtn);
+    if (testAndMark(object)) {
+      Address region = Region.of(object);
+      Region.updateRegionAliveSize(region, object);
+      trace.processNode(object);
+      return object;
     }
 
-    return rtn;
+    return object;
   }
 
   @Uninterruptible
@@ -398,17 +376,22 @@ public final class RegionSpace extends Space {
   @Inline
   public boolean isLive(ObjectReference object) {
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
-    return MarkBitMap.isMarked(object);
+    return isMarked(object);
   }
 
   @Inline
-  public void writeMarkState(ObjectReference object) {
-    MarkBitMap.writeMarkState(object);
+  public boolean isMarked(ObjectReference object) {
+    return MarkBitMap.isMarked(object);
   }
 
   @Inline
   private static boolean testAndMark(ObjectReference object) {
     return MarkBitMap.testAndMark(object);
+  }
+
+  @Inline
+  private static boolean writeMarkState(ObjectReference object) {
+    return MarkBitMap.writeMarkState(object);
   }
 
   @Inline

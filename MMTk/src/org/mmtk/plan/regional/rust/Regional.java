@@ -391,12 +391,17 @@ public class Regional extends Plan {
   @Override
   @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int totalPages = getTotalPages();
-    if (getPagesAvail() * 10 < totalPages) {
-      return true;
-    }
-    boolean heapFull = getPagesReserved() > totalPages;
+    final int totalPages = getTotalPages();
+    final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
     return spaceFull || heapFull;
+//    int totalPages = getTotalPages();
+//    if (getPagesAvail() * 10 < totalPages) {
+//      return true;
+//    }
+//    boolean heapFull = getPagesReserved() > totalPages;
+//    return spaceFull || heapFull;
+
+
 //    int totalPages = getTotalPages();
 //    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
 //      return true;

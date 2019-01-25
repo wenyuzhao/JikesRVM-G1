@@ -205,6 +205,12 @@ public class Region {
   }
 
   @Inline
+  public static void updateRegionAliveSizeNonAtomic(Address region, int size) {
+    Address meta = metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET);
+    meta.store(meta.loadInt() + size);
+  }
+
+  @Inline
   public static void setCursor(Address region, Address cursor) {
     Address meta = metaDataOf(region, METADATA_CURSOR_OFFSET);
 //    if (VM.VERIFY_ASSERTIONS) {

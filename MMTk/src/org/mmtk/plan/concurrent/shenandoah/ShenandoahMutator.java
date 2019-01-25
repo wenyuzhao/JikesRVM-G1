@@ -90,7 +90,7 @@ public class ShenandoahMutator extends ShenandoahMutatorBarriers {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     if (allocator == Shenandoah.ALLOC_RS) {
-      Shenandoah.regionSpace.initializeHeader(object);
+      Shenandoah.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
