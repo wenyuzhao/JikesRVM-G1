@@ -201,11 +201,14 @@ public class Regional extends Concurrent {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int totalPages = getTotalPages();
-    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
-      return true;
-    }
-    return super.collectionRequired(spaceFull, space);
+//    int totalPages = getTotalPages();
+//    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
+//      return true;
+//    }
+//    return super.collectionRequired(spaceFull, space);
+    final int totalPages = getTotalPages();
+    final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
+    return (spaceFull || heapFull);
   }
 
 //  @Override
@@ -219,7 +222,7 @@ public class Regional extends Concurrent {
   @Override
   protected boolean concurrentCollectionRequired() {
     return !Phase.concurrentPhaseActive() &&
-        ((getPagesReserved() * 100) / (getTotalPages() - BOOT_PAGES)) > INIT_HEAP_OCCUPANCY_PERCENT;
+        ((getPagesReserved() * 100) / (getTotalPages())) > INIT_HEAP_OCCUPANCY_PERCENT;
 //    return !Phase.concurrentPhaseActive() &&
 //        ((getPagesReserved() * 100) / getTotalPages()) > INIT_HEAP_OCCUPANCY_PERCENT;
   }

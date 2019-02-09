@@ -136,7 +136,7 @@ public class Region {
 
   @Inline
   public static Address of(final ObjectReference ref) {
-    return of(VM.objectModel.objectStartRef(ref));
+    return of(VM.objectModel.refToAddress(ref));
   }
 
   @Inline
@@ -333,6 +333,7 @@ public class Region {
 
     @Inline
     public static Address of(ObjectReference ref) {
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!ref.isNull());
       return of(VM.objectModel.objectStartRef(ref));
     }
 
@@ -478,6 +479,8 @@ public class Region {
       if (concurrent) id -= workers;
       int totalEntries = anchors.length;
       int entriesToClear = ceilDiv(anchors.length, workers);
+      Address anchorsPtr = ObjectReference.fromObject(anchors).toAddress();
+      Address limitsPtr = ObjectReference.fromObject(limits).toAddress();
 
       int G1_SPACE = regionSpace.getDescriptor();
 
@@ -491,9 +494,13 @@ public class Region {
           limits[index] = 0xFFFFFFFF;
           continue;
         }
-        if (Space.isInSpace(G1_SPACE, firstCard) && !Region.allocated(Region.of(firstCard))) {
-          anchors[index] = 0xFFFFFFFF;
-          limits[index] = 0xFFFFFFFF;
+        if (Space.isInSpace(G1_SPACE, firstCard)) {
+          Address region = Region.of(firstCard);
+          if (region.EQ(EmbeddedMetaData.getMetaDataBase(firstCard))) continue;
+          if (!Region.allocated(region)) {
+            anchors[index] = 0xFFFFFFFF;
+            limits[index] = 0xFFFFFFFF;
+          }
           continue;
         }
 //        if (nursery) continue;
@@ -629,7 +636,14 @@ public class Region {
   public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
   @Inline
   public static void linearScan(LinearScan scan, Address region) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(relocationRequired(region));
     Address end = getCursor(region);
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.write("Evacuate region ", region);
+      Log.writeln(" ~ ", end);
+    }
+
+//    if (end.isZero() || end.GT(region.plus(BYTES_IN_REGION))) VM.assertions.fail("Incorrect region range meta");
     Address cursor = region;
     if (cursor.GE(end)) return;
     ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
@@ -638,11 +652,13 @@ public class Region {
 //      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
 //        currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
 //      } else {
+      if (VM.VERIFY_ASSERTIONS)VM.assertions._assert( VM.debugging.validRef(ref));
         currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
 //      }
 //      Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+
       scan.scan(ref);
-      if (currentObjectEnd.GE(end)) {
+      if (currentObjectEnd.GE(end) || end.GT(region.plus(BYTES_IN_REGION))) {
         break;
       }
       ref = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);

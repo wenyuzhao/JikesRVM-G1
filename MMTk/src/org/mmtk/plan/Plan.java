@@ -113,6 +113,7 @@ public abstract class Plan {
 
   /** All meta data that is used by MMTk is allocated (and accounted for) in the meta data space. */
   public static final RawPageSpace metaDataSpace = new RawPageSpace("meta", VMRequest.discontiguous());
+  public static final RawPageSpace offHeapMetaDataSpace = new RawPageSpace("offheap-meta", VMRequest.discontiguous());
 
   /** Large objects are allocated into a special large object space. */
   public static final LargeObjectSpace loSpace = new LargeObjectSpace("los", VMRequest.discontiguous());
@@ -986,7 +987,7 @@ public abstract class Plan {
    */
   public final boolean poll(boolean spaceFull, Space space) {
     if (collectionRequired(spaceFull, space)) {
-      if (space == metaDataSpace) {
+      if (space == metaDataSpace || space == offHeapMetaDataSpace) {
         /* In general we must not trigger a GC on metadata allocation since
          * this is not, in general, in a GC safe point.  Instead we initiate
          * an asynchronous GC, which will occur at the next safe point.
@@ -1001,7 +1002,7 @@ public abstract class Plan {
     }
 
     if (concurrentCollectionRequired()) {
-      if (space == metaDataSpace) {
+      if (space == metaDataSpace || space == offHeapMetaDataSpace) {
         logPoll(space, "Triggering async concurrent collection");
         triggerInternalCollectionRequest();
         return false;

@@ -128,6 +128,10 @@ public class Regional extends StopTheWorld {
   @Override
   @Inline
   public void collectionPhase(short phaseId) {
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.write("Global ");
+      Log.writeln(Phase.getName(phaseId));
+    }
     if (phaseId == PREPARE) {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
@@ -183,11 +187,14 @@ public class Regional extends StopTheWorld {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    int totalPages = getTotalPages();
-    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
-      return true;
-    }
-    return super.collectionRequired(spaceFull, space);
+//    int totalPages = getTotalPages();
+//    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
+//      return true;
+//    }
+//    return super.collectionRequired(spaceFull, space);
+    final int totalPages = getTotalPages();
+    final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
+    return spaceFull || heapFull;
   }
 
 

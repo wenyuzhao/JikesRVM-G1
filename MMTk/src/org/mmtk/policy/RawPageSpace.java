@@ -28,7 +28,7 @@ import org.vmmagic.unboxed.*;
  * data.
  */
 @Uninterruptible
-public final class RawPageSpace extends Space {
+public class RawPageSpace extends Space {
 
   /**
    * The caller specifies the region of virtual memory to be used for

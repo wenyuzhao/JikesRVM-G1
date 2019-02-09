@@ -88,6 +88,14 @@ public class ShenandoahCollector extends ConcurrentCollector {
   private void evacuateRegions(boolean concurrent) {
     atomicCounter.set(0);
 //    Shenandoah.referenceUpdatingBarrierActive = true;
+    if (rendezvous() == 0) {
+      VM.activePlan.resetMutatorIterator();
+      ShenandoahMutator m;
+      while ((m = (ShenandoahMutator) VM.activePlan.getNextMutator()) != null) {
+        m.ra.reset();
+      }
+    }
+    copy.reset();
     rendezvous();
     int index;
     while ((index = atomicCounter.add(1)) < Shenandoah.relocationSet.length()) {
@@ -115,7 +123,7 @@ public class ShenandoahCollector extends ConcurrentCollector {
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    Shenandoah.regionSpace.initializeHeader(object, bytes);
+    Shenandoah.regionSpace.postCopy(object, bytes);
     Shenandoah.initializeIndirectionPointer(object);
   }
 

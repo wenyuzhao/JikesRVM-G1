@@ -217,7 +217,7 @@ public class Shenandoah extends Concurrent {
     super.processOptions();
     /* Set up the concurrent marking phase */
 //    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
-    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
+//    replacePhase(Phase.scheduleCollector(FORWARD_CLOSURE), Phase.scheduleComplex(concurrentForwardClosure));
 //    replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
     replacePhase(Phase.scheduleCollector(EVACUATE), Phase.scheduleComplex(concurrentEvacuate));
 //    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
@@ -319,10 +319,13 @@ public class Shenandoah extends Concurrent {
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     int totalPages = getTotalPages();
-    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
+    if (getPagesAvail() < totalPages * RESERVE_PERCENT) {
       return true;
     }
     return super.collectionRequired(spaceFull, space);
+//    final int totalPages = getTotalPages();
+//    final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
+//    return (spaceFull || heapFull);
   }
 
 //  @Override
@@ -334,8 +337,11 @@ public class Shenandoah extends Concurrent {
 final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
   @Override
   protected boolean concurrentCollectionRequired() {
+//    final int totalPages = getTotalPages();
+//    final boolean triggerConcMarking = ((totalPages - getPagesReserved()) * 1.8) < totalPages;
+//    return !Phase.concurrentPhaseActive() && triggerConcMarking;
     return !Phase.concurrentPhaseActive() &&
-        ((getPagesReserved() * 100) / (getTotalPages() - BOOT_PAGES)) > INIT_HEAP_OCCUPANCY_PERCENT;
+        ((getPagesReserved() * 100) / (getTotalPages())) > INIT_HEAP_OCCUPANCY_PERCENT;
   }
 
   /**

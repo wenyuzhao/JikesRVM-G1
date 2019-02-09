@@ -163,4 +163,10 @@ public class CardTable {
       VM.assertions._assert(cardTable[i] == (int) 0);
     }
   }
+
+  public static void clearAllCardMarks() {
+    for (int i = 0; i < cardTable.length; i++) {
+      cardTable[i] = 0;
+    }
+  }
 }

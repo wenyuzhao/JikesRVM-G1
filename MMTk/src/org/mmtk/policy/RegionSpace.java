@@ -72,15 +72,15 @@ public final class RegionSpace extends Space {
     private static final Word WORD_SHIFT_MASK = Word.one().lsh(LOG_BITS_IN_WORD).minus(Extent.one());
     @Inline
     public static boolean isMarked(ObjectReference object) {
-      return liveBitSet(VM.objectModel.objectStartRef(object));
+      return liveBitSet(VM.objectModel.refToAddress(object));
     }
     @Inline
     public static boolean testAndMark(ObjectReference object) {
-      return setLiveBit(VM.objectModel.objectStartRef(object), true, true);
+      return setLiveBit(VM.objectModel.refToAddress(object), true, true);
     }
     @Inline
     public static boolean writeMarkState(ObjectReference object) {
-      return setLiveBit(VM.objectModel.objectStartRef(object), true, false);
+      return setLiveBit(VM.objectModel.refToAddress(object), true, false);
     }
     @Inline
     private static boolean setLiveBit(Address address, boolean set, boolean atomic) {
@@ -182,6 +182,13 @@ public final class RegionSpace extends Space {
     }
   }
 
+  @Inline
+  public void clearAllMarkData() {
+    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
+      Region.clearMarkBitMap(b);
+    }
+  }
+
   /**
    * A new collection increment has completed.  Release global resources.
    */
@@ -264,13 +271,19 @@ public final class RegionSpace extends Space {
 
   @Inline
   public void initializeHeader(ObjectReference object, int size) {
-    if (allocAsMarked) {
+//    if (allocAsMarked) {
       writeMarkState(object);
-//      Region.updateRegionAliveSizeNonAtomic(Region.of(object), size);
-    } else {
-      VM.objectModel.writeAvailableByte(object, (byte) 0);
-    }
+      Region.updateRegionAliveSizeNonAtomic(Region.of(object), size);
+//    } else {
+//      VM.objectModel.writeAvailableByte(object, (byte) 0);
+//    }
 //    Region.updateRegionAliveSize(Region.of(object), object);
+//    object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
+  }
+
+  @Inline
+  public void postCopy(ObjectReference object, int size) {
+    writeMarkState(object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
   }
 
@@ -331,6 +344,8 @@ public final class RegionSpace extends Space {
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationTimer evacuationTimer) {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//    final Address region = Region.of(object);
+//    if (!Region.relocationRequired(region)) return
     if (Region.relocationRequired(Region.of(object))) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
 
@@ -661,7 +676,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public boolean contains(ObjectReference ref) {
-    return contains(VM.objectModel.objectStartRef(ref));
+    return contains(VM.objectModel.refToAddress(ref));
   }
 
   @Inline

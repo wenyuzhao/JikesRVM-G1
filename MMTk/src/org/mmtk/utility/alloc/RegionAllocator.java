@@ -35,9 +35,9 @@ public class RegionAllocator extends Allocator {
   protected final RegionSpace space;
   protected final int spaceDescriptor;
   private final int allocationKind;
-  private Address cursorSlot;
-  private Address cursor;
-  private Address limit;
+  private Address cursorSlot = Address.zero();
+  private Address cursor = Address.zero();
+  private Address limit = Address.zero();
 
   /**
    * Constructor.
@@ -49,13 +49,16 @@ public class RegionAllocator extends Allocator {
     this.space = space;
     this.spaceDescriptor = space.getDescriptor();
     this.allocationKind = allocationKind;
-    reset();
+//    reset();
   }
 
   /**
    * Reset the allocator. Note that this does not reset the space.
    */
   public void reset() {
+    if (!cursorSlot.isZero()) {
+      cursorSlot.store(cursor);
+    }
     cursorSlot = Address.zero();
     cursor = Address.zero();
     limit = Address.zero();
@@ -84,6 +87,10 @@ public class RegionAllocator extends Allocator {
     Address end = start.plus(bytes);
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
+      if (!cursorSlot.isZero()) {
+        cursorSlot.store(cursor);
+      }
+//      return allocSlow(start, end, align, offset);
         return allocSlowInline(bytes, align, offset);
     }
     /* sufficient memory is available, so we can finish performing the allocation */
@@ -91,7 +98,9 @@ public class RegionAllocator extends Allocator {
     cursor = end;
 //    if (Space.isInSpace(this.spaceDescriptor, start)) {
 //    cursorSlot.
-    cursorSlot.store(cursor);
+//    cursorSlot.store(cursor);
+
+//    end.plus(128).prefetch();
 //     Region.setCursor(Region.of(start), cursor);
 //    }
     /*if (VM.VERIFY_ASSERTIONS) {
@@ -129,6 +138,7 @@ public class RegionAllocator extends Allocator {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
     cursorSlot = Region.metaDataOf(ptr, Region.METADATA_CURSOR_OFFSET);
+    cursorSlot.store(Address.zero());
     limit = ptr.plus(Region.BYTES_IN_REGION);
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
     return alloc(bytes, align, offset);

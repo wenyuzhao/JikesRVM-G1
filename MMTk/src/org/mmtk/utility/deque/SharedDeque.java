@@ -179,7 +179,7 @@ public class SharedDeque extends Deque {
   }
 
   @Inline
-  final Address alloc() {
+  protected Address alloc() {
     Address rtn = rps.acquire(PAGES_PER_BUFFER);
     if (rtn.isZero()) {
       Space.printUsageMB();
@@ -209,10 +209,10 @@ public class SharedDeque extends Deque {
   private final String name;
 
   /** Raw page space from which to allocate */
-  private final RawPageSpace rps;
+  protected final RawPageSpace rps;
 
   /** Number of words per entry */
-  private final int arity;
+  protected final int arity;
 
   /** Completion flag - set when all consumers have arrived at the barrier */
   @Entrypoint

@@ -114,6 +114,7 @@ public abstract class ObjectModel {
    * @return an object reference from knowledge of the low order word
    */
   public abstract ObjectReference getObjectFromStartAddress(Address start);
+  public abstract Address objectAsAddress(Object start);
   /**
    * Gets a pointer to the address just past the end of the object.
    *

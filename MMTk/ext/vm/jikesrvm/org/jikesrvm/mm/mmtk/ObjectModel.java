@@ -198,6 +198,11 @@ import org.vmmagic.unboxed.Word;
   }
 
   @Override
+  public Address objectAsAddress(Object object) {
+    return Magic.objectAsAddress(object);
+  }
+
+  @Override
   public Address getObjectEndAddress(ObjectReference object) {
     return org.jikesrvm.objectmodel.ObjectModel.getObjectEndAddress(object.toObject());
   }

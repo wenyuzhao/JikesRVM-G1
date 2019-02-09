@@ -10,15 +10,14 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regional.rust;
+package org.mmtk.plan.regional.satbslow;
 
-//import org.mmtk.plan.*;
 import org.mmtk.plan.MutatorContext;
-import org.mmtk.plan.Phase;
-import org.mmtk.plan.Plan;
+import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.plan.TraceWriteBuffer;
+import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
@@ -36,19 +35,21 @@ import org.vmmagic.unboxed.ObjectReference;
  * and per-mutator thread collection semantics (flushing and restoring
  * per-mutator allocator state).<p>
  *
- * See {@link Regional} for an overview of the semi-space algorithm.
+ * See {@link G1} for an overview of the semi-space algorithm.
  *
- * @see Regional
- * @see RegionalCollector
+ * @see G1
+ * @see G1Collector
+ * @see StopTheWorldMutator
  * @see MutatorContext
  */
 @Uninterruptible
-public class RegionalMutator extends MutatorContext {
+public class G1Mutator extends ConcurrentMutator {
 
   /****************************************************************************
    * Instance fields
    */
   protected final RegionAllocator ra;
+  private final TraceWriteBuffer markRemset = new TraceWriteBuffer(global().markTrace);
 
   /****************************************************************************
    *
@@ -58,8 +59,10 @@ public class RegionalMutator extends MutatorContext {
   /**
    * Constructor
    */
-  public RegionalMutator() {
-    ra = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
+  public G1Mutator() {
+    super();
+    ra = new RegionAllocator(G1.regionSpace, Region.NORMAL);
+    barrierActive = true;
   }
 
   /****************************************************************************
@@ -73,8 +76,8 @@ public class RegionalMutator extends MutatorContext {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == Regional.ALLOC_MC) {
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
+    if (allocator == G1.ALLOC_MC) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return ra.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
@@ -84,7 +87,7 @@ public class RegionalMutator extends MutatorContext {
   @Override
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    if (allocator == Regional.ALLOC_MC) {
+    if (allocator == G1.ALLOC_MC) {
 //      Regional.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
@@ -92,9 +95,8 @@ public class RegionalMutator extends MutatorContext {
   }
 
   @Override
-  @Inline
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == Regional.regionSpace) return ra;
+    if (space == G1.regionSpace) return ra;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -111,71 +113,57 @@ public class RegionalMutator extends MutatorContext {
   public void collectionPhase(short phaseId, boolean primary) {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
-    if (phaseId == Regional.PREPARE_STACKS) {
-      if (!Plan.stacksPrepared()) {
-        VM.collection.prepareMutator(this);
-      }
-      flushRememberedSets();
-      return;
-    }
-
-    if (phaseId == Regional.PREPARE) {
+    if (phaseId == G1.PREPARE) {
+      barrierActive = false;
       ra.reset();
-      los.prepare(true);
-      lgcode.prepare(true);
-      smcode.prepare();
-      nonmove.prepare();
-      VM.memory.collectorPrepareVMSpace();
+      markRemset.flush();
+      super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Regional.RELEASE) {
+    if (phaseId == G1.RELEASE) {
       ra.reset();
-      los.release(true);
-      lgcode.release(true);
-      smcode.release();
-      nonmove.release();
-      VM.memory.collectorReleaseVMSpace();
+      super.collectionPhase(phaseId, primary);
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_PREPARE) {
+    if (phaseId == G1.EVACUATE_PREPARE) {
       ra.reset();
-      los.prepare(true);
-      lgcode.prepare(true);
-      smcode.prepare();
-      nonmove.prepare();
-      VM.memory.collectorPrepareVMSpace();
+      super.collectionPhase(G1.PREPARE, primary);
       return;
     }
 
-    if (phaseId == Regional.EVACUATE_RELEASE) {
+    if (phaseId == G1.EVACUATE_RELEASE) {
       ra.reset();
-      los.release(true);
-      lgcode.release(true);
-      smcode.release();
-      nonmove.release();
-      VM.memory.collectorReleaseVMSpace();
+      super.collectionPhase(G1.RELEASE, primary);
+      barrierActive = true;
       return;
     }
 
-//    super.collectionPhase(phaseId, primary);
-
-
-    Log.write("Per-mutator phase \"");
-    Log.write(Phase.getName(phaseId));
-    Log.writeln("\" not handled.");
-    VM.assertions.fail("Per-mutator phase not handled!");
+    super.collectionPhase(phaseId, primary);
   }
 
   @Override
   public void flushRememberedSets() {
     ra.reset();
+    markRemset.flush();
     assertRemsetsFlushed();
   }
 
+  @Override
+  protected void checkAndEnqueueReference(ObjectReference ref) {
+    if (ref.isNull()) return;
+
+    if (Space.isInSpace(G1.RS, ref)) G1.regionSpace.traceMarkObject(markRemset, ref);
+    else if (Space.isInSpace(G1.IMMORTAL, ref)) G1.immortalSpace.traceObject(markRemset, ref);
+    else if (Space.isInSpace(G1.LOS, ref)) G1.loSpace.traceObject(markRemset, ref);
+    else if (Space.isInSpace(G1.NON_MOVING, ref)) G1.nonMovingSpace.traceObject(markRemset, ref);
+    else if (Space.isInSpace(G1.SMALL_CODE, ref)) G1.smallCodeSpace.traceObject(markRemset, ref);
+    else if (Space.isInSpace(G1.LARGE_CODE, ref)) G1.largeCodeSpace.traceObject(markRemset, ref);
+  }
+
   @Inline
-  Regional global() {
-    return (Regional) VM.activePlan.global();
+  G1 global() {
+    return (G1) VM.activePlan.global();
   }
 }

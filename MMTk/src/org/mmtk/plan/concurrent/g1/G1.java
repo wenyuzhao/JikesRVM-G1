@@ -390,14 +390,23 @@ public class G1 extends Concurrent {
       return true;
     }
     // Full GC
-    int totalPages = getTotalPages();
-    boolean fullGCRequired = false;
-    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
-      fullGCRequired = true;
+    final int totalPages = getTotalPages();
+//    boolean fullGCRequired = false;
+    final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
+    if (spaceFull || heapFull) {
+      collection = matureCollection;
+      return true;
     }
-    fullGCRequired = fullGCRequired || super.collectionRequired(spaceFull, space);
-    if (fullGCRequired) collection = matureCollection;
-    return fullGCRequired;
+    return false;
+
+//    int totalPages = getTotalPages();
+//    boolean fullGCRequired = false;
+//    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
+//      fullGCRequired = true;
+//    }
+//    fullGCRequired = fullGCRequired || super.collectionRequired(spaceFull, space);
+//    if (fullGCRequired) collection = matureCollection;
+//    return fullGCRequired;
   }
 
 //  @Override
@@ -417,7 +426,7 @@ public class G1 extends Concurrent {
   @Override
   protected boolean concurrentCollectionRequired() {
     boolean mixedGCRequired = !Phase.concurrentPhaseActive() &&
-        ((getPagesReserved() * 100) / (getTotalPages() - BOOT_PAGES)) > INIT_HEAP_OCCUPANCY_PERCENT;
+        ((getPagesReserved() * 100) / (getTotalPages())) > INIT_HEAP_OCCUPANCY_PERCENT;
     if (mixedGCRequired) {
       collection = matureCollection;
     }

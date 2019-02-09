@@ -90,7 +90,7 @@ public class RegionalCollector extends ConcurrentCollector {
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    Regional.regionSpace.initializeHeader(object, bytes);
+    Regional.regionSpace.postCopy(object, bytes);
   }
 
   /****************************************************************************
