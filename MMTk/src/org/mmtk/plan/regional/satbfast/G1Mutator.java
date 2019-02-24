@@ -18,8 +18,10 @@ import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -50,6 +52,7 @@ public class G1Mutator extends ConcurrentMutator {
    */
   protected final RegionAllocator ra;
   private final TraceWriteBuffer markRemset = new TraceWriteBuffer(global().markTrace);
+  private final ObjectReferenceDeque modbuf;
 
   /****************************************************************************
    *
@@ -62,6 +65,7 @@ public class G1Mutator extends ConcurrentMutator {
   public G1Mutator() {
     super();
     ra = new RegionAllocator(G1.regionSpace, Region.NORMAL);
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
     barrierActive = false;
   }
 
@@ -151,14 +155,13 @@ public class G1Mutator extends ConcurrentMutator {
 
   @Override
   protected void checkAndEnqueueReference(ObjectReference ref) {
-    if (ref.isNull()) return;
-
-    if (Space.isInSpace(G1.RS, ref)) G1.regionSpace.traceMarkObject(markRemset, ref);
-    else if (Space.isInSpace(G1.IMMORTAL, ref)) G1.immortalSpace.traceObject(markRemset, ref);
-    else if (Space.isInSpace(G1.LOS, ref)) G1.loSpace.traceObject(markRemset, ref);
-    else if (Space.isInSpace(G1.NON_MOVING, ref)) G1.nonMovingSpace.traceObject(markRemset, ref);
-    else if (Space.isInSpace(G1.SMALL_CODE, ref)) G1.smallCodeSpace.traceObject(markRemset, ref);
-    else if (Space.isInSpace(G1.LARGE_CODE, ref)) G1.largeCodeSpace.traceObject(markRemset, ref);
+      VM.assertions.fail("Unreachable");
+    if (!ref.isNull()) {
+      if (HeaderByte.isUnlogged(ref)) {
+        HeaderByte.markAsLogged(ref);
+        modbuf.insert(ref);
+      }
+    }
   }
 
   @Inline

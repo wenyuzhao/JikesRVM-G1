@@ -104,7 +104,7 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
    */
   public MarkSweepSpace(String name, VMRequest vmRequest) {
     super(name, 0, vmRequest);
-    if (usingStickyMarkBits) allocState |= HeaderByte.UNLOGGED_BIT;
+//    if (usingStickyMarkBits) allocState |= HeaderByte.UNLOGGED_BIT;
   }
 
   /**
@@ -114,7 +114,7 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
   public void makeAgeSegregatedSpace() {
     /* we must be using sticky mark bits */
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(usingStickyMarkBits);
-    allocState &= ~HeaderByte.UNLOGGED_BIT; /* clear the unlogged bit for nursery allocs */
+//    allocState &= ~HeaderByte.UNLOGGED_BIT; /* clear the unlogged bit for nursery allocs */
     isAgeSegregated = true;
   }
 
@@ -197,8 +197,8 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
     if (HEADER_MARK_BITS) {
       if (gcWholeMS) {
         allocState = markState;
-        if (usingStickyMarkBits && !isAgeSegregated) /* if true, we allocate as "mature", not nursery */
-          allocState |= HeaderByte.UNLOGGED_BIT;
+//        if (usingStickyMarkBits && !isAgeSegregated) /* if true, we allocate as "mature", not nursery */
+//          allocState |= HeaderByte.UNLOGGED_BIT;
         markState = deltaMarkState(true);
         if (EAGER_MARK_CLEAR)
           clearAllBlockMarks();
@@ -359,10 +359,12 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
     if (HEADER_MARK_BITS) {
       byte oldValue = VM.objectModel.readAvailableByte(object);
       byte newValue = (byte) ((oldValue & ~MARK_COUNT_MASK) | (alloc && !isAllocAsMarked ? allocState : markState));
+      if (HeaderByte.NEEDS_UNLOGGED_BIT)
+        newValue = HeaderByte.markByteAsLogged(newValue);
       VM.objectModel.writeAvailableByte(object, newValue);
+//      if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
       if (isAllocAsMarked) BlockAllocator.markBlockMeta(object);
-    } else if (HeaderByte.NEEDS_UNLOGGED_BIT)
-      HeaderByte.markAsUnlogged(object);
+    }
   }
 
   /**
@@ -379,8 +381,10 @@ public final class MarkSweepSpace extends SegregatedFreeListSpace {
     markBits = (byte) (oldValue & MARK_COUNT_MASK);
     if (markBits == markState) return false;
     newValue = (byte)((oldValue & ~MARK_COUNT_MASK) | markState);
-    if (HeaderByte.NEEDS_UNLOGGED_BIT) newValue |= HeaderByte.UNLOGGED_BIT;
+    if (HeaderByte.NEEDS_UNLOGGED_BIT)
+      newValue = HeaderByte.markByteAsLogged(newValue);
     VM.objectModel.writeAvailableByte(object, newValue);
+//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
     return true;
   }
 

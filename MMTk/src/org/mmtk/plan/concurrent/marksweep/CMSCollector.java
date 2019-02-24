@@ -14,6 +14,7 @@ package org.mmtk.plan.concurrent.marksweep;
 
 import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.ConcurrentCollector;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
@@ -29,6 +30,7 @@ public class CMSCollector extends ConcurrentCollector {
   /****************************************************************************
    * Instance fields
    */
+  protected final ObjectReferenceDeque modbuf;
   protected final CMSTraceLocal trace;
 
   /****************************************************************************
@@ -39,7 +41,8 @@ public class CMSCollector extends ConcurrentCollector {
    * Constructor
    */
   public CMSCollector() {
-    trace = new CMSTraceLocal(global().msTrace);
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+    trace = new CMSTraceLocal(global().msTrace, modbuf);
   }
 
   /****************************************************************************
@@ -55,6 +58,7 @@ public class CMSCollector extends ConcurrentCollector {
   public void collectionPhase(short phaseId, boolean primary) {
     if (phaseId == CMS.PREPARE) {
       super.collectionPhase(phaseId, primary);
+//      global().modbufPool.prepareNonBlocking();
       trace.prepare();
       return;
     }
@@ -65,7 +69,9 @@ public class CMSCollector extends ConcurrentCollector {
     }
 
     if (phaseId == CMS.RELEASE) {
+      trace.completeTrace();
       trace.release();
+//      global().modbufPool.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }

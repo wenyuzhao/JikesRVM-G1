@@ -12,6 +12,7 @@
  */
 package org.mmtk.policy;
 
+
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
@@ -45,15 +46,15 @@ public final class RegionSpace extends Space {
   private static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
 
   /* local status bits */
-  private static final int  MARK_BASE = ForwardingWord.FORWARDING_BITS;
-  private static final int  MAX_MARKCOUNT_BITS = AVAILABLE_LOCAL_BITS - MARK_BASE;
-  private static final byte MARK_MASK = (byte) (((1 << MAX_MARKCOUNT_BITS) - 1) << MARK_BASE);
-  private static final byte MARK_AND_FORWARDING_MASK = (byte) (MARK_MASK | 3);
+//  private static final int  MARK_BASE = ForwardingWord.FORWARDING_BITS;
+//  private static final int  MAX_MARKCOUNT_BITS = AVAILABLE_LOCAL_BITS - MARK_BASE;
+//  private static final byte MARK_MASK = (byte) (((1 << MAX_MARKCOUNT_BITS) - 1) << MARK_BASE);
+//  private static final byte MARK_AND_FORWARDING_MASK = (byte) (MARK_MASK | 3);
 
   public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
   public static final int GLOBAL_GC_BITS_REQUIRED = 0;
   public static final int GC_HEADER_WORDS_REQUIRED = 2;
-  private static boolean allocAsMarked = false;
+  private static boolean allocAsMarked = true;
 
   private Atomic.Int youngRegions = new Atomic.Int();
   private Atomic.Int committedRegions = new Atomic.Int();
@@ -169,25 +170,33 @@ public final class RegionSpace extends Space {
     }
   }
 
-  @Inline
+//  @Inline
   public void prepare() {
     // Update mark state
     // Clear marking data
-    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
+    Address b;
+    regionIterator.reset();
+    while (!(b = regionIterator.next()).isZero()) {
       Region.clearMarkBitMap(b);
-    }
-    // Clear region live size
-    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
       Region.setUsedSize(b, 0);
     }
+
+//    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
+//      Region.clearMarkBitMap(b);
+//    }
+//    // Clear region live size
+//    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
+//      Region.setUsedSize(b, 0);
+//    }
   }
 
-  @Inline
-  public void clearAllMarkData() {
-    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
-      Region.clearMarkBitMap(b);
-    }
-  }
+//  @Inline
+//  public void clearAllMarkData() {
+//    VM.assertions.fail("Unimplemented");
+//    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
+//      Region.clearMarkBitMap(b);
+//    }
+//  }
 
   /**
    * A new collection increment has completed.  Release global resources.
@@ -226,14 +235,14 @@ public final class RegionSpace extends Space {
     Address region = acquire(Region.PAGES_IN_REGION);
 
     if (!region.isZero()) {
-      if (VM.VERIFY_ASSERTIONS) {
+      if (Region.verbose()) {
         Log.write("Region alloc ");
         Log.write(allocationKind == Region.EDEN ? "eden " : (allocationKind == Region.SURVIVOR ? "survivor " : "old "), region);
         Log.writeln(", in chunk ", EmbeddedMetaData.getMetaDataBase(region));
       }
 
 //      if (Region.USE_CARDS) Region.Card.clearCardMetaForRegion(region);
-
+      insertRegion(region);
       Region.register(region, allocationKind);
 
       if (allocationKind != Region.OLD) youngRegions.add(1);
@@ -252,7 +261,7 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public void release(Address region) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln("Release region ", region);
+    if (Region.verbose()) Log.writeln("Release region ", region);
     committedRegions.add(-1);
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
 
@@ -265,7 +274,7 @@ public final class RegionSpace extends Space {
     if (Region.USE_CARDS) {
       Region.Card.clearCardMetaForRegion(region);
     }
-
+    removeRegion(region);
     ((FreeListPageResource) pr).releasePages(region);
   }
 
@@ -273,6 +282,7 @@ public final class RegionSpace extends Space {
   public void initializeHeader(ObjectReference object, int size) {
 //    if (allocAsMarked) {
       writeMarkState(object);
+      if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
       Region.updateRegionAliveSizeNonAtomic(Region.of(object), size);
 //    } else {
 //      VM.objectModel.writeAvailableByte(object, (byte) 0);
@@ -284,7 +294,9 @@ public final class RegionSpace extends Space {
   @Inline
   public void postCopy(ObjectReference object, int size) {
     writeMarkState(object);
+//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
+    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
   }
 
   /**
@@ -326,6 +338,7 @@ public final class RegionSpace extends Space {
 //    }
 
     if (testAndMark(object)) {
+      if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.attemptLog(object);
       Address region = Region.of(object);
       Region.updateRegionAliveSize(region, object);
       trace.processNode(object);
@@ -351,6 +364,7 @@ public final class RegionSpace extends Space {
 
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+//        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         return newObject;
       } else {
         long time = VM.statistics.nanoTime();
@@ -359,10 +373,12 @@ public final class RegionSpace extends Space {
           evacuationTimer.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
         }
         trace.processNode(newObject);
+//        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         return newObject;
       }
     } else {
       if (testAndMark(object)) {
+//        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         trace.processNode(object);
       }
       return object;
@@ -375,8 +391,12 @@ public final class RegionSpace extends Space {
     object = newObject.isNull() ? object : newObject;
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (testAndMark(object)) {
+//      HeaderByte.markAsLogged(object);
       trace.processNode(object);
     }
+//    if (HeaderByte.isUnlogged(object)) {
+//      VM.assertions.fail("Redirected object set is unlogged");
+//    }
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     return object;
   }
@@ -409,94 +429,189 @@ public final class RegionSpace extends Space {
     return MarkBitMap.writeMarkState(object);
   }
 
-  @Inline
-  public float heapWastePercent(boolean oldGenerationOnly) {
-    int usedSize = 0;
-    int totalRegions = 0;
-    Address region = firstRegion();
-    while (!region.isZero()) {
-      if (!oldGenerationOnly || Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == Region.OLD) {
-        usedSize += Region.usedSize(region);
-        totalRegions++;
-      }
-      region = nextRegion(region);
-    }
-    if (totalRegions == 0) return 0;
-    return (1f - usedSize / (totalRegions * Region.BYTES_IN_REGION)) * 100;
-  }
+//  @Inline
+//  public float heapWastePercent(boolean oldGenerationOnly) {
+//    int usedSize = 0;
+//    int totalRegions = 0;
+//    Address region = firstRegion();
+//    while (!region.isZero()) {
+//      if (!oldGenerationOnly || Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() == Region.OLD) {
+//        usedSize += Region.usedSize(region);
+//        totalRegions++;
+//      }
+//      region = nextRegion(region);
+//    }
+//    if (totalRegions == 0) return 0;
+//    return (1f - usedSize / (totalRegions * Region.BYTES_IN_REGION)) * 100;
+//  }
 
   // Region iterator
 
+//  @Inline
+//  public Address firstRegion() {
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
+//    return nextRegion(headDiscontiguousRegion);
+//  }
+
+//  @Inline
+//  public Address nextRegion(Address region) {
+//    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+//    int i = region.EQ(chunk) ? 0 : Region.indexOf(region) + 1;
+//    if (i >= Region.REGIONS_IN_CHUNK) {
+//      i = 0;
+//      chunk = getNextChunk(chunk);
+//    }
+////HeapLayout.vmMap.getContiguousRegionChunks()
+//    while (true) {
+//      if (chunk.isZero() || !Space.isMappedAddress(chunk)) return Address.zero();
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedAddress(chunk));
+//      // Get allocated state of the next region in chunk
+//      Address allocated = chunk.plus(Region.METADATA_OFFSET_IN_CHUNK + i * Region.METADATA_BYTES + Region.METADATA_ALLOCATED_OFFSET);
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedAddress(allocated));
+//      if (allocated.loadByte() != ((byte) 0)) {
+//        return chunk.plus(Region.REGIONS_START_OFFSET + i * Region.BYTES_IN_REGION);
+//      }
+//
+//      i++;
+//      if (i >= Region.REGIONS_IN_CHUNK) {
+//        i = 0;
+//        chunk = getNextChunk(chunk);
+//      }
+//    }
+//  }
+
+//  @Inline
+//  private Address getNextChunk(Address chunk) {
+//    return HeapLayout.vmMap.getNextContiguousRegion(chunk);
+//  }
+
+//  final Lock regionsLock = VM.newLock("regions-lock");
+//  final byte[] regions = new byte[VM.HEAP_END.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION];
+  final AddressArray regions = AddressArray.create(VM.HEAP_END.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION);
   @Inline
-  public Address firstRegion() {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!contiguous);
-    return nextRegion(headDiscontiguousRegion);
+  private void insertRegion(Address region) {
+//    regionsLock.acquire();
+//    Address ptr = ObjectReference.fromObject(regions).toAddress();
+//    int index = region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION;
+//    ptr.plus(index).store(1);
+    regions.set(region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION, region);
+//    regionsLock.release();
+  }
+  @Inline
+  private void removeRegion(Address region) {
+//    Address ptr = ObjectReference.fromObject(regions).toAddress();
+//    int index = region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION;
+//    ptr.plus(index).store(0);
+//    regionsLock.acquire();
+    regions.set(region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION, Address.zero());
+//    regionsLock.release();
+  }
+
+  int cursor = 0;
+
+  @Inline
+  public void resetRegionIterator() {
+    cursor = 0;
   }
 
   @Inline
-  public Address nextRegion(Address region) {
-    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
-    int i = region.EQ(chunk) ? 0 : Region.indexOf(region) + 1;
-    if (i >= Region.REGIONS_IN_CHUNK) {
-      i = 0;
-      chunk = getNextChunk(chunk);
-    }
-
-    while (true) {
-      if (chunk.isZero() || !Space.isMappedAddress(chunk)) return Address.zero();
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedAddress(chunk));
-      // Get allocated state of the next region in chunk
-      Address allocated = chunk.plus(Region.METADATA_OFFSET_IN_CHUNK + i * Region.METADATA_BYTES + Region.METADATA_ALLOCATED_OFFSET);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedAddress(allocated));
-      if (allocated.loadByte() != ((byte) 0)) {
-        return chunk.plus(Region.REGIONS_START_OFFSET + i * Region.BYTES_IN_REGION);
-      }
-
-      i++;
-      if (i >= Region.REGIONS_IN_CHUNK) {
-        i = 0;
-        chunk = getNextChunk(chunk);
+  public Address nextRegion() {
+//      Address ptr = ObjectReference.fromObject(regions).toAddress();
+    final int len = regions.length();
+    while (cursor < len) {
+      Address region = regions.get(cursor);
+      cursor += 1;
+      if (!region.isZero()) {
+        return region; //VM.HEAP_START.plus(cursor << Region.LOG_BYTES_IN_REGION);
       }
     }
-  }
+    return Address.zero();
 
-  @Inline
-  private Address getNextChunk(Address chunk) {
-    return HeapLayout.vmMap.getNextContiguousRegion(chunk);
+
+//      if (region.isZero()) return Address.zero();
+//      // move `region` to next allocated G1 region
+//      while (!region.isZero() && (EmbeddedMetaData.getMetaDataBase(region).EQ(region) || !Region.allocated(region))) {
+//        region = region.plus(Region.BYTES_IN_REGION);
+//        if (EmbeddedMetaData.getMetaDataBase(region).EQ(region)) {
+//          // Bump to next chunk
+//          chunkCursor += 1;
+//          region = chunk = chunk.plus(EmbeddedMetaData.BYTES_IN_REGION);
+//          if (chunkCursor >= chunkLimit) {
+//            // next contiguous region
+//            region = chunk = contiguousRegion = HeapLayout.vmMap.getNextContiguousRegion(contiguousRegion);
+//            chunkCursor = 0;
+//            chunkLimit = contiguousRegion.isZero() ? 0 : HeapLayout.vmMap.getContiguousRegionChunks(contiguousRegion);
+//          }
+//        }
+//      }
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(region.isZero() || Space.isMappedAddress(region));
+//        VM.assertions._assert(region.isZero() || Space.isInSpace(getDescriptor(), region));
+//        VM.assertions._assert(region.isZero() || Region.allocated(region));
+//      }
+//      Address result = region;
+//      region = region.plus(Region.BYTES_IN_REGION);
+//      return result;
+
+//      Address result = region;
+//      // Skip first metadata region
+//      if (EmbeddedMetaData.getMetaDataBase(region).EQ(region)) {
+//        result = region = region.plus(Region.BYTES_IN_REGION);
+//      }
+//
+//      // update next region
+//      region = region.plus(Region.BYTES_IN_REGION);
+//      if (EmbeddedMetaData.getMetaDataBase(region).EQ(region) || Region.indexOf(region) >= Region.REGIONS_IN_CHUNK) {
+//        chunkCursor += 1;
+//        region = chunk = chunk.plus(EmbeddedMetaData.BYTES_IN_REGION);
+//        if (chunkCursor >= chunkLimit) {
+//          region = chunk = contiguousRegion = HeapLayout.vmMap.getNextContiguousRegion(contiguousRegion);
+//          chunkCursor = 0;
+//          chunkLimit = contiguousRegion.isZero() ? 0 : HeapLayout.vmMap.getContiguousRegionChunks(contiguousRegion);
+//        }
+//      }
+//      return result;
   }
 
   @Uninterruptible
   public class RegionIterator {
-    Address region = Address.zero();
-    Lock lock = VM.newLock("RegionIteratorLock");
-    boolean completed = false;
     @Inline
     public void reset() {
-      region = Address.zero();
-      completed = false;
+      resetRegionIterator();
     }
+
     @Inline
     public Address next() {
-      lock.acquire();
-      if (completed) {
-        region = Address.zero();
-      } else if (region.isZero()) {
-        region = firstRegion();
-      } else {
-        region = nextRegion(region);
-      }
-      if (region.isZero()) {
-        completed = true;
-      }
-      Address rtn = region;
-      lock.release();
-      return rtn;
+      return nextRegion();
     }
   }
 
   public final RegionIterator regionIterator = new RegionIterator();
 
-  @Inline
+  @NoInline
+  public int calculateRemSetPages() {
+      int remsetPages = 0;
+      regionIterator.reset();
+      Address region;
+      while (!(region = regionIterator.next()).isZero()) {
+          remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
+//          remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      }
+      return remsetPages;
+  }
+
+  @NoInline
+  public int calculateRemSetCards() {
+    int remsetCards = 0;
+    regionIterator.reset();
+    Address region;
+    while (!(region = regionIterator.next()).isZero()) {
+      remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+    }
+    return remsetCards;
+  }
+
+//  @Inline
   public AddressArray snapshotRegions(boolean nurseryOnly) {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Plan.gcInProgress());
 
@@ -505,14 +620,15 @@ public final class RegionSpace extends Space {
 
     // Initialize regions array
     int index = 0;
-    Address region = firstRegion();
+    regionIterator.reset();
+    Address region = regionIterator.next();
     while (!region.isZero()) {
       if (!nurseryOnly || Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
         regions.set(index, region);
         index++;
       }
       if (index >= regions.length()) break;
-      region = nextRegion(region);
+      region = regionIterator.next();//(region);
     }
 //    if (VM.VERIFY_ASSERTIONS) {
 //      if (regionsCount != index) {
@@ -696,7 +812,7 @@ public final class RegionSpace extends Space {
       Address region = relocationSet.get(cursor);
       relocationSet.set(cursor, Address.zero());
       if (!region.isZero()) {
-//        if (VM.VERIFY_ASSERTIONS) Log.writeln("Release ", region);
+//        if (Region.verbose()) Log.writeln("Release ", region);
         this.release(region);
       }
     }
@@ -736,11 +852,12 @@ public final class RegionSpace extends Space {
     }
   };
 
-  public void validate() {
-    for (Address region = firstRegion(); !region.isZero(); region = nextRegion(region)) {
-      Region.linearScan(regionValidationLinearScan, region);
-    }
-  }
+//  public void validate() {
+//    VM.assertions.fail("Unimplemented");
+//    for (Address region = firstRegion(); !region.isZero(); region = nextRegion(region)) {
+//      Region.linearScan(regionValidationLinearScan, region);
+//    }
+//  }
 
   @Uninterruptible
   public final static class ForwardingWord {
@@ -822,9 +939,15 @@ public final class RegionSpace extends Space {
 
     @Inline
     public static ObjectReference forwardObject(ObjectReference object, int allocator) {
+//      if (HeaderByte.isUnlogged(object)) {
+//        VM.assertions.fail("Object in collection set is unlogged");
+//      }
       ObjectReference newObject = VM.objectModel.copy(object, allocator);
 //      if (DEBUG) zeroObject(object);
       setForwardingPointer(object, newObject.toAddress().toWord().or(FORWARDED));
+//      if (HeaderByte.isUnlogged(newObject)) {
+//        VM.assertions.fail("Forwarded object is unlogged");
+//      }
       return newObject;
     }
 

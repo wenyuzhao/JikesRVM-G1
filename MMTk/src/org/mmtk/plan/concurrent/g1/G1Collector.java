@@ -21,6 +21,7 @@ import org.mmtk.policy.RemSet;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -58,7 +59,7 @@ public class G1Collector extends ConcurrentCollector {
    */
   protected final RegionAllocator g1CopySurvivor = new RegionAllocator(G1.regionSpace, Region.SURVIVOR);
   protected final RegionAllocator g1CopyOld = new RegionAllocator(G1.regionSpace, Region.OLD);
-  protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
+  protected final G1MarkTraceLocal markTrace;// = new G1MarkTraceLocal(global().markTrace);
   protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
   protected final Validator validateTrace = new Validator(global().matureTrace);
@@ -72,6 +73,7 @@ public class G1Collector extends ConcurrentCollector {
   static boolean concurrentEagerCleanupExecuted = false;
   static boolean concurrentCleanupExecuted = false;
   private static final Atomic.Int atomicCounter = new Atomic.Int();
+  public final ObjectReferenceDeque modbuf;
 
   /****************************************************************************
    *
@@ -81,7 +83,10 @@ public class G1Collector extends ConcurrentCollector {
   /**
    * Constructor
    */
-  public G1Collector() {}
+  public G1Collector() {
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+    markTrace = new G1MarkTraceLocal(global().markTrace, modbuf);//new CMSTraceLocal(global().msTrace, modbuf);
+  }
 
   /****************************************************************************
    *
@@ -121,7 +126,7 @@ public class G1Collector extends ConcurrentCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
       currentTrace = TRACE_MAKR;
       markTrace.prepare();
@@ -136,6 +141,7 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.RELEASE) {
+      markTrace.completeTrace();
       markTrace.release();
       return;
     }
@@ -282,7 +288,7 @@ public class G1Collector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
 
     if (phaseId == G1.CONCURRENT_CLOSURE) {
       currentTrace = TRACE_MAKR;

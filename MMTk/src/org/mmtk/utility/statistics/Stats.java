@@ -44,7 +44,7 @@ public class Stats {
   /** Maximum number of gc/mutator phases that can be counted */
   static final int MAX_PHASES = 1 << 12;
   /** Maximum number of counters that can be in operation */
-  static final int MAX_COUNTERS = 100;
+  static final int MAX_COUNTERS = 500;
 
   private static int counters = 0;
   private static Counter[] counter;

@@ -16,6 +16,9 @@ import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.MarkSweepSpace;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
+import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.utility.heap.VMRequest;
 
 import org.vmmagic.pragma.*;
@@ -55,6 +58,7 @@ public class CMS extends Concurrent {
    *
    */
   public final Trace msTrace = new Trace(metaDataSpace);
+  public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
 
   /*****************************************************************************
    *
@@ -71,10 +75,13 @@ public class CMS extends Concurrent {
       super.collectionPhase(phaseId);
       msTrace.prepareNonBlocking();
       msSpace.prepare(true);
+      modbufPool.prepareNonBlocking();
+      HeaderByte.flip();
       return;
     }
 
     if (phaseId == RELEASE) {
+      modbufPool.reset();//(1);
       msTrace.release();
       msSpace.release();
       super.collectionPhase(phaseId);

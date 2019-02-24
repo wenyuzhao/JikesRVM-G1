@@ -5,6 +5,7 @@ import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -16,12 +17,18 @@ import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class Region {
+//  public static final boolean VERBOSE;
+  @Inline
+  public static final boolean verbose() {
+    return VM.VERIFY_ASSERTIONS && Options.verbose.getValue() != 0;
+  }
+
   public static final int NORMAL = 0;
   public static final int EDEN = NORMAL;
   public static final int SURVIVOR = 1;
   public static final int OLD = 2;
 
-  public static final int LOG_PAGES_IN_REGION = 6;
+  public static final int LOG_PAGES_IN_REGION = 8;
   public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION; // 256
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;//BYTES_IN_PAGE * PAGES_IN_REGION; // 1048576
@@ -53,10 +60,10 @@ public class Region {
 
   static {
     int regionsInChunk = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_REGION; // 1024 / 256 = 4
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(regionsInChunk == 16);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(regionsInChunk == 16);
     int metadataRegionsInChunk = 1; // 1
     REGIONS_IN_CHUNK = regionsInChunk - metadataRegionsInChunk; // 3
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(REGIONS_IN_CHUNK == 15);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(REGIONS_IN_CHUNK == 15);
     METADATA_REGIONS_PER_CHUNK = metadataRegionsInChunk; // 256
     METADATA_PAGES_PER_CHUNK = metadataRegionsInChunk * PAGES_IN_REGION; // 256
     REGIONS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_CHUNK; // 1048576
@@ -638,7 +645,7 @@ public class Region {
   public static void linearScan(LinearScan scan, Address region) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(relocationRequired(region));
     Address end = getCursor(region);
-    if (VM.VERIFY_ASSERTIONS) {
+    if (verbose()) {
       Log.write("Evacuate region ", region);
       Log.writeln(" ~ ", end);
     }

@@ -54,4 +54,8 @@ public class G1Constraints extends ConcurrentConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.BYTES_IN_REGION;
   }
+  @Override
+  public boolean needsLogBitInHeader() {
+    return true;
+  }
 }

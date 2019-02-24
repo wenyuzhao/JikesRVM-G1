@@ -94,9 +94,9 @@ public class RegionalCollector extends StopTheWorldCollector {
    * {@inheritDoc}
    */
   @Override
-  @Inline
+//  @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.PREPARE) {
       currentTrace = markTrace;
       markTrace.prepare();

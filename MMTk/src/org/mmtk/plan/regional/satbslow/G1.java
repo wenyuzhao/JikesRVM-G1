@@ -18,6 +18,7 @@ import org.mmtk.policy.RawPageSpace;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
@@ -43,6 +44,7 @@ public class G1 extends StopTheWorld {
   public final Trace markTrace = new Trace(offHeapMetaDataSpace);
   public final Trace evacuateTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
+  public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
   //public static boolean concurrentMarkingInProgress = false;
 
   static {
@@ -138,6 +140,9 @@ public class G1 extends StopTheWorld {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
       markTrace.prepareNonBlocking();
+      modbufPool.clearDeque(1);
+      HeaderByte.flip();
+//      modbufPool.prepareNonBlocking();
       return;
     }
 
@@ -147,6 +152,8 @@ public class G1 extends StopTheWorld {
 
     if (phaseId == RELEASE) {
       markTrace.release();
+//      modbufPool.clearDeque(1);
+//      modbufPool.reset();
       super.collectionPhase(RELEASE);
       return;
     }
@@ -174,7 +181,7 @@ public class G1 extends StopTheWorld {
       regionSpace.release();
       super.collectionPhase(RELEASE);
       G1Mutator.newMutatorBarrierActive = true;
-      regionSpace.clearAllMarkData();
+//      regionSpace.clearAllMarkData();
       return;
     }
 

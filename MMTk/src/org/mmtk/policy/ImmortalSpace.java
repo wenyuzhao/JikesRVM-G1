@@ -110,8 +110,10 @@ import org.vmmagic.pragma.*;
   public void initializeHeader(ObjectReference object) {
     byte oldValue = VM.objectModel.readAvailableByte(object);
     byte newValue = (byte) ((oldValue & GC_MARK_BIT_MASK) | markState);
-    if (HeaderByte.NEEDS_UNLOGGED_BIT) newValue |= HeaderByte.UNLOGGED_BIT;
+    if (HeaderByte.NEEDS_UNLOGGED_BIT)
+      newValue = HeaderByte.markByteAsLogged(newValue);
     VM.objectModel.writeAvailableByte(object, newValue);
+//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
   }
 
   /**
@@ -123,13 +125,16 @@ import org.vmmagic.pragma.*;
    */
   @Inline
   private static boolean testAndMark(ObjectReference object, byte value) {
-    Word oldValue;
+    Word oldValue, newValue;
     do {
       oldValue = VM.objectModel.prepareAvailableBits(object);
       byte markBit = (byte) (oldValue.toInt() & GC_MARK_BIT_MASK);
       if (markBit == value) return false;
-    } while (!VM.objectModel.attemptAvailableBits(object, oldValue,
-        oldValue.xor(Word.fromIntZeroExtend(GC_MARK_BIT_MASK))));
+      newValue =  oldValue.xor(Word.fromIntZeroExtend(GC_MARK_BIT_MASK));
+      if (HeaderByte.NEEDS_UNLOGGED_BIT)
+        newValue = HeaderByte.markWordAsLogged(newValue);
+    } while (!VM.objectModel.attemptAvailableBits(object, oldValue, newValue));
+    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
     return true;
   }
 

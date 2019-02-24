@@ -195,7 +195,7 @@ public class G1Mutator extends StopTheWorldMutator {
   static int globalRemSetLogBufferCursor = 0;
 //  static int maxGlobalRemSetLogBufferCursor = BYTES_IN_PAGE >> LOG_BYTES_IN_ADDRESS;
 
-  @NoInline
+//  @NoInline
   public void enqueueCurrentRSBuffer(boolean triggerConcurrentRefinement, boolean acquireNewBuffer) {
     if (remSetLogBufferCursor == 0) return;
     // Add to globalRemSetLogBuffer
@@ -209,7 +209,7 @@ public class G1Mutator extends StopTheWorldMutator {
     remSetLogBufferCursor = 0;
   }
 
-  @Inline
+  @NoInline
   public void markAndEnqueueCard(Address card) {
     if (CardTable.attemptToMarkCard(card, true)) {
       remSetLogBuffer().plus(remSetLogBufferCursor << LOG_BYTES_IN_ADDRESS).store(card);
@@ -222,15 +222,16 @@ public class G1Mutator extends StopTheWorldMutator {
 
   @Inline
   public void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
-    if (src.toAddress().GE(VM.AVAILABLE_START) && !ref.isNull()) {
-      Word x = VM.objectModel.objectStartRef(src).toWord();
-      Word y = VM.objectModel.objectStartRef(ref).toWord();
+//    if (src.toAddress().GE(VM.AVAILABLE_START) && !ref.isNull()) {
+//      VM.assertions._assert(false);
+      Word x = VM.objectModel.refToAddress(src).toWord();
+      Word y = VM.objectModel.refToAddress(ref).toWord();
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
-      if (!tmp.isZero() && Space.isInSpace(org.mmtk.plan.concurrent.g1.G1.G1, ref) && !Space.isInSpace(org.mmtk.plan.concurrent.g1.G1.VM_SPACE, src)) {
-//        Region.Card.assertCardMeta(src);
+      tmp = ref.isNull() ? Word.zero() : tmp;
+      if (!tmp.isZero() && Space.isInSpace(G1.RS, ref)) {
         markAndEnqueueCard(Region.Card.of(src));
       }
-    }
+//    }
 ////    if (!ref.isNull() && !src.isNull()) {
 //      Word x = VM.objectModel.refToAddress(src).toWord();
 //      Word y = VM.objectModel.refToAddress(ref).toWord();

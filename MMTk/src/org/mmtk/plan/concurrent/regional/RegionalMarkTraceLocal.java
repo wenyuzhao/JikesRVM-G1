@@ -15,6 +15,9 @@ package org.mmtk.plan.concurrent.regional;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -26,8 +29,11 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class RegionalMarkTraceLocal extends TraceLocal {
 
-  public RegionalMarkTraceLocal(Trace trace) {
+  private final ObjectReferenceDeque modbuf;
+
+  public RegionalMarkTraceLocal(Trace trace, ObjectReferenceDeque modbuf) {
     super(Regional.SCAN_MARK, trace);
+    this.modbuf = modbuf;
   }
 
 
@@ -70,6 +76,16 @@ public class RegionalMarkTraceLocal extends TraceLocal {
       return true;
     } else {
       return super.willNotMoveInCurrentCollection(object);
+    }
+  }
+
+  @Override
+  protected void processRememberedSets() {
+    ObjectReference obj;
+    while (!(obj = modbuf.pop()).isNull()) {
+//      HeaderByte.markAsUnlogged(obj);
+//      if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(obj);
+      traceObject(obj);
     }
   }
 }

@@ -46,6 +46,10 @@ public class RegionalConstraints extends ConcurrentConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.BYTES_IN_REGION;
   }
+  @Override
+  public boolean needsLogBitInHeader() {
+    return true;
+  }
   //@Override
   //public boolean needsObjectReferenceWriteBarrier() {
     //return true;

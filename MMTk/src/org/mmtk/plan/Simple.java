@@ -194,7 +194,7 @@ public abstract class Simple extends Plan {
       emergencyCollection = !Plan.isInternalTriggeredCollection() &&
           lastCollectionWasExhaustive() && collectionAttempt > 1;
       if (emergencyCollection) {
-        if (Options.verbose.getValue() >= 1) Log.write("[Emergency]");
+        Log.writeln("[Emergency]");
         forceFullHeapCollection();
       }
       return;

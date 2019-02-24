@@ -22,6 +22,7 @@ import org.mmtk.policy.RegionSpace;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -53,7 +54,7 @@ public class RegionalCollector extends ConcurrentCollector {
    * Instance fields
    */
   protected final RegionAllocator copy = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
-  protected final RegionalMarkTraceLocal markTrace = new RegionalMarkTraceLocal(global().markTrace);
+  protected final RegionalMarkTraceLocal markTrace;// = new RegionalMarkTraceLocal(global().markTrace);
   protected final RegionalForwardTraceLocal forwardTrace = new RegionalForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected TraceLocal currentTrace;
@@ -61,6 +62,7 @@ public class RegionalCollector extends ConcurrentCollector {
   static boolean concurrentEagerCleanupExecuted = false;
   static boolean concurrentCleanupExecuted = false;
   private static final Atomic.Int atomicCounter = new Atomic.Int();
+  public final ObjectReferenceDeque modbuf;
 
   /****************************************************************************
    *
@@ -70,7 +72,10 @@ public class RegionalCollector extends ConcurrentCollector {
   /**
    * Constructor
    */
-  public RegionalCollector() {}
+  public RegionalCollector() {
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+    markTrace = new RegionalMarkTraceLocal(global().markTrace, modbuf);//new CMSTraceLocal(global().msTrace, modbuf);
+  }
 
   /****************************************************************************
    *
@@ -104,7 +109,7 @@ public class RegionalCollector extends ConcurrentCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.PREPARE) {
       currentTrace = markTrace;
       markTrace.prepare();
@@ -118,6 +123,7 @@ public class RegionalCollector extends ConcurrentCollector {
     }
 
     if (phaseId == Regional.RELEASE) {
+      markTrace.completeTrace();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
@@ -193,7 +199,7 @@ public class RegionalCollector extends ConcurrentCollector {
   @Override
   @Unpreemptible
   public void concurrentCollectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.CONCURRENT_CLOSURE) {
       currentTrace = markTrace;
       super.concurrentCollectionPhase(Regional.CONCURRENT_CLOSURE);

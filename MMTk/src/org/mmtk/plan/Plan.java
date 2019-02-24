@@ -29,6 +29,7 @@ import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.utility.statistics.EventCounter;
 import org.mmtk.utility.statistics.LatencyTimer;
 import org.mmtk.utility.statistics.Timer;
 import org.mmtk.utility.statistics.Stats;
@@ -404,7 +405,7 @@ public abstract class Plan {
    */
   public byte setBuildTimeGCByte(Address object, ObjectReference typeRef, int size) {
     if (HeaderByte.NEEDS_UNLOGGED_BIT) {
-      return HeaderByte.UNLOGGED_BIT;
+      return (byte) (0);
     } else {
       return 0;
     }
@@ -790,9 +791,11 @@ public abstract class Plan {
     if (LatencyTimer.isEnabled()) LatencyTimer.start();
   }
 
-  public static int gcCounts = 0, fullGCCounts = 0;
+  public static EventCounter gcCounts = new EventCounter("gc.total", true, true);
+  public static EventCounter fullGCCounts = new EventCounter("gc.full", true, true);
   public static final int[] remsetLogs = new int[4096 * 2];
   public static int remsetLogCursor = 0;
+//    public static EventCounter gcCounts = new EventCounter("gc.total", true, true);
 
   /**
    * Generic hook to allow benchmarks to be harnessed.  A plan may use
@@ -803,22 +806,28 @@ public abstract class Plan {
    */
   @Interruptible
   public static void harnessEnd()  {
-    Log log = VM.activePlan.mutator().getLog();
-    log.writeln("harnessEnd");
-    log.write("Full GC: ", fullGCCounts);
-    log.writeln(" / ", gcCounts);
-    log.writeln(">>>>>>>>>> REMSET LOGS START");
-    for (int i = 0; i < remsetLogCursor; i += 3) {
-      log.write(remsetLogs[i]);
-      log.write(" ", remsetLogs[i + 1]);
-      log.writeln(" ", remsetLogs[i + 2]);
-    }
-    log.writeln("<<<<<<<<<< REMSET LOGS END");
+//    Log log = VM.activePlan.mutator().getLog();
+//    log.writeln("harnessEnd");
+//    log.write("Full GC: ", fullGCCounts);
+//    log.writeln(" / ", gcCounts);
+//    log.writeln(">>>>>>>>>> REMSET LOGS START");
+//    for (int i = 0; i < remsetLogCursor; i += 3) {
+//      log.write(remsetLogs[i]);
+//      log.write(" ", remsetLogs[i + 1]);
+//      log.writeln(" ", remsetLogs[i + 2]);
+//    }
+//    log.writeln("<<<<<<<<<< REMSET LOGS END");
+//    long total = org.mmtk.plan.concurrent.marksweep.CMSMutator.total.get();
+//    long slow = org.mmtk.plan.concurrent.marksweep.CMSMutator.slow.get();
+//    log.writeln("Total: ", total);
+//      log.writeln("Slow: ", slow);
+//    log.write("Take rate: ");
+//    log.writeln(((double) slow)/ ((double) total));
 
 
     if (LatencyTimer.isEnabled()) {
       LatencyTimer.stop();
-      LatencyTimer.dump();
+//      LatencyTimer.dump();
     }
     Stats.stopAll();
     insideHarness = false;

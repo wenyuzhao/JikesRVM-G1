@@ -18,9 +18,11 @@ import org.mmtk.policy.CardTable;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.NoInline;
@@ -56,8 +58,13 @@ public class G1Mutator extends ConcurrentMutator {
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
-  private final TraceWriteBuffer markRemset = new TraceWriteBuffer(global().markTrace);
-  private TraceWriteBuffer currentRemset = markRemset;
+//  private final TraceWriteBuffer markRemset = new TraceWriteBuffer(global().markTrace);
+//  private TraceWriteBuffer currentRemset = markRemset;
+  private final ObjectReferenceDeque modbuf;
+
+  public G1Mutator() {
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+  }
 
   /****************************************************************************
    *
@@ -135,8 +142,8 @@ public class G1Mutator extends ConcurrentMutator {
 //    Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
 //      VM.collection.prepareMutator(this);
-      currentRemset = markRemset;
       super.collectionPhase(phaseId, primary);
+      modbuf.reset();
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -201,7 +208,7 @@ public class G1Mutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    currentRemset.flush();
+    modbuf.flushLocal();
     g1Eden.reset();
     g1Survivor.reset();
     g1Old.reset();
@@ -248,27 +255,30 @@ public class G1Mutator extends ConcurrentMutator {
 
   @Inline
   public void checkCrossRegionPointer(ObjectReference src, Address slot, ObjectReference ref) {
-    if (!ref.isNull() && !src.isNull()) {
-      Word x = VM.objectModel.objectStartRef(src).toWord();
-      Word y = VM.objectModel.objectStartRef(ref).toWord();
-      Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
-      if (!tmp.isZero() && Space.isInSpace(G1.G1, ref) && !Space.isInSpace(G1.VM_SPACE, src)) {
-//        Region.Card.assertCardMeta(src);
-        markAndEnqueueCard(Region.Card.of(src));
-      }
+    Word x = VM.objectModel.refToAddress(src).toWord();
+    Word y = VM.objectModel.refToAddress(ref).toWord();
+    Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
+    tmp = ref.isNull() ? Word.zero() : tmp;
+    if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
+      markAndEnqueueCard(Region.Card.of(src));
     }
+//    if (!ref.isNull() && !src.isNull()) {
+//      Word x = VM.objectModel.objectStartRef(src).toWord();
+//      Word y = VM.objectModel.objectStartRef(ref).toWord();
+//      Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
+//      if (!tmp.isZero() && Space.isInSpace(G1.G1, ref) && !Space.isInSpace(G1.VM_SPACE, src)) {
+////        Region.Card.assertCardMeta(src);
+//        markAndEnqueueCard(Region.Card.of(src));
+//      }
+//    }
   }
 
   @Override
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-
-    if (Space.isInSpace(G1.G1, ref)) G1.regionSpace.traceMarkObject(currentRemset, ref);
-    else if (Space.isInSpace(G1.IMMORTAL, ref)) G1.immortalSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(G1.LOS, ref)) G1.loSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(G1.NON_MOVING, ref)) G1.nonMovingSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(G1.SMALL_CODE, ref)) G1.smallCodeSpace.traceObject(currentRemset, ref);
-    else if (Space.isInSpace(G1.LARGE_CODE, ref)) G1.largeCodeSpace.traceObject(currentRemset, ref);
+    if (HeaderByte.attemptLog(ref)) {
+      modbuf.insert(ref);
+    }
   }
 
   @Inline
@@ -333,7 +343,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Override
   public final void assertRemsetsFlushed() {
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(currentRemset.isFlushed());
+      VM.assertions._assert(modbuf.isFlushed());
     }
   }
 

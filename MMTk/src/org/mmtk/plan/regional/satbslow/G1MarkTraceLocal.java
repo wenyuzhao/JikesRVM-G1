@@ -15,6 +15,7 @@ package org.mmtk.plan.regional.satbslow;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -26,8 +27,11 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class G1MarkTraceLocal extends TraceLocal {
 
+//  private final ObjectReferenceDeque modbuf;
+
   public G1MarkTraceLocal(Trace trace) {
     super(G1.SCAN_MARK, trace);
+//    this.modbuf = modbuf;
   }
 
 

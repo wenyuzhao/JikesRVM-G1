@@ -18,8 +18,10 @@ import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -49,7 +51,8 @@ public class RegionalMutator extends ConcurrentMutator {
    * Instance fields
    */
   protected final RegionAllocator ra;
-  private final TraceWriteBuffer remset;
+//  private final TraceWriteBuffer remset;
+  private final ObjectReferenceDeque modbuf;
 
   /****************************************************************************
    *
@@ -60,8 +63,9 @@ public class RegionalMutator extends ConcurrentMutator {
    * Constructor
    */
   public RegionalMutator() {
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
     ra = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
-    remset = new TraceWriteBuffer(global().markTrace);
+//    remset = new TraceWriteBuffer(global().markTrace);
   }
 
   /****************************************************************************
@@ -113,7 +117,10 @@ public class RegionalMutator extends ConcurrentMutator {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.PREPARE) {
+//      modbuf.
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(modbuf.isEmpty());
       VM.collection.prepareMutator(this);
+//      modbuf.reset();
       ra.reset();
       super.collectionPhase(phaseId, primary);
       return;
@@ -122,6 +129,7 @@ public class RegionalMutator extends ConcurrentMutator {
     if (phaseId == Regional.RELEASE) {
       ra.reset();
       super.collectionPhase(phaseId, primary);
+
       return;
     }
 
@@ -130,28 +138,33 @@ public class RegionalMutator extends ConcurrentMutator {
 
   @Override
   public void flushRememberedSets() {
-    remset.flush();
+//    remset.flush();
     ra.reset();
+    modbuf.flushLocal();
     assertRemsetsFlushed();
   }
 
   @Override
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
+    if (HeaderByte.attemptLog(ref)) {
+//      slow.add(1);
+      modbuf.insert(ref);
+    }
 //    if (barrierActive) {
-      if (Space.isInSpace(Regional.RS, ref)) Regional.regionSpace.traceMarkObject(remset, ref);
-      else if (Space.isInSpace(Regional.IMMORTAL, ref)) Regional.immortalSpace.traceObject(remset, ref);
-      else if (Space.isInSpace(Regional.LOS, ref)) Regional.loSpace.traceObject(remset, ref);
-      else if (Space.isInSpace(Regional.NON_MOVING, ref)) Regional.nonMovingSpace.traceObject(remset, ref);
-      else if (Space.isInSpace(Regional.SMALL_CODE, ref)) Regional.smallCodeSpace.traceObject(remset, ref);
-      else if (Space.isInSpace(Regional.LARGE_CODE, ref)) Regional.largeCodeSpace.traceObject(remset, ref);
+//      if (!ref.isNull()) {
+//        if (HeaderByte.isUnlogged(ref)) {
+//          HeaderByte.markAsLogged(ref);
+//          modbuf.insert(ref);
+//        }
+//      }
 //    }
   }
 
   @Override
   public final void assertRemsetsFlushed() {
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(remset.isFlushed());
+      VM.assertions._assert(modbuf.isFlushed());
     }
   }
 

@@ -237,8 +237,10 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
     byte oldValue = VM.objectModel.readAvailableByte(object);
     byte newValue = (byte) ((oldValue & ~LOS_BIT_MASK) | markState);
     if (alloc) newValue |= NURSERY_BIT;
-    if (HeaderByte.NEEDS_UNLOGGED_BIT) newValue |= HeaderByte.UNLOGGED_BIT;
+    if (HeaderByte.NEEDS_UNLOGGED_BIT)
+      newValue = HeaderByte.markByteAsLogged(newValue);
     VM.objectModel.writeAvailableByte(object, newValue);
+//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);// |= HeaderByte.UNLOGGED_BIT;
     Address cell = VM.objectModel.objectStartRef(object);
     treadmill.addToTreadmill(Treadmill.midPayloadToNode(cell), alloc);
   }
@@ -253,13 +255,17 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
    */
   @Inline
   private boolean testAndMark(ObjectReference object, byte value) {
-    Word oldValue;
+    Word oldValue, newValue;
     do {
       oldValue = VM.objectModel.prepareAvailableBits(object);
       byte markBit = (byte) (oldValue.toInt() & (inNurseryGC ? LOS_BIT_MASK : MARK_BIT));
       if (markBit == value) return false;
-    } while (!VM.objectModel.attemptAvailableBits(object, oldValue,
-                                                  oldValue.and(Word.fromIntZeroExtend(LOS_BIT_MASK).not()).or(Word.fromIntZeroExtend(value))));
+      newValue = oldValue.and(Word.fromIntZeroExtend(LOS_BIT_MASK).not()).or(Word.fromIntZeroExtend(value));
+      if (HeaderByte.NEEDS_UNLOGGED_BIT)
+        newValue = HeaderByte.markWordAsLogged(newValue);
+    } while (!VM.objectModel.attemptAvailableBits(object, oldValue, newValue));
+
+//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);// |= HeaderByte.UNLOGGED_BIT;
     return true;
   }
 

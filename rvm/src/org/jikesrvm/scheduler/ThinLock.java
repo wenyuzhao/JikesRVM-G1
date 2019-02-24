@@ -28,14 +28,17 @@ import static org.jikesrvm.objectmodel.ThinLockConstants.TL_THREAD_ID_SHIFT;
 import static org.jikesrvm.objectmodel.ThinLockConstants.TL_UNLOCK_MASK;
 
 import org.jikesrvm.VM;
+import org.jikesrvm.mm.mminterface.DebugUtil;
 import org.jikesrvm.runtime.Magic;
 import org.jikesrvm.util.Services;
+import org.mmtk.policy.Space;
 import org.vmmagic.pragma.Entrypoint;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.NoNullCheck;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.pragma.Unpreemptible;
+import org.vmmagic.unboxed.ObjectReference;
 import org.vmmagic.unboxed.Offset;
 import org.vmmagic.unboxed.Word;
 
@@ -207,6 +210,12 @@ public final class ThinLock {
         Word id = old.and(TL_THREAD_ID_MASK);
         if (id.EQ(threadId)) {
           if (old.and(TL_LOCK_COUNT_MASK).isZero()) {
+//            ObjectReference ref = ObjectReference.fromObject(o);
+//            DebugUtil.dumpRef(ref);
+//            VM.sysWriteln("Space: ", Space.getSpaceForObject(ref).getName());
+//            VM.sysWriteln("TL_LOCK_COUNT_MASK: ", TL_LOCK_COUNT_MASK);
+//            VM.sysWriteln("TL_STAT_MASK: ", TL_STAT_MASK);
+//            VM.sysWriteln("TL_THREAD_ID_MASK: ", TL_THREAD_ID_MASK);
             RVMThread.raiseIllegalMonitorStateException("biased unlocking: we own this object but the count is already zero", o);
           }
           setDedicatedU16(o, lockOffset, old.minus(TL_LOCK_COUNT_UNIT));

@@ -18,6 +18,7 @@ import org.mmtk.policy.Region;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -47,10 +48,11 @@ public class G1Collector extends StopTheWorldCollector {
    * Instance fields
    */
   protected final RegionAllocator copy = new RegionAllocator(G1.regionSpace, Region.NORMAL);
-  protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
+  protected final G1MarkTraceLocal markTrace;// = new G1MarkTraceLocal(global().markTrace);
   protected final G1EvacuateTraceLocal evacuateTrace = new G1EvacuateTraceLocal(global().evacuateTrace);
   protected TraceLocal currentTrace;
   private static final Atomic.Int atomicCounter = new Atomic.Int();
+//  public final ObjectReferenceDeque modbuf;
 
   /****************************************************************************
    *
@@ -60,7 +62,10 @@ public class G1Collector extends StopTheWorldCollector {
   /**
    * Constructor
    */
-  public G1Collector() {}
+  public G1Collector() {
+//    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+    markTrace = new G1MarkTraceLocal(global().markTrace);//new CMSTraceLocal(global().msTrace, modbuf);
+  }
 
   /****************************************************************************
    *
@@ -108,6 +113,7 @@ public class G1Collector extends StopTheWorldCollector {
     }
 
     if (phaseId == G1.RELEASE) {
+//      markTrace.completeTrace();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;

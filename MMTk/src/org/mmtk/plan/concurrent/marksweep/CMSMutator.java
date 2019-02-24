@@ -17,7 +17,10 @@ import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.MarkSweepLocal;
 import org.mmtk.policy.Space;
 
+import org.mmtk.utility.Atomic;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.alloc.Allocator;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 
 import org.vmmagic.pragma.*;
@@ -51,6 +54,7 @@ public class CMSMutator extends ConcurrentMutator {
    */
   private final MarkSweepLocal ms;
   private final TraceWriteBuffer remset;
+  private final ObjectReferenceDeque modbuf;
 
   /****************************************************************************
    *
@@ -61,6 +65,7 @@ public class CMSMutator extends ConcurrentMutator {
    * Constructor
    */
   public CMSMutator() {
+    modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
     ms = new MarkSweepLocal(CMS.msSpace);
     remset = new TraceWriteBuffer(global().msTrace);
   }
@@ -139,6 +144,7 @@ public class CMSMutator extends ConcurrentMutator {
   public void flushRememberedSets() {
     remset.flush();
     ms.flush();
+    modbuf.flushLocal();
   }
 
   /****************************************************************************
@@ -146,33 +152,47 @@ public class CMSMutator extends ConcurrentMutator {
    * Write and read barriers.
    */
 
+  public static Atomic.Long total = new Atomic.Long();
+  public static Atomic.Long slow = new Atomic.Long();
+
   /**
    * {@inheritDoc}
    */
   @Override
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-    if (barrierActive) {
-      if (!ref.isNull()) {
-        if      (Space.isInSpace(CMS.MARK_SWEEP, ref)) CMS.msSpace.traceObject(remset, ref);
-        else if (Space.isInSpace(CMS.IMMORTAL,   ref)) CMS.immortalSpace.traceObject(remset, ref);
-        else if (Space.isInSpace(CMS.LOS,        ref)) CMS.loSpace.traceObject(remset, ref);
-        else if (Space.isInSpace(CMS.NON_MOVING, ref)) CMS.nonMovingSpace.traceObject(remset, ref);
-        else if (Space.isInSpace(CMS.SMALL_CODE, ref)) CMS.smallCodeSpace.traceObject(remset, ref);
-        else if (Space.isInSpace(CMS.LARGE_CODE, ref)) CMS.largeCodeSpace.traceObject(remset, ref);
-      }
+//    if (barrierActive) {
+    if (HeaderByte.attemptLog(ref)) {
+//      slow.add(1);
+      modbuf.insert(ref);
     }
+//    total.add(1);
+//      if (!ref.isNull()) {
+//        if (HeaderByte.isUnlogged(ref)) {
+//          HeaderByte.markAsLoggedAtomic(ref);
+//          modbuf.insert(ref);
+//          slow.add(1);
+//        }
+//        total.add(1);
+//        if      (Space.isInSpace(CMS.MARK_SWEEP, ref)) CMS.msSpace.traceObject(remset, ref);
+//        else if (Space.isInSpace(CMS.IMMORTAL,   ref)) CMS.immortalSpace.traceObject(remset, ref);
+//        else if (Space.isInSpace(CMS.LOS,        ref)) CMS.loSpace.traceObject(remset, ref);
+//        else if (Space.isInSpace(CMS.NON_MOVING, ref)) CMS.nonMovingSpace.traceObject(remset, ref);
+//        else if (Space.isInSpace(CMS.SMALL_CODE, ref)) CMS.smallCodeSpace.traceObject(remset, ref);
+//        else if (Space.isInSpace(CMS.LARGE_CODE, ref)) CMS.largeCodeSpace.traceObject(remset, ref);
+//      }
+//    }
 
-    if (VM.VERIFY_ASSERTIONS) {
-      if (!ref.isNull() && !Plan.gcInProgress()) {
-        if      (Space.isInSpace(CMS.MARK_SWEEP, ref)) VM.assertions._assert(CMS.msSpace.isLive(ref));
-        else if (Space.isInSpace(CMS.IMMORTAL,   ref)) VM.assertions._assert(CMS.immortalSpace.isLive(ref));
-        else if (Space.isInSpace(CMS.LOS,        ref)) VM.assertions._assert(CMS.loSpace.isLive(ref));
-        else if (Space.isInSpace(CMS.NON_MOVING, ref)) VM.assertions._assert(CMS.nonMovingSpace.isLive(ref));
-        else if (Space.isInSpace(CMS.SMALL_CODE, ref)) VM.assertions._assert(CMS.smallCodeSpace.isLive(ref));
-        else if (Space.isInSpace(CMS.LARGE_CODE, ref)) VM.assertions._assert(CMS.largeCodeSpace.isLive(ref));
-      }
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      if (!ref.isNull() && !Plan.gcInProgress()) {
+//        if      (Space.isInSpace(CMS.MARK_SWEEP, ref)) VM.assertions._assert(CMS.msSpace.isLive(ref));
+//        else if (Space.isInSpace(CMS.IMMORTAL,   ref)) VM.assertions._assert(CMS.immortalSpace.isLive(ref));
+//        else if (Space.isInSpace(CMS.LOS,        ref)) VM.assertions._assert(CMS.loSpace.isLive(ref));
+//        else if (Space.isInSpace(CMS.NON_MOVING, ref)) VM.assertions._assert(CMS.nonMovingSpace.isLive(ref));
+//        else if (Space.isInSpace(CMS.SMALL_CODE, ref)) VM.assertions._assert(CMS.smallCodeSpace.isLive(ref));
+//        else if (Space.isInSpace(CMS.LARGE_CODE, ref)) VM.assertions._assert(CMS.largeCodeSpace.isLive(ref));
+//      }
+//    }
   }
 
   /****************************************************************************

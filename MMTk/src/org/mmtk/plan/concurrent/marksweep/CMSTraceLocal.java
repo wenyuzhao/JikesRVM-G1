@@ -16,6 +16,8 @@ import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.Trace;
 import org.mmtk.policy.Space;
 
+import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.*;
 import org.vmmagic.unboxed.*;
 
@@ -26,12 +28,13 @@ import org.vmmagic.unboxed.*;
 @Uninterruptible
 public final class CMSTraceLocal extends TraceLocal {
 
-
+  private final ObjectReferenceDeque modbuf;
   /**
    * @param trace the global trace class to use
    */
-  public CMSTraceLocal(Trace trace) {
+  public CMSTraceLocal(Trace trace, ObjectReferenceDeque modbuf) {
     super(trace);
+    this.modbuf = modbuf;
   }
 
   /****************************************************************************
@@ -69,5 +72,14 @@ public final class CMSTraceLocal extends TraceLocal {
     if (Space.isInSpace(CMS.MARK_SWEEP, object))
       return CMS.msSpace.traceObject(this, object);
     return super.traceObject(object);
+  }
+
+  @Override
+  protected void processRememberedSets() {
+    ObjectReference obj;
+    while (!(obj = modbuf.pop()).isNull()) {
+//      if (HeaderByte.attemptU;
+      traceObject(obj);
+    }
   }
 }

@@ -137,7 +137,7 @@ public class PauseTimePredictor {
     double evacuationTimePerRegion = totalNurseryEvacuationTime / totalNurseryRegions;
     int newEdenRegions = (int) ((EXPECTED_PAUSE_TIME() - averageCardScanningTime) / evacuationTimePerRegion);
 //    newEdenRegions /= 2;
-    if (VM.VERIFY_ASSERTIONS) {
+    if (Region.verbose()) {
       Log.write("newEdenRegions0=");
       Log.writeln(newEdenRegions);
     }
@@ -145,7 +145,7 @@ public class PauseTimePredictor {
     if (newEdenRegions > maxEdenRegions) newEdenRegions = maxEdenRegions;
     if (newEdenRegions < 1) newEdenRegions = 1;
     global().newSizeRatio = (float) (((double) newEdenRegions) / ((double) global().TOTAL_LOGICAL_REGIONS));
-    if (VM.VERIFY_ASSERTIONS) {
+    if (Region.verbose()) {
       Log.write("averageCardScanningTime=");
       Log.writeln(averageCardScanningTime);
       Log.write("averageCardScanningTime=");

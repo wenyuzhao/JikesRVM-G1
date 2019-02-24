@@ -54,4 +54,8 @@ public class G1Constraints extends StopTheWorldConstraints {
   public boolean needsJavaLangReferenceReadBarrier() {
     return true;
   }
+  @Override
+  public boolean needsLogBitInHeader() {
+    return true;
+  }
 }

@@ -16,10 +16,13 @@ import org.mmtk.plan.*;
 import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.*;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
+import org.mmtk.utility.statistics.DoubleCounter;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
@@ -56,6 +59,7 @@ public class G1 extends Concurrent {
 
   public static final RegionSpace regionSpace = new RegionSpace("g1", VMRequest.discontiguous());
   public static final int G1 = regionSpace.getDescriptor();
+  public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace nurseryTrace = new Trace(metaDataSpace);
@@ -221,6 +225,9 @@ public class G1 extends Concurrent {
 //    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
   }
 
+  DoubleCounter remsetFootprint = new DoubleCounter("remset.footprint", true, true, true);
+  DoubleCounter remsetUtilization = new DoubleCounter("remset.utilization", true, true, true);
+
   /****************************************************************************
    *
    * Collection
@@ -233,9 +240,9 @@ public class G1 extends Concurrent {
    * {@inheritDoc}
    */
   @Override
-  @Inline
+//  @Inline
   public void collectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) {
+    if (Region.verbose()) {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
     }
@@ -250,9 +257,7 @@ public class G1 extends Concurrent {
       } else {
         currentGCKind = MIXED_GC;
       }
-      if (insideHarness) {
-        Plan.gcCounts += 1;
-      }
+      Plan.gcCounts.inc();
       return;
     }
 
@@ -268,6 +273,8 @@ public class G1 extends Concurrent {
       super.collectionPhase(phaseId);
       markTrace.prepareNonBlocking();
       regionSpace.prepare();
+      modbufPool.prepareNonBlocking();
+      HeaderByte.flip();
       return;
     }
 
@@ -278,6 +285,7 @@ public class G1 extends Concurrent {
     if (phaseId == RELEASE) {
       if (currentGCKind == MIXED_GC) PauseTimePredictor.stopTheWorldStart();
       startTime = VM.statistics.nanoTime();
+      modbufPool.reset();
       markTrace.release();
       return;
     }
@@ -288,15 +296,16 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == REMEMBERED_SETS) {
-      int remsetPages = 0, remsetCards = 0;
-      for (Address region = regionSpace.firstRegion(); !region.isZero(); region = regionSpace.nextRegion(region)) {
-        remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
-        remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      double remsetPages = regionSpace.calculateRemSetPages();
+      double remsetCards = regionSpace.calculateRemSetCards();
+      int totalPages = (regionSpace.committedRegions() / 15 * 16) << Region.LOG_PAGES_IN_REGION;
+      if (totalPages != 0) {
+        remsetFootprint.log(remsetPages * 100 / totalPages);
       }
-      remsetLogs[remsetLogCursor] = regionSpace.committedRegions();
-      remsetLogs[remsetLogCursor + 1] = remsetPages;
-      remsetLogs[remsetLogCursor + 2] = remsetCards;
-      remsetLogCursor += 3;
+      if (remsetPages != 0) {
+        remsetUtilization.log(remsetCards * 100 / (remsetPages * Constants.BITS_IN_PAGE));
+      }
+//      remsetLogCursor += 3;
       return;
     }
 
@@ -326,8 +335,8 @@ public class G1 extends Concurrent {
     if (phaseId == COMPLETE) {
       ConcurrentRemSetRefinement.resume();
       super.collectionPhase(COMPLETE);
-      if (insideHarness && currentGCKind == FULL_GC) {
-        Plan.fullGCCounts += 1;
+      if (currentGCKind == FULL_GC) {
+        Plan.fullGCCounts.inc();
       }
 
       if (currentGCKind == YOUNG_GC) {

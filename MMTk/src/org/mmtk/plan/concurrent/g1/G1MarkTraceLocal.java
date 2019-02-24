@@ -18,6 +18,7 @@ import org.mmtk.policy.Region;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -31,8 +32,11 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class G1MarkTraceLocal extends TraceLocal {
 
-  public G1MarkTraceLocal(Trace trace) {
+  private final ObjectReferenceDeque modbuf;
+
+  public G1MarkTraceLocal(Trace trace, ObjectReferenceDeque modbuf) {
     super(G1.SCAN_MARK, trace);
+    this.modbuf = modbuf;
   }
 
   @Override
@@ -90,6 +94,14 @@ public class G1MarkTraceLocal extends TraceLocal {
       return true;
     } else {
       return super.willNotMoveInCurrentCollection(object);
+    }
+  }
+
+  @Override
+  protected void processRememberedSets() {
+    ObjectReference obj;
+    while (!(obj = modbuf.pop()).isNull()) {
+      traceObject(obj);
     }
   }
 }

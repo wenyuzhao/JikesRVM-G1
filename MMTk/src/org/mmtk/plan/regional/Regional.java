@@ -13,6 +13,7 @@
 package org.mmtk.plan.regional;
 
 import org.mmtk.plan.*;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
@@ -126,9 +127,9 @@ public class Regional extends StopTheWorld {
    * {@inheritDoc}
    */
   @Override
-  @Inline
+//  @Inline
   public void collectionPhase(short phaseId) {
-    if (VM.VERIFY_ASSERTIONS) {
+    if (Region.verbose()) {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
     }

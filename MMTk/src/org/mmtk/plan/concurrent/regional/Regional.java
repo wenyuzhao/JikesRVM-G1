@@ -20,6 +20,8 @@ import org.mmtk.plan.concurrent.Concurrent;
 import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
@@ -41,7 +43,7 @@ public class Regional extends Concurrent {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace forwardTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
-  //public static boolean concurrentMarkingInProgress = false;
+  public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
 
   static {
     Options.concurrentCleanup = new ConcurrentCleanup();
@@ -151,9 +153,9 @@ public class Regional extends Concurrent {
   public void collectionPhase(short phaseId) {
     if (phaseId == INITIATE) {
       super.collectionPhase(INITIATE);
-      org.mmtk.plan.concurrent.regional.RegionalCollector.concurrentRelocationSetSelectionExecuted = false;
-      org.mmtk.plan.concurrent.regional.RegionalCollector.concurrentEagerCleanupExecuted = false;
-      org.mmtk.plan.concurrent.regional.RegionalCollector.concurrentCleanupExecuted = false;
+      RegionalCollector.concurrentEagerCleanupExecuted = false;
+      RegionalCollector.concurrentCleanupExecuted = false;
+      RegionalCollector.concurrentRelocationSetSelectionExecuted = false;
       return;
     }
 
@@ -161,6 +163,11 @@ public class Regional extends Concurrent {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
       markTrace.prepareNonBlocking();
+//      modbufPool.clearDeque(1)
+//      if (VM.VERIFY_ASSERTIONS) modbufPool.assertExhausted();
+      modbufPool.prepareNonBlocking();
+//      modbufPool.clearDeque(1);
+      HeaderByte.flip();
       return;
     }
 
@@ -170,6 +177,8 @@ public class Regional extends Concurrent {
 
     if (phaseId == RELEASE) {
       markTrace.release();
+      modbufPool.reset();
+//      modbufPool.clearDeque(1);
       super.collectionPhase(RELEASE);
       return;
     }
@@ -184,6 +193,8 @@ public class Regional extends Concurrent {
     if (phaseId == FORWARD_RELEASE) {
       forwardTrace.release();
       regionSpace.release();
+
+//      modbufPool.clearDeque(1);
       super.collectionPhase(RELEASE);
       return;
     }
