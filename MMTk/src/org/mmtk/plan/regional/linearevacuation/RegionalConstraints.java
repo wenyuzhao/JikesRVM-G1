@@ -47,6 +47,10 @@ public class RegionalConstraints extends StopTheWorldConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.BYTES_IN_REGION;
   }
+  @Override
+  public boolean needsLogBitInHeader() {
+    return false;
+  }
   //@Override
   //public boolean needsObjectReferenceWriteBarrier() {
     //return true;

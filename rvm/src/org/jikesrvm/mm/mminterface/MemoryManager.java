@@ -469,7 +469,8 @@ public final class MemoryManager {
         isPrefix("Lcom/ibm/tuningfork/", typeBA) || isPrefix("[Lcom/ibm/tuningfork/", typeBA) ||
         isPrefix("Lorg/mmtk/", typeBA) || isPrefix("[Lorg/mmtk/", typeBA) ||
         isPrefix("Lorg/jikesrvm/mm/", typeBA) || isPrefix("[Lorg/jikesrvm/mm/", typeBA) ||
-        isPrefix("Lorg/jikesrvm/jni/JNIEnvironment;", typeBA)) {
+        isPrefix("Lorg/jikesrvm/jni/JNIEnvironment;", typeBA)
+            || isPrefix("Lorg/jikesrvm/objectmodel/TIB", typeBA)) {
       allocator = Plan.ALLOC_NON_MOVING;
     }
     return allocator;

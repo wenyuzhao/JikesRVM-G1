@@ -23,10 +23,7 @@ import org.mmtk.vm.Lock;
 import org.mmtk.vm.Monitor;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
-import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.AddressArray;
-import org.vmmagic.unboxed.ObjectReference;
-import org.vmmagic.unboxed.Word;
+import org.vmmagic.unboxed.*;
 
 /**
  * This class implements <i>per-collector thread</i> behavior
@@ -115,19 +112,6 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       size++;
       lock.release();
     }
-    @Inline public static Address tryDequeue() {
-      lock.acquire();
-      if (size == 0) {
-        lock.release();
-        return Address.zero();
-      }
-      Address item = array.get(head);
-      array.set(head, Address.zero());
-      head = (head + 1) % array.length();
-      size--;
-      lock.release();
-      return item;
-    }
     @Inline public static void clear() {
       lock.acquire();
       head = 0;
@@ -196,49 +180,31 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       if (tmp.isZero()) return;
       if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {
         Address foreignBlock = Region.of(ref);
-//        Region.Card.updateCardMeta(source);
         RemSet.addCard(foreignBlock, card);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(RemSet.contains(foreignBlock, card));
       }
     }
   };
 
   static LinearScan cardLinearScan = new LinearScan() {
     @Override @Inline @Uninterruptible public void scan(ObjectReference object) {
-      if (object.toAddress().loadWord(Region.Card.OBJECT_END_ADDRESS_OFFSET).isZero()) {
-        if (VM.VERIFY_ASSERTIONS) {
-          if (!VM.debugging.validRef(object)) {
-            Log.writeln();
-            Log.write("Space: ");
-            Log.writeln(Space.getSpaceForObject(object).getName());
-            if (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace) {
-              Log.writeln(BlockAllocator.checkBlockMeta(Region.Card.of(object)) ? " Block Live " : " Block Dead ");
-            }
-            VM.objectModel.dumpObject(object);
-            VM.assertions.fail("");
-          }
-        }
-        VM.scanning.scanObject(scanPointers, object);
-      }
+      VM.scanning.scanObject(scanPointers, object);
     }
   };
 
   @Inline
-  public static void processCard(Address card) {
-//    Address region = Region.of(card);
-//    if (!Space.isMappedAddress(card) || (Space.isInSpace(G1.G1, card) && !Region.allocated(region))) {
-    if (!Space.isMappedAddress(card)) return;
-    if (card.LT(VM.AVAILABLE_START) || Space.isInSpace(Plan.VM_SPACE, card)) return;
-    if (Space.isInSpace(G1.G1, card) && !Region.allocated(Region.of(card))) return;
-//    if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
-//      if (!BlockAllocator.checkBlockMeta(card)) return;
-//    }
-//    if (!Space.isInSpace(Plan.VM_SPACE, card)) {
+  public static int processCard(Address card) {
+    if (!Space.isMappedAddress(card)) return 0;
+    if (card.LT(VM.AVAILABLE_START) || Space.isInSpace(Plan.VM_SPACE, card)) return 0;
+    if (Space.isInSpace(G1.G1, card) && !Region.allocated(Region.of(card))) return 0;
+
     long time = VM.statistics.nanoTime();
     Region.Card.linearScan(cardLinearScan, G1.regionSpace, card, false);
-    if (Plan.gcInProgress())
+    if (Plan.gcInProgress()) {
+//      return (int) (VM.statistics.nanoTime() - time);
       PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
-//    }
+    }
+    return 0;
+//      PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
   }
 
   @Inline
@@ -258,6 +224,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     Plan.metaDataSpace.release(buffer);
   }
 
+  final static int INT_MASK = (1 << Constants.LOG_BITS_IN_INT) - 1;
+
   @Inline
   public static void refineAllDirtyCards() {
     int workers = VM.activePlan.collector().parallelWorkerCount();
@@ -273,19 +241,25 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 //        processCard(c);
 //      }
 //    }
-    int startIndex = id * cardsToClear, endIndex = id * cardsToClear + cardsToClear;
+    long totalTime = 0;
+    final Address cardTable = ObjectReference.fromObject(CardTable.cardTable).toAddress();
+    final int startIndex = id * cardsToClear, endIndex = id * cardsToClear + cardsToClear;
     for (int i = startIndex; i < endIndex; i++) {
       if (i >= totalCards) break;
-      int bufferIndex = i >>> Constants.LOG_BITS_IN_INT;
-      if (CardTable.cardTable[bufferIndex] == 0) {
-        i = (bufferIndex << Constants.LOG_BITS_IN_INT) + Constants.BITS_IN_INT - 1;
-        continue;
+      if ((i & INT_MASK) == 0) {
+        int bufferIndex = i >>> Constants.LOG_BITS_IN_INT;
+        if (cardTable.loadInt(Offset.fromIntZeroExtend(bufferIndex << Constants.LOG_BYTES_IN_INT)) == 0) {
+          i = (bufferIndex << Constants.LOG_BITS_IN_INT) + Constants.BITS_IN_INT - 1;
+          continue;
+        }
       }
       Address c = VM.HEAP_START.plus(i << Region.Card.LOG_BYTES_IN_CARD);
       if (CardTable.attemptToMarkCard(c, false)) {
-        processCard(c);
+        totalTime += processCard(c);
       }
     }
+
+//    PauseTimePredictor.updateRefinementCardScanningTime(totalTime);
 
     int rendezvousID = VM.activePlan.collector().rendezvous();
     if (rendezvousID == 0) {
@@ -389,10 +363,5 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         refineSingleBuffer(buffer);
       }
     }
-  }
-
-  @Inline
-  private static G1 global() {
-    return (G1) VM.activePlan.global();
   }
 }

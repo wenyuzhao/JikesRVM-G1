@@ -168,28 +168,28 @@ public class RemSet {
     if (lock) unlock(region);
   }
 
-  @Inline
-  public static void removeCard(Address region, Address card) {
-    lock(region);
-
-    Address prt = preparePRT(region, card, false);
-    if (prt.isZero()) {
-      unlock(region);
-      return;
-    }
-
-    if (PerRegionTable.remove(prt, card)) {
-      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
-      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-      do {
-        oldSize = sizePointer.prepareInt();
-        if (oldSize == 0) break;
-        newSize = oldSize - 1;
-      } while (!sizePointer.attempt(oldSize, newSize));
-    }
-
-    unlock(region);
-  }
+//  @Inline
+//  public static void removeCard(Address region, Address card) {
+//    lock(region);
+//
+//    Address prt = preparePRT(region, card, false);
+//    if (prt.isZero()) {
+//      unlock(region);
+//      return;
+//    }
+//
+//    if (PerRegionTable.remove(prt, card)) {
+//      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
+//      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+//      do {
+//        oldSize = sizePointer.prepareInt();
+//        if (oldSize == 0) break;
+//        newSize = oldSize - 1;
+//      } while (!sizePointer.attempt(oldSize, newSize));
+//    }
+//
+//    unlock(region);
+//  }
 
   @Inline
   public static boolean contains(Address region, Address card) {
@@ -229,26 +229,16 @@ public class RemSet {
       }
     }
 
-    TransitiveClosure tc = new TransitiveClosure() {
-      @Override @Uninterruptible @Inline
-      public void processEdge(ObjectReference source, Address slot) {
-        ObjectReference ref = slot.loadObjectReference();
-        if (regionSpace.contains(ref) && Region.relocationRequired(Region.of(ref))) {
-          redirectPointerTrace.traceObject(ref, true);
-        }
-      }
-    };
-
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
         if (!object.isNull()) {
+//          if (Region.verbose()) Log.writeln("Scan", object);
 //          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
-          if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
-//            Log.writeln("REMSET Skip Dead ", object);
-//            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).EQ(Word.one()));
-            return;
-          } else if (redirectPointerTrace.isLive(object)) {
+//          if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
+//            return;
+//          } else
+            if (redirectPointerTrace.isLive(object)) {
 //            VM.scanning.scanObject(tc, object);
 //            Log.writeln("REMSET Trace ", object);
 //            if (nursery && (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace)) {
@@ -263,22 +253,44 @@ public class RemSet {
 //            Log.writeln(Space.getSpaceForObject(object).getName());
             // This is a dead object. During next card scanning this object may have a invalid TIB pointing
             // to a released region. So we set the objectEndAddress into the header to allow skipping this object.
+            Address tibSlot = VM.objectModel.refToAddress(object);
+            ObjectReference tib = tibSlot.loadObjectReference();
+            if (VM.VERIFY_ASSERTIONS) {
+              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
+                Log.write("TIB ", tib);
+                Log.write(" space ");
+                Log.writeln(Space.getSpaceForObject(tib).getName());
+                VM.assertions.fail("");
+              }
+            }
+            if (!nursery)
+              redirectPointerTrace.traceObject(tib, true);
+//            if (VM.VERIFY_ASSERTIONS) {
+//
+//              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
+//                Log.write("TIB ", tib);
+//                Log.write(" space ");
+//                Log.writeln(Space.getSpaceForObject(tib).getName());
+//                VM.assertions.fail("");
+//              }
+//            }
+//            tibSlot.store(tib);
 //            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
-            if (!Space.isMappedObject(object) || (Space.isInSpace(regionSpace.getDescriptor(), object) && !Region.allocated(Region.of(object)))) {
-              return;
-            }
-            Space space = Space.getSpaceForObject(object);
-            if ((space instanceof SegregatedFreeListSpace)) {
-              object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
-              return;
-            }
+//            if (!Space.isMappedObject(object) || (Space.isInSpace(regionSpace.getDescriptor(), object) && !Region.allocated(Region.of(object)))) {
+//              return;
+//            }
+//            Space space = Space.getSpaceForObject(object);
+//            if ((space instanceof SegregatedFreeListSpace)) {
+//              object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
+//              return;
+//            }
 //            if (!VM.debugging.validRef(object)) {
 //              Log.write("Space: ");
 //              Log.write(space.getName());
 //              Log.writeln(space.isLive(object) ? " live " : " dead ");
 //              Log.writeln(space.isLive(object) ? " live " : " dead ");
 //            }
-            object.toAddress().store(VM.objectModel.getObjectEndAddress(object), LIVE_STATE_OFFSET);
+//            object.toAddress().store(VM.objectModel.getObjectEndAddress(object), LIVE_STATE_OFFSET);
           }
         }
       }
@@ -292,6 +304,7 @@ public class RemSet {
       if (concurrent) id -= workers;
       int regionsToVisit = ceilDiv(relocationSet.length(), workers);
       final int REGION_SPACE = regionSpace.getDescriptor();
+      long totalTime = 0;
 
       for (int i = 0; i < regionsToVisit; i++) {
         //int cursor = regionsToVisit * id + i;
@@ -340,17 +353,15 @@ public class RemSet {
 //              if (Region.Card.getCardAnchor(card).isZero())
 
               long time = VM.statistics.nanoTime();
-//              if (nursery) {
-//                Log.write("Scan card ", card);
-//                Log.write(" ", Region.Card.getCardAnchor(card));
-//                Log.writeln("..<", Region.Card.getCardLimit(card));
-//              }
               Region.Card.linearScan(cardLinearScan, regionSpace, card, false);
+//              totalTime += (VM.statistics.nanoTime() - time);
               remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
             }
           }
         }
       }
+
+//      remSetCardScanningTimer.updateRemSetCardScanningTime(totalTime);
     }
   }
 

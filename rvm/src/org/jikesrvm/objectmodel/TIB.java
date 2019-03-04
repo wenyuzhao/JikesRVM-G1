@@ -167,7 +167,7 @@ public final class TIB implements RuntimeTable<Object> {
     return data.length;
   }
 
-  @Inline
+  @NoInline
   public RVMType getType() {
     if (VM.runningVM) {
       return Magic.objectAsType(get(TIB_TYPE_INDEX));

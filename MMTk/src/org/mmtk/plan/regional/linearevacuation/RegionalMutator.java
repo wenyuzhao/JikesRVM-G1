@@ -111,9 +111,9 @@ public class RegionalMutator extends StopTheWorldMutator {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.PREPARE) {
-      VM.collection.prepareMutator(this);
-      ra.reset();
+//      VM.collection.prepareMutator(this);
       super.collectionPhase(phaseId, primary);
+      ra.reset();
       return;
     }
 

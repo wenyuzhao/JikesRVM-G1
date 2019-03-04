@@ -153,7 +153,7 @@ public class BootImage implements BootImageInterface {
     ByteOrder endian = ltlEndian ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN;
     bootImageData.order(endian);
     bootImageCode.order(endian);
-    referenceMap = new byte[BOOT_IMAGE_DATA_SIZE >> LOG_BYTES_IN_ADDRESS];
+    referenceMap = new byte[(BOOT_IMAGE_DATA_SIZE << 2) >> LOG_BYTES_IN_ADDRESS];
     trace = t;
   }
 

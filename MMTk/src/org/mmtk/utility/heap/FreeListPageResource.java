@@ -136,6 +136,8 @@ public final class FreeListPageResource extends PageResource {
     return rtn;
   }
 
+  public int pageOffsetLogAlign = 0;
+
   /**
    * Allocate <code>pages</code> pages from this resource.<p>
    *
@@ -155,7 +157,10 @@ public final class FreeListPageResource extends PageResource {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(metaDataPagesPerRegion == 0 || requiredPages <= PAGES_IN_CHUNK - metaDataPagesPerRegion);
     lock();
     boolean newChunk = false;
-    int pageOffset = freeList.alloc(requiredPages);
+    int pageOffset = freeList.allocAligned(requiredPages, pageOffsetLogAlign);
+//    if (pageOffsetLogAlign != 0) {
+//      Log.writeln("Aligned page offset: ", pageOffset);
+//    }
     if (pageOffset == GenericFreeList.FAILURE && growable) {
       pageOffset = allocateContiguousChunks(requiredPages);
       newChunk = true;
@@ -300,7 +305,7 @@ public final class FreeListPageResource extends PageResource {
         }
         pagesCurrentlyOnFreeList += PAGES_IN_CHUNK - metaDataPagesPerRegion;
       }
-      rtn = freeList.alloc(pages); // re-do the request which triggered this call
+      rtn = freeList.allocAligned(pages, pageOffsetLogAlign); // re-do the request which triggered this call
     }
     return rtn;
   }

@@ -86,10 +86,6 @@ public class CardTable {
         oldValue = dirtyCardsPointer.prepareInt();
         newValue = oldValue + delta;
       } while (!dirtyCardsPointer.attempt(oldValue, newValue));
-      //dirtyCardsLock.acquire();
-      //dirtyCards += mark ? 1 : -1;
-      //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCards >= 0 && dirtyCards < cardTable.length * 32);
-      //dirtyCardsLock.release();
     }
     return success;
   }
@@ -99,16 +95,12 @@ public class CardTable {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(oldBit != newBit);
     int intIndex = index >>> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
-    /*if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(intIndex == index / 32);
-      VM.assertions._assert(bitIndex == index % 32);
-    }*/
     Address addr = ObjectReference.fromObject(buf).toAddress().plus(intIndex << Constants.LOG_BYTES_IN_INT);
 //    Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
     int oldValue, newValue;
     do {
       // Get old int
-      oldValue = buf[intIndex];
+      oldValue = addr.prepareInt();//buf[intIndex];
       boolean oldBit = (oldValue & (1 << (31 - bitIndex))) != 0;
       if (oldBit == newBit) return false;
       // Build new int
@@ -117,15 +109,6 @@ public class CardTable {
       } else {
         newValue = oldValue & (~(1 << (31 - bitIndex)));
       }
-      /*if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(((newValue & (1 << (31 - bitIndex))) != 0) == newBit);
-        if (bitIndex != 0) {
-          VM.assertions._assert((oldValue >>> (32 - bitIndex)) == (newValue >>> (32 - bitIndex)));
-        }
-        if (bitIndex != 31) {
-          VM.assertions._assert((oldValue << (1 + bitIndex)) == (newValue << (1 + bitIndex)));
-        }
-      }*/
       if (oldValue == newValue) return false; // this bit has been set by other threads
     } while (!addr.attempt(oldValue, newValue));
     return true;
@@ -136,7 +119,9 @@ public class CardTable {
     int intIndex = index >>> Constants.LOG_BITS_IN_INT;
     int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(intIndex == index / 32 && bitIndex == index % 32);
-    int entry = buf[intIndex];
+    Address addr = ObjectReference.fromObject(buf).toAddress().plus(intIndex << Constants.LOG_BYTES_IN_INT);
+//    int entry = buf[intIndex];
+    int entry = addr.loadInt();
     return (entry & (1 << (31 - bitIndex))) != 0;
     //return ((entry << bitIndex) >> (Constants.LOG_BITS_IN_INT - 1)) > 0;
   }
@@ -146,22 +131,6 @@ public class CardTable {
     //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.EQ(Region.Card.of(card)));
     int cardIndex = hash(card);
     return getBit(cardTable, cardIndex);
-  }
-
-  public static void assertAllCardsAreNotMarked() {
-    for (int i = 0; i < cardTable.length; i++) {
-      if (cardTable[i] != (int) 0) {
-        for (int j = 0; j < 32; j++) {
-          Address card = VM.HEAP_START.plus((i * 32 + j) << Region.Card.LOG_BYTES_IN_CARD);
-          //VM.assertions._assert(Region.Card.isAligned(card));
-          if (cardIsMarked(card)) {
-            Log.write("Card ", card);
-            Log.writeln(" is marked.");
-          }
-        }
-      }
-      VM.assertions._assert(cardTable[i] == (int) 0);
-    }
   }
 
   public static void clearAllCardMarks() {

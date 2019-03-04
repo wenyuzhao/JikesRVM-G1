@@ -9,6 +9,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Word;
 
 @Uninterruptible
 public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
@@ -25,12 +26,34 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
       return G1.regionSpace.isLive(object);
     }
     return super.isLive(object);
-//    if (Space.isInSpace(G1.G1, object)) {
-//      if (Region.relocationRequired(Region.of(object)))
-//        return RegionSpace.ForwardingWord.isForwardedOrBeingForwarded(object); //G1.regionSpace.isLive(object);
-//    }
-//    return true;
   }
+
+  @Uninterruptible
+  static class EvacuationAccumulator extends RegionSpace.EvacuationAccumulator {
+    long totalObjectSize = 0;
+    long totalTime = 0;
+
+    @Inline
+    public void reset() {
+      totalObjectSize = 0;
+      totalTime = 0;
+    }
+
+    @Inline
+    public void flush() {
+//      PauseTimePredictor.updateObjectEvacuationTime(totalObjectSize, totalTime);
+    }
+
+    @Override
+    @Inline
+    public void updateObjectEvacuationTime(long size, long time) {
+//      totalObjectSize += size;
+//      totalTime += time;
+      PauseTimePredictor.updateObjectEvacuationTime(size, time);
+    }
+  }
+
+  public EvacuationAccumulator evacuationAccumulator = new EvacuationAccumulator();
 
   @Override
   @Inline
@@ -40,56 +63,11 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
     if (Space.isInSpace(G1.G1, object)) {
       int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
       if (!Region.allocated(Region.of(object))) return object;
-      return G1.regionSpace.traceEvacuateObject(this, object, allocator, PauseTimePredictor.evacuationTimer);
+      return G1.regionSpace.traceEvacuateObject(this, object, allocator, evacuationAccumulator);
     } else {
       return super.traceObject(object);
     }
-
-//    if (G1.regionSpace.contains(object)) {// && Region.relocationRequired(Region.of(object))) {
-//    if (Space.isInSpace(G1.G1, object)) {
-//      int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
-//      return G1.regionSpace.traceEvacuateObject(this, object, allocator, PauseTimePredictor.evacuationTimer);
-//    }
-
-//    if (!G1.regionSpace.contains(object)) {
-//      return super.traceObject(object);
-//    } else {
-//      return object;
-//    }
   }
-
-  /**
-   * {@inheritDoc}
-   */
-//  @Inline
-//  @Override
-//  public ObjectReference getForwardedReference(ObjectReference object) {
-//    ObjectReference rtn = traceObject(object);
-////    if (!rtn.isNull()) processNode(rtn);
-//    return rtn;
-//  }
-
-  /**
-   * {@inheritDoc}
-   */
-//  @Inline
-//  @Override
-//  public ObjectReference retainReferent(ObjectReference object) {
-//    ObjectReference rtn = traceObject(object);
-////    if (!rtn.isNull()) processNode(rtn);
-//    return rtn;
-//  }
-
-  /**
-   * {@inheritDoc}
-   */
-//  @Inline
-//  @Override
-//  public ObjectReference retainForFinalize(ObjectReference object) {
-//    ObjectReference rtn = traceObject(object);
-////    if (!rtn.isNull()) processNode(rtn);
-//    return rtn;
-//  }
 
   public final RemSet.Processor processor = new RemSet.Processor(this, G1.regionSpace, true);
   @Inline

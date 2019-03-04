@@ -14,8 +14,10 @@ package org.mmtk.plan.concurrent.regional;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
+import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -59,6 +61,9 @@ public class RegionalMarkTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
     if (Space.isInSpace(Regional.RS, object)) {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(VM.debugging.validRef(object));
+      }
       return Regional.regionSpace.traceMarkObject(this, object);
     }
     return super.traceObject(object);
@@ -87,5 +92,6 @@ public class RegionalMarkTraceLocal extends TraceLocal {
 //      if (VM.VERIFY_ASSERTIONS) VM.debugging.validRef(obj);
       traceObject(obj);
     }
+    if (Region.verbose()) Log.writeln("SATB Queue processed");
   }
 }

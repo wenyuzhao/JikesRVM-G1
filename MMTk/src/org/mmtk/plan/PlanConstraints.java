@@ -22,6 +22,9 @@ import org.vmmagic.pragma.*;
  * issues with ordering of static initialization.
  */
 @Uninterruptible public abstract class PlanConstraints {
+  public int LOG_PAGES_IN_G1_REGION() {
+    return 8;
+  }
   /** @return {@code true} if this Plan requires object shallow comparison barriers. */
   public boolean needsObjectAddressComparisonBarrier() {
     return false;

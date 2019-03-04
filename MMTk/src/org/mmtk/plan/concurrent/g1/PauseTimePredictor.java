@@ -61,7 +61,19 @@ public class PauseTimePredictor {
       newValue = oldValue + 1;
     } while (!VM.memory.attemptLong(SData, Offset.fromIntZeroExtend(8), oldValue, newValue));
   }
-  @Inline public static void updateObjectEvacuationTime(ObjectReference ref, long ns) {
+//  @Inline public static void updateObjectEvacuationTime(ObjectReference ref, long ns) {
+//    long oldValue, newValue;
+//    do {
+//      oldValue = CData[0];
+//      newValue = oldValue + ns;
+//    } while (!VM.memory.attemptLong(CData, Offset.fromIntZeroExtend(0), oldValue, newValue));
+//    do {
+//      oldValue = CData[1];
+//      newValue = oldValue + VM.objectModel.getSizeWhenCopied(ref);
+//    } while (!VM.memory.attemptLong(CData, Offset.fromIntZeroExtend(8), oldValue, newValue));
+//  }
+
+  @Inline public static void updateObjectEvacuationTime(long size, long ns) {
     long oldValue, newValue;
     do {
       oldValue = CData[0];
@@ -69,18 +81,9 @@ public class PauseTimePredictor {
     } while (!VM.memory.attemptLong(CData, Offset.fromIntZeroExtend(0), oldValue, newValue));
     do {
       oldValue = CData[1];
-      newValue = oldValue + VM.objectModel.getSizeWhenCopied(ref);
+      newValue = oldValue + size;
     } while (!VM.memory.attemptLong(CData, Offset.fromIntZeroExtend(8), oldValue, newValue));
   }
-
-  public static final RegionSpace.EvacuationTimer evacuationTimer = new RegionSpace.EvacuationTimer() {
-    @Override
-    @Inline
-    @Uninterruptible
-    public void updateObjectEvacuationTime(ObjectReference ref, long ns) {
-      PauseTimePredictor.updateObjectEvacuationTime(ref, ns);
-    }
-  };
 
   public static final RemSet.RemSetCardScanningTimer remSetCardScanningTimer = new RemSet.RemSetCardScanningTimer() {
     @Override

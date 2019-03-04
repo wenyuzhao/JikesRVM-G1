@@ -58,8 +58,6 @@ public class G1Mutator extends ConcurrentMutator {
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
-//  private final TraceWriteBuffer markRemset = new TraceWriteBuffer(global().markTrace);
-//  private TraceWriteBuffer currentRemset = markRemset;
   private final ObjectReferenceDeque modbuf;
 
   public G1Mutator() {
@@ -95,16 +93,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
     if (allocator == G1.ALLOC_EDEN) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
       return g1Eden.alloc(bytes, align, offset);
-    } else if (allocator == G1.ALLOC_SURVIVOR) {
-      VM.assertions.fail("");
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
-      return g1Survivor.alloc(bytes, align, offset);
-    } else if (allocator == G1.ALLOC_OLD) {
-      VM.assertions.fail("");
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
-      return g1Old.alloc(bytes, align, offset);
     } else {
       return super.alloc(bytes, align, offset, allocator, site);
     }
@@ -143,7 +132,7 @@ public class G1Mutator extends ConcurrentMutator {
     if (phaseId == G1.PREPARE) {
 //      VM.collection.prepareMutator(this);
       super.collectionPhase(phaseId, primary);
-      modbuf.reset();
+      modbuf.resetLocal();
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -151,6 +140,7 @@ public class G1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == G1.RELEASE) {
+      modbuf.flushLocal();
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -180,22 +170,6 @@ public class G1Mutator extends ConcurrentMutator {
     }
 
     if (phaseId == G1.FORWARD_RELEASE) {
-      g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
-      super.collectionPhase(G1.RELEASE, primary);
-      return;
-    }
-
-    if (phaseId == Validator.VALIDATE_PREPARE) {
-      g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
-      super.collectionPhase(G1.PREPARE, primary);
-      return;
-    }
-//
-    if (phaseId == Validator.VALIDATE_RELEASE) {
       g1Eden.reset();
       g1Survivor.reset();
       g1Old.reset();
@@ -262,18 +236,10 @@ public class G1Mutator extends ConcurrentMutator {
     if (!tmp.isZero() && Space.isInSpace(G1.G1, ref)) {
       markAndEnqueueCard(Region.Card.of(src));
     }
-//    if (!ref.isNull() && !src.isNull()) {
-//      Word x = VM.objectModel.objectStartRef(src).toWord();
-//      Word y = VM.objectModel.objectStartRef(ref).toWord();
-//      Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
-//      if (!tmp.isZero() && Space.isInSpace(G1.G1, ref) && !Space.isInSpace(G1.VM_SPACE, src)) {
-////        Region.Card.assertCardMeta(src);
-//        markAndEnqueueCard(Region.Card.of(src));
-//      }
-//    }
   }
 
   @Override
+  @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
     if (HeaderByte.attemptLog(ref)) {
@@ -296,55 +262,11 @@ public class G1Mutator extends ConcurrentMutator {
     return result;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @param src The source of the values to be copied
-   * @param srcOffset The offset of the first source address, in
-   * bytes, relative to <code>src</code> (in principle, this could be
-   * negative).
-   * @param dst The mutated object, i.e. the destination of the copy.
-   * @param dstOffset The offset of the first destination address, in
-   * bytes relative to <code>tgt</code> (in principle, this could be
-   * negative).
-   * @param bytes The size of the region being copied, in bytes.
-   */
-  @Inline
-  @Override
-  public boolean objectReferenceBulkCopy(ObjectReference src, Offset srcOffset, ObjectReference dst, Offset dstOffset, int bytes) {
-    super.objectReferenceBulkCopy(src, srcOffset, dst, dstOffset, bytes);
-    Address srcCursor = src.toAddress().plus(srcOffset);
-    Address cursor = dst.toAddress().plus(dstOffset);
-    Address limit = cursor.plus(bytes);
-//    boolean containsCrossRegionPointer = false;
-    while (cursor.LT(limit)) {
-      ObjectReference element = srcCursor.loadObjectReference();
-      cursor.store(element);
-      checkCrossRegionPointer(dst, cursor, element);
-//      if (!containsCrossRegionPointer) {
-//        if (!element.isNull()) {
-//          Word x = VM.objectModel.objectStartRef(dst).toWord();
-//          Word y = VM.objectModel.objectStartRef(element).toWord();
-//          Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
-//          if (!tmp.isZero() && Space.isInSpace(G1.G1, element)) {
-//            containsCrossRegionPointer = true;
-//          }
-//        }
-//      }
-      cursor = cursor.plus(BYTES_IN_ADDRESS);
-      srcCursor = srcCursor.plus(BYTES_IN_ADDRESS);
-    }
-//    if (containsCrossRegionPointer) {
-//      markAndEnqueueCard(Region.Card.of(dst));
-//    }
-    return true;
-  }
-
   @Override
   public final void assertRemsetsFlushed() {
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(modbuf.isFlushed());
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(modbuf.isFlushed());
+//    }
   }
 
   @Inline

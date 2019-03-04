@@ -117,7 +117,7 @@ public class DebugUtil {
 
     TIB tib = ObjectModel.getTIB(ref);
     Address tibAddr = Magic.objectAsAddress(tib);
-    if (!Space.isMappedObject(ObjectReference.fromObject(tib))) {
+    if (tib == null || !Space.isMappedObject(ObjectReference.fromObject(tib))) {
       VM.sysWrite("validRef: TIB outside heap, ref = ");
       VM.sysWrite(ref);
       VM.sysWrite(" tib = ");
@@ -143,7 +143,8 @@ public class DebugUtil {
       return false;
     }
 
-    ObjectReference type = ObjectReference.fromObject(tib.getType());
+    RVMType t = tib.getType();
+    ObjectReference type = ObjectReference.fromObject(t);
     if (!validType(type)) {
       VM.sysWrite("validRef: invalid TYPE, ref = ");
       VM.sysWrite(ref);

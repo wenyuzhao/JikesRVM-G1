@@ -41,27 +41,36 @@ public class EvacuationLinearScan extends LinearScan {
     atomicCounter.set(0);
     VM.activePlan.collector().rendezvous();
     int index;
+    totalEvacuationTime = 0;
+    totalObjectSize = 0;
     while ((index = atomicCounter.add(1)) < G1.relocationSet.length()) {
       Address region = G1.relocationSet.get(index);
       if (region.isZero() || Region.usedSize(region) == 0) continue;
       Region.linearScan(this, region);
     }
+    PauseTimePredictor.updateObjectEvacuationTime(totalObjectSize, totalEvacuationTime);
     VM.activePlan.collector().rendezvous();
   }
+
+  long totalObjectSize = 0;
+  long totalEvacuationTime = 0;
 
   @Inline
   public void scan(ObjectReference object) {
     if (G1.regionSpace.isLive(object)) {
+//      if (Region.verbose()) Log.writeln("Evacuate ", object);
       int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
       // Forward
       long time = VM.statistics.nanoTime();
       ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
-      PauseTimePredictor.evacuationTimer.updateObjectEvacuationTime(newObject, VM.statistics.nanoTime() - time);
+//      totalEvacuationTime += (VM.statistics.nanoTime() - time);
+//      totalObjectSize += VM.objectModel.getSizeWhenCopied(newObject);
+      PauseTimePredictor.updateObjectEvacuationTime(VM.objectModel.getSizeWhenCopied(newObject), VM.statistics.nanoTime() - time);
 
       VM.scanning.scanObject(updateRemSetTransitiveClosure, newObject);
 //      Region.Card.updateCardMeta(newObject);
     } else {
-      object.toAddress().store(VM.objectModel.getObjectEndAddress(object), Region.Card.OBJECT_END_ADDRESS_OFFSET);
+//      object.toAddress().store(VM.objectModel.getObjectEndAddress(object), Region.Card.OBJECT_END_ADDRESS_OFFSET);
     }
   }
 }

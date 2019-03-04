@@ -1,5 +1,6 @@
 package org.mmtk.policy;
 
+import org.mmtk.plan.concurrent.g1.G1;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
@@ -13,6 +14,7 @@ import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
+//import static org.mmtk.policy.Region.Card.OBJECT_END_ADDRESS_OFFSET;
 import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
@@ -21,121 +23,92 @@ public class Region {
   @Inline
   public static final boolean verbose() {
     return VM.VERIFY_ASSERTIONS && Options.verbose.getValue() != 0;
+//    return Options.verbose.getValue() != 0;
   }
 
+  // Generation information
   public static final int NORMAL = 0;
   public static final int EDEN = NORMAL;
   public static final int SURVIVOR = 1;
   public static final int OLD = 2;
 
-  public static final int LOG_PAGES_IN_REGION = 8;
-  public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION; // 256
+  // Region size
+//  public static final boolean USE_PLAN_SPECIFIC_REGION_SIZE = true;
+  public static final int LOG_BYTES_IN_TLAB = 11;
+  public static final int BYTES_IN_TLAB = 1 << LOG_BYTES_IN_TLAB;
+  public static final int LOG_PAGES_IN_REGION = VM.activePlan.constraints().LOG_PAGES_IN_G1_REGION();
+  public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION;
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
-  public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;//BYTES_IN_PAGE * PAGES_IN_REGION; // 1048576
+  public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;
+  public static final int REGIONS_IN_CHUNK = (1 << (EmbeddedMetaData.LOG_PAGES_IN_REGION - LOG_PAGES_IN_REGION)) - 1;
 
-  private static final Word PAGE_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
-  // elements of region metadata table
+  public static final int LOG_TLABS_IN_REGION = LOG_BYTES_IN_REGION - LOG_BYTES_IN_TLAB;
+  public static final int TLABS_IN_REGION = 1 << LOG_TLABS_IN_REGION;
+
+
+  private static final Word REGION_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
+  private static final Word TLAB_MASK = Word.fromIntZeroExtend(BYTES_IN_TLAB - 1);
+
+  // Mark table:
+  // 1 bit per 4 byte: 1/32 ratio
+  // 4M MMTk block ~> 128kb (32 pages)
+
+  // Metadata for each region
+  // 1. (4b) Alive size
+  // 2. (2b) Relocate state
+  // 3. (2b) Allocate state
+  // 4. (4b) Cursor offset
+  // 5. (4b) Remset lock
+  // 6. (4b) Remset size
+  // 6. (4b) Remset pages
+  // 7. (4b) Remset pointer
+  // 8. (4b) Generation state
+  // --- Total 32 bytes ---
+
+  // Metadata layout:
+  // Total 17 pages:
+  // Page 0-15: mark table
+  // Page 16: Per region metadata
+
+
+  // Mark table
+  private static final int LOG_PAGES_IN_MARKTABLE = 7;
+  public static final int BYTES_IN_MARKTABLE = 1 << (LOG_PAGES_IN_MARKTABLE + LOG_BYTES_IN_PAGE);
+  // Per region metadata
   public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
-  public static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
-  public static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_BYTE;
-  public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_BYTE;
+  private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
+  private static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
+  public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
   public static final int METADATA_REMSET_LOCK_OFFSET = METADATA_CURSOR_OFFSET + BYTES_IN_ADDRESS;
   public static final int METADATA_REMSET_SIZE_OFFSET = METADATA_REMSET_LOCK_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_PAGES_OFFSET = METADATA_REMSET_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_POINTER_OFFSET = METADATA_REMSET_PAGES_OFFSET + BYTES_IN_INT;
   public static final int METADATA_GENERATION_OFFSET = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
-//  public static final int METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
-  public static final int METADATA_FORWARDING_TABLE_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
-//  public static final int METADATA_FORWARDING_TABLE_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_INT;
-  public static final int METADATA_BYTES = METADATA_FORWARDING_TABLE_OFFSET + BYTES_IN_ADDRESS;
+//  public static final int METADATA_TAMS_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
+  private static final int PER_REGION_METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
+  private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE;
 
-  // Derived constants
-  public static final int METADATA_OFFSET_IN_CHUNK = 0; // 0
-  public static final int METADATA_REGIONS_PER_CHUNK;
-  public static final int METADATA_PAGES_PER_CHUNK;
-  public static final int REGIONS_IN_CHUNK;
-  public static final int REGIONS_START_OFFSET;
-  public static final int MARKING_METADATA_START;
-  public static final int MARKING_METADATA_EXTENT;
+  public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE)  + 1;
 
   static {
-    int regionsInChunk = EmbeddedMetaData.PAGES_IN_REGION / PAGES_IN_REGION; // 1024 / 256 = 4
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(regionsInChunk == 16);
-    int metadataRegionsInChunk = 1; // 1
-    REGIONS_IN_CHUNK = regionsInChunk - metadataRegionsInChunk; // 3
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(REGIONS_IN_CHUNK == 15);
-    METADATA_REGIONS_PER_CHUNK = metadataRegionsInChunk; // 256
-    METADATA_PAGES_PER_CHUNK = metadataRegionsInChunk * PAGES_IN_REGION; // 256
-    REGIONS_START_OFFSET = BYTES_IN_PAGE * METADATA_PAGES_PER_CHUNK; // 1048576
-    MARKING_METADATA_START = METADATA_BYTES * REGIONS_IN_CHUNK;
-    MARKING_METADATA_EXTENT = BYTES_IN_REGION * metadataRegionsInChunk - MARKING_METADATA_START;
     if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(MARKING_METADATA_START < (METADATA_PAGES_PER_CHUNK * BYTES_IN_PAGE));
+      VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
+      VM.assertions._assert(PER_REGION_METADATA_BYTES == 32);
+//        VM.assertions._assert(REGIONS_IN_CHUNK == 3);
     }
   }
 
-  public static void dumpMeta() {
-    Log.writeln("BYTES_IN_PAGE ", Constants.BYTES_IN_PAGE);
-    Log.writeln("LOG_PAGES_IN_REGION ", LOG_PAGES_IN_REGION);
-    Log.writeln("PAGES_IN_REGION ", PAGES_IN_REGION);
-    Log.writeln("LOG_BYTES_IN_REGION ", LOG_BYTES_IN_REGION);
-    Log.writeln("BYTES_IN_REGION ", BYTES_IN_REGION);
-    Log.writeln("PAGE_MASK ", PAGE_MASK);
-    Log.writeln("METADATA_ALIVE_SIZE_OFFSET ", METADATA_ALIVE_SIZE_OFFSET);
-    Log.writeln("METADATA_RELOCATE_OFFSET ", METADATA_RELOCATE_OFFSET);
-    Log.writeln("METADATA_ALLOCATED_OFFSET ", METADATA_ALLOCATED_OFFSET);
-    Log.writeln("METADATA_CURSOR_OFFSET ", METADATA_CURSOR_OFFSET);
-    Log.writeln("METADATA_REMSET_LOCK_OFFSET ", METADATA_REMSET_LOCK_OFFSET);
-    Log.writeln("METADATA_REMSET_SIZE_OFFSET ", METADATA_REMSET_SIZE_OFFSET);
-    Log.writeln("METADATA_REMSET_PAGES_OFFSET ", METADATA_REMSET_PAGES_OFFSET);
-    Log.writeln("METADATA_REMSET_POINTER_OFFSET ", METADATA_REMSET_POINTER_OFFSET);
-    Log.writeln("METADATA_BYTES ", METADATA_BYTES);
-    Log.writeln("MARKING_METADATA_START ", MARKING_METADATA_START);
-    Log.writeln("MARKING_METADATA_EXTENT ", MARKING_METADATA_EXTENT);
-    Log.writeln("METADATA_OFFSET_IN_CHUNK ", METADATA_OFFSET_IN_CHUNK);
-    Log.writeln("METADATA_PAGES_PER_CHUNK ", METADATA_PAGES_PER_CHUNK);
-    Log.writeln("METADATA_PAGES_PER_CHUNK ", METADATA_PAGES_PER_CHUNK);
-    Log.writeln("REGIONS_IN_CHUNK ", REGIONS_IN_CHUNK);
-    Log.writeln("REGIONS_START_OFFSET ", REGIONS_START_OFFSET);
-    //VM.assertions.fail("");
-  }
-
+  @Inline
   private static int ceilDiv(int a, int b) {
     return (a + b - 1) / b;
   }
 
+  @Inline
+  public static Address tlabOf(final Address ptr) {
+    return ptr.toWord().and(TLAB_MASK.not()).toAddress();
+  }
+
   // Metadata setter
-
-  @Inline
-  private static void assertInMetadata(Address addr, int size) {
-    if (VM.VERIFY_ASSERTIONS) {
-      Address base = EmbeddedMetaData.getMetaDataBase(addr);
-      VM.assertions._assert(addr.GE(base));
-      VM.assertions._assert(addr.plus(size).LE(base.plus(METADATA_BYTES * BYTES_IN_REGION)));
-    }
-  }
-
-  @Inline
-  private static void set(Address addr, Address val) {
-    assertInMetadata(addr, Constants.BYTES_IN_ADDRESS);
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!addr.isZero());
-    addr.store(val);
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadAddress().EQ(val));
-  }
-
-  @Inline
-  private static void set(Address addr, int val) {
-//    assertInMetadata(addr, Constants.BYTES_IN_INT);
-    addr.store(val);
-  }
-
-  @Inline
-  private static void set(Address addr, byte val) {
-//    assertInMetadata(addr, Constants.BYTES_IN_BYTE);
-    addr.store(val);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(addr.loadByte() == val);
-  }
-
   @Inline
   public static Address of(final Address ptr) {
     return align(ptr);
@@ -147,13 +120,8 @@ public class Region {
   }
 
   @Inline
-  public static boolean isAligned(final Address address) {
-    return address.EQ(align(address));
-  }
-
-  @Inline
   public static void setRelocationState(Address region, boolean relocation) {
-    set(metaDataOf(region, METADATA_RELOCATE_OFFSET), (byte) (relocation ? 1 : 0));
+    metaDataOf(region, METADATA_RELOCATE_OFFSET).store((byte) (relocation ? 1 : 0));
   }
 
   @Inline
@@ -163,13 +131,13 @@ public class Region {
 
   @Inline
   public static void clearMarkBitMap(Address region) {
-    Address start = EmbeddedMetaData.getMetaDataBase(region).plus(MARKING_METADATA_START);
-    VM.memory.zero(false, start, Extent.fromIntZeroExtend(MARKING_METADATA_EXTENT));
+    Address start = EmbeddedMetaData.getMetaDataBase(region);
+    VM.memory.zero(false, start, Extent.fromIntZeroExtend(BYTES_IN_MARKTABLE));
   }
 
   @Inline
   public static void setUsedSize(Address region, int bytes) {
-    set(metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET), bytes);
+    metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET).store(bytes);
   }
 
   @Inline
@@ -185,11 +153,11 @@ public class Region {
   @Inline
   public static void register(Address region, int allocationKind) {
     clearState(region);
-    setAllocated(region, true);
+    metaDataOf(region, METADATA_ALLOCATED_OFFSET).store((byte) 1);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
-    Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).store(allocationKind);
+    metaDataOf(region, METADATA_GENERATION_OFFSET).store(allocationKind);
   }
 
   @Inline
@@ -204,6 +172,9 @@ public class Region {
 
   @Inline
   public static void updateRegionAliveSize(Address region, ObjectReference object) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(VM.debugging.validRef(object));
+    }
     Address meta = metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET);
     int oldValue, size = VM.objectModel.getSizeWhenCopied(object);
     do {
@@ -218,53 +189,59 @@ public class Region {
   }
 
   @Inline
-  public static void setCursor(Address region, Address cursor) {
-    Address meta = metaDataOf(region, METADATA_CURSOR_OFFSET);
-//    if (VM.VERIFY_ASSERTIONS) {
-//      VM.assertions._assert(!meta.isZero());
-//    }
-    set(meta, cursor);
-  }
-
-  @Inline
   public static Address getCursor(Address region) {
     return metaDataOf(region, METADATA_CURSOR_OFFSET).loadAddress();
   }
 
   @Inline
   private static void clearState(Address region) {
-    Address metaData = EmbeddedMetaData.getMetaDataBase(region);
-    Address metaForRegion = metaData.plus(METADATA_OFFSET_IN_CHUNK + METADATA_BYTES * indexOf(region));
-    // Forwarding table should not be cleared
-    Address forwardingTable = metaDataOf(region, METADATA_FORWARDING_TABLE_OFFSET).loadAddress();
-    VM.memory.zero(false, metaForRegion, Extent.fromIntZeroExtend(METADATA_BYTES));
-    metaDataOf(region, METADATA_FORWARDING_TABLE_OFFSET).store(forwardingTable);
+    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+    Address metaData = chunk.plus(PER_REGION_META_START_OFFSET);
+    Address perRegionMeta = metaData.plus(PER_REGION_METADATA_BYTES * indexOf(region));
+    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(perRegionMeta.GE(chunk.plus(BYTES_IN_PAGE * 16)));
+//      VM.assertions._assert(perRegionMeta.LT(chunk.plus(BYTES_IN_PAGE * 17)));
+    }
+    VM.memory.zero(false, perRegionMeta, Extent.fromIntZeroExtend(PER_REGION_METADATA_BYTES));
   }
 
   @Inline
   private static Address align(final Address ptr) {
-    return ptr.toWord().and(PAGE_MASK.not()).toAddress();
+    return ptr.toWord().and(REGION_MASK.not()).toAddress();
   }
 
   @Inline
-  public static int indexOf(Address region) {
+  public static boolean isAligned(Address region) {
+    return region.toWord().and(REGION_MASK).isZero();
+  }
+
+  @Inline
+  private static int indexOf(Address region) {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(region.NE(chunk));
-    int index = region.diff(chunk.plus(REGIONS_START_OFFSET)).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
-    return index;
+    int index = region.diff(chunk).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!(index >= 1 && index <= REGIONS_IN_CHUNK)) {
+        Log.write("Invalid region ", region);
+        Log.write(" chunk=", chunk);
+        Log.write(" index=", index);
+        Log.writeln(" region=", region);
+      }
+      VM.assertions._assert(index >= 1 && index <= REGIONS_IN_CHUNK);
+    }
+    return index - 1;
   }
 
   @Inline
   public static Address metaDataOf(Address region, int metaDataOffset) {
-    Address metaData = EmbeddedMetaData.getMetaDataBase(region);
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(metaDataOffset >= 0 && metaDataOffset <= METADATA_BYTES);
-    return metaData.plus(METADATA_OFFSET_IN_CHUNK + METADATA_BYTES * indexOf(region)).plus(metaDataOffset);
-  }
-
-
-  @Inline
-  private static void setAllocated(Address region, boolean allocated) {
-    set(metaDataOf(region, METADATA_ALLOCATED_OFFSET), (byte) (allocated ? 1 : 0));
+    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+    Address perRegionMetaData = chunk.plus(PER_REGION_META_START_OFFSET);
+    Address meta = perRegionMetaData.plus(PER_REGION_METADATA_BYTES * indexOf(region)).plus(metaDataOffset);
+    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(meta.GE(chunk.plus(BYTES_IN_PAGE * 16)));
+//      VM.assertions._assert(meta.LT(chunk.plus(BYTES_IN_PAGE * 17)));
+    }
+    return meta;
   }
 
   public static boolean USE_CARDS = false;
@@ -354,52 +331,6 @@ public class Region {
     @Inline
     public static int hash(Address card) {
       return card.diff(VM.HEAP_START).toInt() >>> Card.LOG_BYTES_IN_CARD;
-    }
-
-    static Lock lock = VM.newLock("asfghgjnxcsae");
-
-    @NoInline
-    public static void assertCardMeta(ObjectReference ref) {
-      Log log = VM.activePlan.mutator().getLog();
-
-//      if (!VM.debugging.validRef(ref)) {
-//        log.write("Invalid object: ");
-//        log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
-//        log.writeln(" ", ref);
-//        VM.assertions.fail("");
-//      }
-      Address card = Card.of(ref);
-
-      if (!getCardAnchor(card).LE(VM.objectModel.objectStartRef(ref))) {
-        log.write("Card anchor ", getCardAnchor(card));
-        log.write(" ");
-        log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
-        log.write(" object ", VM.objectModel.objectStartRef(ref));
-        log.writeln(" ..< ", VM.objectModel.objectStartRef(ref));
-        VM.assertions.fail("");
-      }
-//      VM.assertions._assert(getCardAnchor(card).LE(VM.objectModel.objectStartRef(ref)));
-      Address endAddress = VM.objectModel.getObjectEndAddress(ref);
-      if (Card.of(endAddress).EQ(card)) {
-        if (!getCardLimit(card).GE(endAddress)) {
-          log.write("Card limit ", getCardLimit(card));
-          log.write(" ");
-          log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
-          log.write(" object ", VM.objectModel.objectStartRef(ref));
-          log.writeln(" ..< ", endAddress);
-          VM.assertions.fail("");
-        }
-//        VM.assertions._assert(getCardLimit(card).GE(endAddress));
-      } else {
-        if (!getCardLimit(card).EQ(card.plus(BYTES_IN_CARD))) {
-          log.write("Card limit ", getCardLimit(card));
-          log.write(" ");
-          log.write(Space.isMappedObject(ref) ? Space.getSpaceForObject(ref).getName() : "unmapped");
-          log.write(" object ", VM.objectModel.objectStartRef(ref));
-          log.writeln(" ..< ", endAddress);
-          VM.assertions.fail("");
-        }
-      }
     }
 
     @Inline
@@ -549,9 +480,6 @@ public class Region {
     }
     public static String tag = null;
 
-    static Lock lock2 = VM.newLock("linearScan");
-    public static boolean LOG = false;
-    public static boolean DISABLE_DYNAMIC_HASH_OFFSET = false;
     public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
 
     @Inline
@@ -559,34 +487,25 @@ public class Region {
     public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean skipDeadRegion) {
       final int RS = regionSpace.getDescriptor();
 
-      Address end = getCardLimit(card);
+      final Address end = getCardLimit(card);
       if (end.isZero()) return;
-      Address cursor = Region.Card.getCardAnchor(card);
+      final Address cursor = Region.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
-      ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
-//      int space = Space.getSpaceForAddress(card).getDescriptor();
-//      Space space = Space.getSpaceForAddress(card);
-//      if (space instanceof SegregatedFreeListSpace) {
-//        if (!BlockAllocator.checkBlockMeta(card)) {
-//          return;
-//        }
-//      }
-//      if (space instanceof LargeObjectSpace) {
-//        if (!((LargeObjectSpace) space).isInToSpace(firstCard)) {
-//          return;
-//        }
-//      }
+      final boolean inMSSpace = Space.getSpaceForAddress(card) instanceof MarkSweepSpace;
+      final boolean inRegionSpace = Space.isInSpace(G1.G1, card);
 
-      if (Space.isInSpace(RS, card)) {
-        Address regionLimit = Region.metaDataOf(Region.of(card), Region.METADATA_CURSOR_OFFSET).loadAddress();
-        end = regionLimit.LT(end) ? regionLimit : end;
-        if (end.LT(cursor)) return;
+      Address regionEnd = Address.zero();
+      if (inRegionSpace) {
+        regionEnd = Region.of(card).plus(BYTES_IN_REGION);
       }
+
+      ObjectReference ref = inRegionSpace ? getObjectFromStartAddress(cursor, regionEnd) : VM.objectModel.getObjectFromStartAddress(cursor);
+      if (ref.isNull() || VM.objectModel.objectStartRef(ref).GE(end)) return;//VM.objectModel.getObjectFromStartAddress(cursor);
 
       do {
         // Get next object start address, i.e. current object end address
         Address currentObjectEnd;
-        if (Space.getSpaceForAddress(card) instanceof MarkSweepSpace) {
+        if (inMSSpace) {
           // VM.objectModel.dumpObject(ref);
           MarkSweepSpace space = (MarkSweepSpace) Space.getSpaceForAddress(card);
           // Get current block
@@ -605,70 +524,114 @@ public class Region {
           //
           currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
         } else {
-          if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
-            currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
-          } else {
-//            if (VM.VERIFY_ASSERTIONS) {
-//              if (!VM.debugging.validRef(ref)) {
-//                Log.writeln();
-//                Log.write("Space: ");
-//                Log.writeln(Space.getSpaceForObject(ref).getName());
-//                if (Space.getSpaceForObject(ref) instanceof SegregatedFreeListSpace) {
-//                  Log.writeln(BlockAllocator.checkBlockMeta(Region.Card.of(ref)) ? " Block Live " : " Block Dead ");
-//                }
-//                VM.objectModel.dumpObject(ref);
-//                VM.assertions.fail("");
-//              }
-//            }
             currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
-          }
         }
 
+        scan.scan(ref);
+
         if (currentObjectEnd.GE(end)) {
-//          if (ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
-            scan.scan(ref);
-//          }
           break;
         } else {
-          ObjectReference next = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-//          if (ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
-            scan.scan(ref);
-//          }
+          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, regionEnd) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+          if (next.isNull() || VM.objectModel.objectStartRef(next).GE(end)) break;
           ref = next;
         }
       } while (true);
     }
   }
 
-  public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
   @Inline
-  public static void linearScan(LinearScan scan, Address region) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(relocationRequired(region));
-    Address end = getCursor(region);
+  public static void linearScan(LinearScan scan, final Address region) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!region.isZero());
+      VM.assertions._assert(relocationRequired(region));
+    }
+//    final Address end = getCursor(region);
+    final Address limit = region.plus(BYTES_IN_REGION);
+    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(!end.isZero());
+//      VM.assertions._assert(end.LE(limit));
+    }
     if (verbose()) {
       Log.write("Evacuate region ", region);
-      Log.writeln(" ~ ", end);
+      Log.writeln(" ~ ", limit);
     }
 
-//    if (end.isZero() || end.GT(region.plus(BYTES_IN_REGION))) VM.assertions.fail("Incorrect region range meta");
     Address cursor = region;
-    if (cursor.GE(end)) return;
-    ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
-    do {
-      Address currentObjectEnd;
-//      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
-//        currentObjectEnd = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
-//      } else {
-      if (VM.VERIFY_ASSERTIONS)VM.assertions._assert( VM.debugging.validRef(ref));
-        currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
-//      }
-//      Address currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+//    if (cursor.GE(end)) {
+//      return;
+//    }
 
-      scan.scan(ref);
-      if (currentObjectEnd.GE(end) || end.GT(region.plus(BYTES_IN_REGION))) {
-        break;
+    ObjectReference ref;
+    while (!(ref = getObjectFromStartAddress(cursor, limit)).isNull()) {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(VM.debugging.validRef(ref));
+        VM.assertions._assert(Region.of(ref).EQ(region));
       }
-      ref = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-    } while (true);
+//      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
+//        cursor = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
+//      } else {
+        cursor = VM.objectModel.getObjectEndAddress(ref);
+        scan.scan(ref);
+//      }
+//      cursor = VM.objectModel.getObjectEndAddress(ref);
+    }
+
+//    ObjectReference ref = VM.objectModel.getObjectFromStartAddress(cursor);
+//    do {
+//      Address currentObjectEnd;
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(VM.debugging.validRef(ref));
+//        VM.assertions._assert(Region.of(ref).EQ(region));
+//      }
+//      currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
+//      scan.scan(ref);
+//      if (currentObjectEnd.GT(limit)) {
+//        break;
+//      }
+//      ref = VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+//      if (VM.objectModel.objectStartRef(ref).GE(limit)) break;
+//      if (VM.objectModel.refToAddress(ref).loadInt() == 0) break;
+//    } while (true);
+  }
+
+  @Inline
+  private static ObjectReference getObjectFromStartAddress(Address start, Address regionEnd) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!start.isZero());
+      VM.assertions._assert(!regionEnd.isZero());
+//      VM.assertions._assert(start.LT(regionEnd));
+    }
+    while (true) {
+      if (start.GE(regionEnd)) return ObjectReference.nullReference();
+      ObjectReference ref = VM.objectModel.getObjectFromStartAddress(start);
+      if (ref.toAddress().GT(regionEnd)) {
+        return ObjectReference.nullReference();
+      } else {
+        int v = VM.objectModel.refToAddress(ref).loadInt();
+        if (v == 0 || v == VM.ALIGNMENT_VALUE) {
+          start = tlabOf(start).plus(BYTES_IN_TLAB);
+        } else {
+          if (VM.VERIFY_ASSERTIONS) {
+            VM.assertions._assert(!ref.isNull());
+//            if (ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
+              VM.assertions._assert(!VM.objectModel.refToAddress(ref).loadObjectReference().isNull());
+              VM.assertions._assert(VM.debugging.validRef(ref));
+//            }
+          }
+          return ref;
+        }
+      }
+    }
+//    while (true) {
+//      if (start.GE(regionEnd)) return ObjectReference.nullReference();
+//      final int v = start.loadInt();
+//      if (v == 0 || v == VM.ALIGNMENT_VALUE) {
+//        start = start.plus(BYTES_IN_INT);
+//      } else {
+//        break;
+//      }
+//    }
+//    return VM.objectModel.getObjectFromStartAddress(start);
   }
 }

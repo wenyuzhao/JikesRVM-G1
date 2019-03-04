@@ -53,7 +53,7 @@ public class RegionalCollector extends ConcurrentCollector {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator copy = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
+  protected final RegionAllocator copy = new RegionAllocator(Regional.regionSpace, Region.OLD);
   protected final RegionalMarkTraceLocal markTrace;// = new RegionalMarkTraceLocal(global().markTrace);
   protected final RegionalForwardTraceLocal forwardTrace = new RegionalForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
@@ -125,6 +125,7 @@ public class RegionalCollector extends ConcurrentCollector {
     if (phaseId == Regional.RELEASE) {
       markTrace.completeTrace();
       markTrace.release();
+      copy.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }
@@ -162,7 +163,6 @@ public class RegionalCollector extends ConcurrentCollector {
     if (phaseId == Regional.FORWARD_PREPARE) {
       currentTrace = forwardTrace;
       forwardTrace.prepare();
-      copy.reset();
       super.collectionPhase(Regional.PREPARE, primary);
       return;
     }
@@ -174,7 +174,6 @@ public class RegionalCollector extends ConcurrentCollector {
 
     if (phaseId == Regional.FORWARD_RELEASE) {
       forwardTrace.release();
-      copy.reset();
       super.collectionPhase(Regional.RELEASE, primary);
       return;
     }

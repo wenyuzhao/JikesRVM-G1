@@ -15,8 +15,10 @@ package org.mmtk.plan.concurrent.g1;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Region;
+import org.mmtk.policy.RegionSpace;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
@@ -24,6 +26,7 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Offset;
 
 /**
  * This class implements the core functionality for a transitive
@@ -61,20 +64,7 @@ public class G1MarkTraceLocal extends TraceLocal {
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
 
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-
-//    if (VM.VERIFY_ASSERTIONS) {
-//      if (!VM.debugging.validRef(object)) {
-//        Log _log = VM.activePlan.mutator().getLog();
-//        _log.write(Space.getSpaceForObject(object).getName());
-//        _log.write(" ");
-//        _log.flush();
-//        VM.objectModel.dumpObject(object);
-//      }
-//      VM.assertions._assert(VM.debugging.validRef(object));
-//    }
-
-//    if (!isLive(object)) Region.Card.assertCardMeta(object);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
     if (Space.isInSpace(G1.G1, object)) {
       return G1.regionSpace.traceMarkObject(this, object);

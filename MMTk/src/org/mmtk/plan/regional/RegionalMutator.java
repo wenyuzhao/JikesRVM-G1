@@ -106,7 +106,6 @@ public class RegionalMutator extends StopTheWorldMutator {
    * {@inheritDoc}
    */
   @Override
-//  @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));

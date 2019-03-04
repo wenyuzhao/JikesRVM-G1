@@ -4,6 +4,7 @@ package org.mmtk.plan.concurrent.regional;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.RegionSpace.ForwardingWord;
 import org.mmtk.utility.Atomic;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -33,6 +34,13 @@ public class EvacuationLinearScan extends LinearScan {
   public void scan(ObjectReference object) {
     if (Regional.regionSpace.isLive(object)) {
       ForwardingWord.forwardObject(object, Regional.ALLOC_RS);
+    } else {
+      if (Region.verbose()) {
+        Log log = VM.activePlan.mutator().getLog();
+        log.write("Skip dead ", object);
+        log.write(" ", VM.objectModel.objectStartRef(object));
+        log.writeln("..", VM.objectModel.getObjectEndAddress(object));
+      }
     }
   }
 }

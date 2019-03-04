@@ -78,6 +78,8 @@ public class Regional extends StopTheWorld {
     Phase.scheduleGlobal   (FORWARD_PREPARE),
     Phase.scheduleCollector(FORWARD_PREPARE),
     Phase.scheduleMutator  (PREPARE),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
@@ -115,6 +117,11 @@ public class Regional extends StopTheWorld {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
       markTrace.prepareNonBlocking();
+//      VM.activePlan.resetMutatorIterator();
+//      RegionalMutator m;
+//      while ((m = (RegionalMutator) VM.activePlan.getNextMutator()) != null) {
+//        m.ra.reset();
+//      }
       return;
     }
 

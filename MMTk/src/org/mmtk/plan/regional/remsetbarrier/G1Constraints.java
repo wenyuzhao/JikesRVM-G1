@@ -12,46 +12,15 @@
  */
 package org.mmtk.plan.regional.remsetbarrier;
 
-import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.Region;
-import org.mmtk.policy.RegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
  * SemiSpace common constants.
  */
 @Uninterruptible
-public class G1Constraints extends StopTheWorldConstraints {
-  @Override
-  public boolean movesObjects() {
-    return true;
-  }
-  @Override
-  public boolean needsForwardAfterLiveness() {
-    return true;
-  }
-  @Override
-  public int gcHeaderBits() {
-    return RegionSpace.LOCAL_GC_BITS_REQUIRED;
-  }
-  @Override
-  public int gcHeaderWords() {
-    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
-  }
-  @Override
-  public int numSpecializedScans() {
-    return 2;
-  }
-  @Override
-  public int maxNonLOSDefaultAllocBytes() {
-    return Region.BYTES_IN_REGION;
-  }
+public class G1Constraints extends org.mmtk.plan.regional.RegionalConstraints {
   @Override
   public boolean needsObjectReferenceWriteBarrier() {
     return true;
-  }
-  @Override
-  public boolean needsJavaLangReferenceReadBarrier() {
-    return false;
   }
 }

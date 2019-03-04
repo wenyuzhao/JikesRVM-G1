@@ -129,10 +129,12 @@ public abstract class Allocator {
     if ((MAX_ALIGNMENT - MIN_ALIGNMENT) == BYTES_IN_INT) {
       // At most a single hole
       if (!end.diff(start).isZero()) {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(start.loadInt() == 0);
         start.store(ALIGNMENT_VALUE);
       }
     } else {
       while (start.LT(end)) {
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(start.loadInt() == 0);
         start.store(ALIGNMENT_VALUE);
         start = start.plus(BYTES_IN_INT);
       }

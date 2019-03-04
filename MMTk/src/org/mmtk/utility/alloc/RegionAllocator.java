@@ -16,10 +16,14 @@ package org.mmtk.utility.alloc;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.RegionSpace;
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
+
+import static org.mmtk.utility.Constants.ALIGNMENT_VALUE;
+import static org.mmtk.utility.Constants.BYTES_IN_INT;
 
 /**
  *
@@ -43,7 +47,7 @@ public class RegionAllocator extends Allocator {
    * Constructor.
    *
    * @param space The space to bump point into.
-   * @param copy TODO
+   * @param allocationKind TODO
    */
   public RegionAllocator(RegionSpace space, int allocationKind) {
     this.space = space;
@@ -52,12 +56,40 @@ public class RegionAllocator extends Allocator {
 //    reset();
   }
 
+  public void retireTLAB() {
+//    Log.writeln("Retire TLAB");
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!cursor.isZero());
+      VM.assertions._assert(!cursorSlot.isZero());
+      VM.assertions._assert(!limit.isZero());
+      Address region = Region.of(cursor);
+      VM.assertions._assert(Region.allocated(region));
+    }
+    fillAlignmentGap(cursor, limit);
+//    Address start = cursor, end = limit;
+//    while (start.LT(end)) {
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(start.loadInt() == 0);
+////      if (start.loadInt() != 0) {
+////        VM.assertions.fail("ERROR");
+////      }
+//      start.store(ALIGNMENT_VALUE);
+//      start = start.plus(BYTES_IN_INT);
+//    }
+    Address oldLimit;
+    final Address newLimit = limit;
+    do {
+      oldLimit = cursorSlot.prepareAddress();
+      if (oldLimit.GE(newLimit)) break;
+    } while (cursorSlot.attempt(oldLimit, newLimit));
+//    Log.writeln("Retire TLAB End");
+  }
+
   /**
    * Reset the allocator. Note that this does not reset the space.
    */
   public void reset() {
-    if (!cursorSlot.isZero()) {
-      cursorSlot.store(cursor);
+    if (!cursor.isZero()) {
+//      retireTLAB();
     }
     cursorSlot = Address.zero();
     cursor = Address.zero();
@@ -81,36 +113,18 @@ public class RegionAllocator extends Allocator {
    */
   @Inline
   public final Address alloc(int bytes, int align, int offset) {
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes > 0, "Trying to allocate negative bytes");
     /* establish how much we need */
     Address start = alignAllocationNoFill(cursor, align, offset);
     Address end = start.plus(bytes);
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
-      if (!cursorSlot.isZero()) {
-        cursorSlot.store(cursor);
-      }
-//      return allocSlow(start, end, align, offset);
-        return allocSlowInline(bytes, align, offset);
+//      if (!cursor.isZero()) retireTLAB(cursor);
+//      reset();
+      return allocSlowInline(bytes, align, offset);
     }
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
     cursor = end;
-//    if (Space.isInSpace(this.spaceDescriptor, start)) {
-//    cursorSlot.
-//    cursorSlot.store(cursor);
-
-//    end.plus(128).prefetch();
-//     Region.setCursor(Region.of(start), cursor);
-//    }
-    /*if (VM.VERIFY_ASSERTIONS) {
-      if (!Region.allocated(Region.of(start))) {
-        Log.writeln("cursor: ", cursor);
-        Log.writeln("start: ", start);
-        Log.writeln("limit: ", limit);
-      }
-      VM.assertions._assert(Region.allocated(Region.of(start)));
-    }*/
     return start;
   }
 
@@ -129,18 +143,16 @@ public class RegionAllocator extends Allocator {
    */
   @Override
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
-    Address ptr = space.getSpace(allocationKind); // New block
-
+    reset();
+    int tlabs = space.getRequiredTLABs(bytes);
+    Address ptr = space.allocTLAB(allocationKind, tlabs); // New tlab
     if (ptr.isZero()) {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.isAligned(ptr));
     cursor = ptr;
     cursorSlot = Region.metaDataOf(ptr, Region.METADATA_CURSOR_OFFSET);
-    cursorSlot.store(Address.zero());
-    limit = ptr.plus(Region.BYTES_IN_REGION);
-    //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.allocated(ptr));
+    limit = ptr.plus(tlabs << Region.LOG_BYTES_IN_TLAB);
     return alloc(bytes, align, offset);
   }
 

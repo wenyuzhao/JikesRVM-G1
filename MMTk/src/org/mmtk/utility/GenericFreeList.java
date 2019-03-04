@@ -112,6 +112,43 @@ public abstract class GenericFreeList {
     return (unit == head) ? FAILURE : alloc(size, unit, s);
   }
 
+  public int allocAligned(int size, int logAlign) {
+    // Note: -1 is both the default return value *and* the start sentinel index
+    int unit = head; // HEAD = -1
+    int s = 0;
+//    while ((((unit = getNext(unit)) != head) && (((s = getSize(unit)) < size) || ((unit & align) != 0))));
+//    Log.write("Alloc aligned size=", size);
+//    Log.writeln(" logAlign=", logAlign);
+    int alignMask = (1 << logAlign) - 1;
+    do {
+      unit = getNext(unit);
+      if (unit == head) break;
+      s = getSize(unit);
+      if (s >= size) {
+        if ((unit & alignMask) == 0) break;
+//        Log.write("Unaligned unit=", unit);
+//        Log.write(" size=", s);
+        int unitAlignedUp = ((unit + alignMask) >>> logAlign) << logAlign;
+//        Log.write(" aligned to ", unitAlignedUp);
+        int skipSize = unitAlignedUp - unit;
+//        Log.write(", skip units ", skipSize);
+        if (s >= (skipSize + size)) {
+          setSize(unit, skipSize);
+          setSize(unit + skipSize, s - skipSize);
+          addToFree(unit + skipSize);
+          unit = unit + skipSize;
+          s = s - skipSize;
+          break;
+        }
+
+      }
+    } while (true);
+//    Log.write("Aligned unit=", unit);
+//    Log.write(" head=", head);
+//    Log.writeln(" logAlign=", logAlign);
+    return (unit == head) ? FAILURE : alloc(size, unit, s);
+  }
+
   /**
    * Would an allocation of <code>size</code> units succeed?
    *

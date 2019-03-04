@@ -27,6 +27,10 @@ import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Offset;
+import org.vmmagic.unboxed.Word;
+
+import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
 
 /**
  * This class implements <i>per-mutator thread</i> behavior
@@ -45,100 +49,32 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see MutatorContext
  */
 @Uninterruptible
-public class G1Mutator extends ConcurrentMutator {
+public class G1Mutator extends  org.mmtk.plan.regional.RegionalMutator {
 
-  /****************************************************************************
-   * Instance fields
-   */
   protected final RegionAllocator ra;
   private final ObjectReferenceDeque modbuf;
+  static boolean newMutatorBarrierActive = false;
+  boolean barrierActive = true;
 
-  /****************************************************************************
-   *
-   * Initialization
-   */
-
-  /**
-   * Constructor
-   */
   public G1Mutator() {
     super();
     ra = new RegionAllocator(G1.regionSpace, Region.NORMAL);
     modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
-    barrierActive = true;
-  }
-
-  /****************************************************************************
-   *
-   * Mutator-time allocation
-   */
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @Inline
-  public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == G1.ALLOC_MC) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
-      return ra.alloc(bytes, align, offset);
-    } else {
-      return super.alloc(bytes, align, offset, allocator, site);
-    }
   }
 
   @Override
-  @Inline
-  public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    if (allocator == G1.ALLOC_MC) {
-//      Regional.regionSpace.initializeHeader(object, bytes);
-    } else {
-      super.postAlloc(object, typeRef, bytes, allocator);
-    }
-  }
-
-  @Override
-  public Allocator getAllocatorFromSpace(Space space) {
-    if (space == G1.regionSpace) return ra;
-    return super.getAllocatorFromSpace(space);
-  }
-
-  /****************************************************************************
-   *
-   * Collection
-   */
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     //Log.write("[Mutator] ");
     //Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
       barrierActive = false;
-      ra.reset();
       modbuf.reset();
-      super.collectionPhase(phaseId, primary);
-      return;
-    }
-
-    if (phaseId == G1.RELEASE) {
-      ra.reset();
-      super.collectionPhase(phaseId, primary);
-      return;
-    }
-
-    if (phaseId == G1.EVACUATE_PREPARE) {
-      ra.reset();
       super.collectionPhase(G1.PREPARE, primary);
       return;
     }
 
     if (phaseId == G1.EVACUATE_RELEASE) {
-      ra.reset();
-      super.collectionPhase(G1.RELEASE, primary);
+      super.collectionPhase(G1.EVACUATE_RELEASE, primary);
       barrierActive = true;
       return;
     }
@@ -146,26 +82,35 @@ public class G1Mutator extends ConcurrentMutator {
     super.collectionPhase(phaseId, primary);
   }
 
-  @Override
-  public void flushRememberedSets() {
-    ra.reset();
-    assertRemsetsFlushed();
-  }
-
-  @Override
+  @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-//    if (barrierActive) {
     if (HeaderByte.attemptLog(ref)) {
       modbuf.insert(ref);
     }
-//      if (!ref.isNull()) {
-//        if (HeaderByte.isUnlogged(ref)) {
-//          HeaderByte.markAsLogged(ref);
-//          modbuf.insert(ref);
-//        }
-//      }
-//    }
+  }
+
+  @Inline
+  @Override
+  public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
+    if (barrierActive) checkAndEnqueueReference(slot.loadObjectReference());
+    VM.barriers.objectReferenceWrite(src, tgt, metaDataA, metaDataB, mode);
+  }
+
+  @Inline
+  @Override
+  public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old,
+                                                  ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
+    boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, tgt, metaDataA, metaDataB, mode);
+    if (barrierActive) checkAndEnqueueReference(old);
+    return result;
+  }
+
+  @Inline
+  @Override
+  public ObjectReference javaLangReferenceReadBarrier(ObjectReference ref) {
+    if (barrierActive) checkAndEnqueueReference(ref);
+    return ref;
   }
 
   @Inline

@@ -127,7 +127,6 @@ public class Regional extends StopTheWorld {
    * {@inheritDoc}
    */
   @Override
-//  @Inline
   public void collectionPhase(short phaseId) {
     if (Region.verbose()) {
       Log.write("Global ");

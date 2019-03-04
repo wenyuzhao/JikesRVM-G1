@@ -119,17 +119,30 @@ public class RegionalMutator extends ConcurrentMutator {
     if (phaseId == Regional.PREPARE) {
 //      modbuf.
 //      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(modbuf.isEmpty());
-      VM.collection.prepareMutator(this);
-//      modbuf.reset();
-      ra.reset();
+//      VM.collection.prepareMutator(this);
       super.collectionPhase(phaseId, primary);
+      ra.reset();
+      modbuf.resetLocal();
       return;
     }
 
     if (phaseId == Regional.RELEASE) {
       ra.reset();
+      modbuf.flushLocal();
       super.collectionPhase(phaseId, primary);
 
+      return;
+    }
+
+    if (phaseId == Regional.FORWARD_PREPARE) {
+      ra.reset();
+      super.collectionPhase(Regional.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Regional.FORWARD_RELEASE) {
+      ra.reset();
+      super.collectionPhase(Regional.RELEASE, primary);
       return;
     }
 
@@ -145,6 +158,7 @@ public class RegionalMutator extends ConcurrentMutator {
   }
 
   @Override
+  @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
     if (HeaderByte.attemptLog(ref)) {

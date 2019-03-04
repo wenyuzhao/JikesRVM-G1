@@ -101,9 +101,11 @@ public class Regional extends Concurrent {
     // Evacuate
     Phase.scheduleCollector(EVACUATE),
     // Update refs
-    Phase.scheduleGlobal   (FORWARD_PREPARE),
+    Phase.scheduleMutator  (FORWARD_PREPARE),
     Phase.scheduleCollector(FORWARD_PREPARE),
-    Phase.scheduleMutator  (PREPARE),
+    Phase.scheduleGlobal   (FORWARD_PREPARE),
+    Phase.scheduleMutator  (PREPARE_STACKS),
+    Phase.scheduleGlobal   (PREPARE_STACKS),
     Phase.scheduleCollector(STACK_ROOTS),
     Phase.scheduleGlobal   (STACK_ROOTS),
     Phase.scheduleCollector(ROOTS),
@@ -116,7 +118,7 @@ public class Regional extends Concurrent {
     Phase.scheduleCollector(FORWARD_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
 //    Phase.scheduleComplex  (forwardPhase),
-    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleMutator  (FORWARD_RELEASE),
     Phase.scheduleCollector(FORWARD_RELEASE),
     Phase.scheduleGlobal   (FORWARD_RELEASE),
 
@@ -163,10 +165,11 @@ public class Regional extends Concurrent {
       super.collectionPhase(PREPARE);
       regionSpace.prepare();
       markTrace.prepareNonBlocking();
-//      modbufPool.clearDeque(1)
+//      modbufPool.clearDeque(1);
+//      modbufPool.reset();
 //      if (VM.VERIFY_ASSERTIONS) modbufPool.assertExhausted();
       modbufPool.prepareNonBlocking();
-//      modbufPool.clearDeque(1);
+      modbufPool.clearDeque(1);
       HeaderByte.flip();
       return;
     }
@@ -178,7 +181,6 @@ public class Regional extends Concurrent {
     if (phaseId == RELEASE) {
       markTrace.release();
       modbufPool.reset();
-//      modbufPool.clearDeque(1);
       super.collectionPhase(RELEASE);
       return;
     }

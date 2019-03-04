@@ -536,13 +536,14 @@ public abstract class TraceLocal extends TransitiveClosure {
    * returning to MMTk.
    */
   private void assertMutatorRemsetsFlushed() {
-    /* FIXME: PNT
+    // FIXME: PNT
     if (VM.VERIFY_ASSERTIONS) {
-      for (int m = 0; m < VM.activePlan.mutatorCount(); m++) {
-        VM.activePlan.mutator(m).assertRemsetsFlushed();
+      VM.activePlan.resetMutatorIterator();
+      MutatorContext m;
+      while ((m = (MutatorContext) VM.activePlan.getNextMutator()) != null) {
+        m.assertRemsetsFlushed();
       }
     }
-    */
   }
 
   /**

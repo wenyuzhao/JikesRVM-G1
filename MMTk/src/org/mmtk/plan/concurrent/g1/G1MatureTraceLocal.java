@@ -26,18 +26,6 @@ public class G1MatureTraceLocal extends G1EvacuationTraceLocal {
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
-//    if (object.isNull()) return object;
-
-//    if (VM.VERIFY_ASSERTIONS) {
-//      if (!VM.debugging.validRef(object)) {
-//        Log.write("Space: ");
-//        Log.writeln(Space.getSpaceForObject(object).getName());
-//      }
-//      VM.assertions._assert(VM.debugging.validRef(object));
-//    }
-
-
-
     if (object.isNull()) return object;
 //    Region.Card.updateCardMeta(object);
     if (Space.isInSpace(G1.G1, object)) {
@@ -45,24 +33,6 @@ public class G1MatureTraceLocal extends G1EvacuationTraceLocal {
     } else {
       return super.traceObject(object);
     }
-
-//    if (G1.regionSpace.contains(object) && Region.relocationRequired(Region.of(object))) {
-//      ObjectReference newObject = G1.regionSpace.traceForwardObject(this, object);
-//      return newObject;
-//    } else {
-//      return object;
-//    }
-    // else {
-//      if (VM.VERIFY_ASSERTIONS) {
-//        if (!super.isLive(object)) {
-//          Log.write("Space: ");
-//          Log.writeln(Space.getSpaceForObject(object).getName());
-//          VM.objectModel.dumpObject(object);
-//        }
-//        VM.assertions._assert(super.isLive(object));
-//      }
-    //  return super.traceObject(object);
-    //}
   }
 
   public final RemSet.Processor processor = new RemSet.Processor(this, G1.regionSpace, false);
