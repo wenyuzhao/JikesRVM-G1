@@ -98,17 +98,12 @@ public final class RegionSpace extends Space {
       Word value = liveWord.loadWord();
       return value.and(mask).EQ(mask);
     }
-//    private static final int OBJECT_LIVE_SHIFT = LOG_MIN_ALIGNMENT; // 4 byte resolution
-//    private static final int LOG_BIT_COVERAGE = OBJECT_LIVE_SHIFT;
-//    private static final int LOG_LIVE_COVERAGE = LOG_BIT_COVERAGE + LOG_BITS_IN_BYTE;
+
     private static final Word WORD_SHIFT_MASK = Word.fromIntZeroExtend(BITS_IN_WORD).minus(Word.one());
     private static final int LOG_LIVE_COVERAGE = 3 + LOG_BITS_IN_BYTE;
 
     @Inline
     private static Word getMask(Address address) {
-//      int shift = address.toWord().rshl(OBJECT_LIVE_SHIFT).and(WORD_SHIFT_MASK).toInt();
-//      Word rtn = Word.one().lsh(shift);
-//      return rtn;
       int shift = address.toWord().rshl(3).and(WORD_SHIFT_MASK).toInt();
       return Word.one().lsh(shift);
     }
@@ -120,18 +115,6 @@ public final class RegionSpace extends Space {
         VM.assertions._assert(rtn.LT(chunk.plus(Region.BYTES_IN_MARKTABLE)));
       }
       return rtn;
-//      Address chunk = EmbeddedMetaData.getMetaDataBase(address);
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(address.GT(chunk));
-//      Word bitOffset = address.diff(chunk).toWord().rshl(4);
-//      int wordOffset = bitOffset.rshl(LOG_BITS_IN_WORD).toInt();
-////      int wordOffset = address.diff(chunk).toInt() / 512;
-//      Address liveWordAddress = chunk.plus(wordOffset);
-//      if (VM.VERIFY_ASSERTIONS) {
-//        VM.assertions._assert(wordOffset > 0);
-//        VM.assertions._assert((wordOffset * 4 + 3) < Region.BYTES_IN_MARKTABLE);
-//        VM.assertions._assert(liveWordAddress.LE(chunk.plus(Region.BYTES_IN_MARKTABLE)));
-//      }
-//      return liveWordAddress;
     }
   }
 
@@ -179,41 +162,40 @@ public final class RegionSpace extends Space {
     }
   }
 
-//  @Inline
   public void prepare() {
-    // Update mark state
-    // Clear marking data
-    resetTLABs();
-    Address b;
-    regionIterator.reset();
-    while (!(b = regionIterator.next()).isZero()) {
-      Region.clearMarkBitMap(b);
-      Region.setUsedSize(b, 0);
-    }
-
-//    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
-//      Region.clearMarkBitMap(b);
-//    }
-//    // Clear region live size
-//    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
-//      Region.setUsedSize(b, 0);
-//    }
+    prepare(false);
   }
 
-//  @Inline
-//  public void clearAllMarkData() {
-//    VM.assertions.fail("Unimplemented");
-//    for (Address b = firstRegion(); !b.isZero(); b = nextRegion(b)) {
-//      Region.clearMarkBitMap(b);
-//    }
-//  }
+  @NoInline
+  public void prepare(boolean nursery) {
+    // Update mark state
+    // Clear marking data
+    Address r;
+    regionIterator.reset();
+    while (!(r = regionIterator.next()).isZero()) {
+      Region.clearMarkBitMap(r);
+      Region.setUsedSize(r, 0);
+      // Set TAMS
+//      if (!nursery) Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(r.plus(Region.BYTES_IN_REGION));
+    }
+    resetTLABs(!nursery);
+  }
 
   /**
    * A new collection increment has completed.  Release global resources.
    */
-  @Inline
+//  @NoInline
   public void release() {
-    resetTLABs();
+//    Address r;
+//    regionIterator.reset();
+//    while (!(r = regionIterator.next()).isZero()) {
+      // Set TAMS
+//      Address slot = Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET);
+//      Address oldTAMS = slot.loadAddress();
+//      if (oldTAMS.isZero() || oldTAMS.EQ(r))
+//        slot.store(r.plus(Region.BYTES_IN_REGION));
+//    }
+    resetTLABs(false);
   }
 
   /**
@@ -235,14 +217,23 @@ public final class RegionSpace extends Space {
   }
 
   Lock tlabLock = VM.newLock("tlab-lock");
-  Lock tlabCollectorLock = VM.newLock("tlab-lock-collector");
+//  Lock tlabCollectorLock = VM.newLock("tlab-lock-collector");
   AddressArray allocRegions = AddressArray.create(3);
-  WordArray allocTLABIndex = WordArray.create(3);
+//  WordArray allocTLABIndex = WordArray.create(3);
 
-  public void resetTLABs() {
+  public void resetTLABs(boolean updateTAMS) {
     for (int i = 0; i < 3; i++) {
+      Address cursor = allocRegions.get(i);
+      if (!cursor.isZero()) {
+        Address region = Region.of(cursor);
+        if (updateTAMS) {
+//          Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).store(cursor);
+        } else {
+//          Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).store(region);
+        }
+      }
       allocRegions.set(i, Address.zero());
-      allocTLABIndex.set(i, Word.zero());
+//      allocTLABIndex.set(i, Word.zero());
     }
   }
 
@@ -445,7 +436,7 @@ public final class RegionSpace extends Space {
    * @param region The address of the Z Page to be released
    */
   @Override
-  @Inline
+  @NoInline
   public void release(Address region) {
     if (Region.verbose()) Log.writeln("Release region ", region);
     committedRegions.add(-1);
@@ -615,6 +606,10 @@ public final class RegionSpace extends Space {
   @Inline
   public boolean isLive(ObjectReference object) {
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
+//    Address tams = Region.metaDataOf(Region.of(object), Region.METADATA_TAMS_OFFSET).loadAddress();
+//    if (VM.objectModel.refToAddress(object).GE(tams)) {
+//      return true;
+//    }
     return isMarked(object);
   }
 
@@ -795,13 +790,15 @@ public final class RegionSpace extends Space {
   @NoInline
   public int calculateRemSetPages() {
       int remsetPages = 0;
+      int fixedPages = 0;
       regionIterator.reset();
       Address region;
       while (!(region = regionIterator.next()).isZero()) {
-          remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
+        fixedPages += 1;
+        remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
 //          remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
       }
-      return remsetPages;
+      return (remsetPages / 16) + fixedPages;
   }
 
   @NoInline

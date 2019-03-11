@@ -338,10 +338,10 @@ public class RemSet {
               if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
               if (Space.isInSpace(Plan.META, card)) continue;
               if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
-                if (!BlockAllocator.checkBlockMeta(card)) {
-                  if (nursery) Log.writeln("Skip MS card ", card);
-                  continue;
-                }
+//                if (!BlockAllocator.checkBlockMeta(card)) {
+//                  if (nursery) Log.writeln("Skip MS card ", card);
+//                  continue;
+//                }
               }
               if (Space.isInSpace(REGION_SPACE, card)) {
                 Address regionOfCard = Region.of(card);

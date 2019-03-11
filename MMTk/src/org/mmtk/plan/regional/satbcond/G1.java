@@ -10,11 +10,10 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regional.satbslow;
+package org.mmtk.plan.regional.satbcond;
 
 import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.deque.SharedDeque;
-import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
@@ -22,7 +21,7 @@ import org.vmmagic.pragma.Uninterruptible;
  */
 @Uninterruptible
 public class G1 extends  org.mmtk.plan.regional.Regional {
-    public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
+    public final SharedDeque modbufPool = new SharedDeque("modBufs", offHeapMetaDataSpace, 1);
 
     @Override
     public void collectionPhase(short phaseId) {

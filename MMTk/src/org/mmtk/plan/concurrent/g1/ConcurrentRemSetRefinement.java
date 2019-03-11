@@ -18,6 +18,7 @@ import org.mmtk.policy.*;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
+import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.Monitor;
@@ -178,7 +179,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       Word tmp = VM.objectModel.objectStartRef(source).toWord().xor(value.toWord());
       tmp = tmp.rshl(Region.LOG_BYTES_IN_REGION);
       if (tmp.isZero()) return;
-      if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.allocated(Region.of(value))) {
+      if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.of(value).NE(EmbeddedMetaData.getMetaDataBase(value)) && Region.allocated(Region.of(value))) {
         Address foreignBlock = Region.of(ref);
         RemSet.addCard(foreignBlock, card);
       }
@@ -337,16 +338,16 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   static Controller controller;
 
   @Interruptible
-  static void initialize(int numWorkers) {
+  public static void initialize(int numWorkers) {
     monitor = VM.newHeavyCondLock("ConcurrentRemSetRefineThreadLock");
     controller = new Controller(numWorkers);
   }
 
-  static void pause() {
+  public static void pause() {
     controller.pause();
   }
 
-  static void resume() {
+  public static void resume() {
     controller.resume();
   }
 

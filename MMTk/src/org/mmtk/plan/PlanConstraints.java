@@ -25,6 +25,10 @@ import org.vmmagic.pragma.*;
   public int LOG_PAGES_IN_G1_REGION() {
     return 8;
   }
+
+  public boolean G1_CARD_SUPPORT() {
+    return false;
+  }
   /** @return {@code true} if this Plan requires object shallow comparison barriers. */
   public boolean needsObjectAddressComparisonBarrier() {
     return false;

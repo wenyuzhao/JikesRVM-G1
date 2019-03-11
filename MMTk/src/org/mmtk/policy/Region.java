@@ -1,6 +1,6 @@
 package org.mmtk.policy;
 
-import org.mmtk.plan.concurrent.g1.G1;
+
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
@@ -154,6 +154,7 @@ public class Region {
   public static void register(Address region, int allocationKind) {
     clearState(region);
     metaDataOf(region, METADATA_ALLOCATED_OFFSET).store((byte) 1);
+//    metaDataOf(region, METADATA_TAMS_OFFSET).store(region);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
@@ -244,7 +245,7 @@ public class Region {
     return meta;
   }
 
-  public static boolean USE_CARDS = false;
+  public static boolean USE_CARDS = VM.activePlan.constraints().G1_CARD_SUPPORT();
 
   @Uninterruptible
   public static class Card {
@@ -492,7 +493,7 @@ public class Region {
       final Address cursor = Region.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
       final boolean inMSSpace = Space.getSpaceForAddress(card) instanceof MarkSweepSpace;
-      final boolean inRegionSpace = Space.isInSpace(G1.G1, card);
+      final boolean inRegionSpace = Space.getSpaceForAddress(card) instanceof RegionSpace;
 
       Address regionEnd = Address.zero();
       if (inRegionSpace) {

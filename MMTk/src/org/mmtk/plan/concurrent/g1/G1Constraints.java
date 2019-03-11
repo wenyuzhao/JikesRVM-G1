@@ -58,4 +58,12 @@ public class G1Constraints extends ConcurrentConstraints {
   public boolean needsLogBitInHeader() {
     return true;
   }
+  @Override
+  public int LOG_PAGES_IN_G1_REGION() {
+    return 8;
+  }
+  @Override
+  public boolean G1_CARD_SUPPORT() {
+    return true;
+  }
 }

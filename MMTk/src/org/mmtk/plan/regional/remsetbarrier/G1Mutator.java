@@ -69,6 +69,7 @@ public class G1Mutator extends org.mmtk.plan.regional.RegionalMutator {
   static int globalRemSetLogBufferCursor = 0;
   Lock globalRemSetLogBufferLock = VM.newLock("globalRemSetLogBufferLock");
 
+  @NoInline
   public void enqueueCurrentRSBuffer(boolean triggerConcurrentRefinement, boolean acquireNewBuffer) {
     if (remSetLogBufferCursor == 0) return;
     globalRemSetLogBufferLock.acquire();
@@ -85,7 +86,8 @@ public class G1Mutator extends org.mmtk.plan.regional.RegionalMutator {
   }
 
   @NoInline
-  public void markAndEnqueueCard(Address card) {
+  public void markAndEnqueueCard(ObjectReference src) {
+    Address card = Region.Card.of(src);
     if (CardTable.attemptToMarkCard(card, true)) {
       remSetLogBuffer().plus(remSetLogBufferCursor << LOG_BYTES_IN_ADDRESS).store(card);
       remSetLogBufferCursor += 1;
@@ -102,7 +104,7 @@ public class G1Mutator extends org.mmtk.plan.regional.RegionalMutator {
       Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
       tmp = ref.isNull() ? Word.zero() : tmp;
       if (!tmp.isZero()) {
-        markAndEnqueueCard(Region.Card.of(src));
+        markAndEnqueueCard(src);
       }
   }
 

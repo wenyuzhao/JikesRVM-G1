@@ -10,27 +10,21 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.regional.satbslow;
+package org.mmtk.plan.regional.satbcond;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.StopTheWorldMutator;
-import org.mmtk.plan.TraceWriteBuffer;
-import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.Region;
-import org.mmtk.policy.Space;
 import org.mmtk.utility.HeaderByte;
-import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
-import org.vmmagic.unboxed.Offset;
 import org.vmmagic.unboxed.Word;
-
-import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
 
 /**
  * This class implements <i>per-mutator thread</i> behavior

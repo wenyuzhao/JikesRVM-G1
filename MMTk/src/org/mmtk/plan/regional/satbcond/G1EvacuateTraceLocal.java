@@ -1,4 +1,4 @@
-package org.mmtk.plan.regional.satbslow;
+package org.mmtk.plan.regional.satbcond;
 
 import org.mmtk.plan.Trace;
 import org.vmmagic.pragma.Uninterruptible;

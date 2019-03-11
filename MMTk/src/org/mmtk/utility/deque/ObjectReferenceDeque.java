@@ -56,6 +56,11 @@ import org.vmmagic.pragma.*;
     uncheckedTailInsert(object.toAddress());
   }
 
+  @NoInline
+  public final void insertOutOfLine(ObjectReference object) {
+    insert(object);
+  }
+
   /**
    * Push an object onto the object queue.
    *

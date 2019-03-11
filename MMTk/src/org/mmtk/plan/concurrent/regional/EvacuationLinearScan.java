@@ -35,12 +35,12 @@ public class EvacuationLinearScan extends LinearScan {
     if (Regional.regionSpace.isLive(object)) {
       ForwardingWord.forwardObject(object, Regional.ALLOC_RS);
     } else {
-      if (Region.verbose()) {
-        Log log = VM.activePlan.mutator().getLog();
-        log.write("Skip dead ", object);
-        log.write(" ", VM.objectModel.objectStartRef(object));
-        log.writeln("..", VM.objectModel.getObjectEndAddress(object));
-      }
+//      if (Region.verbose()) {
+//        Log log = VM.activePlan.mutator().getLog();
+//        log.write("Skip dead ", object);
+//        log.write(" ", VM.objectModel.objectStartRef(object));
+//        log.writeln("..", VM.objectModel.getObjectEndAddress(object));
+//      }
     }
   }
 }

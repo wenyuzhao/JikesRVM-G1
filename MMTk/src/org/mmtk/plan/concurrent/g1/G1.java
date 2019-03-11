@@ -293,7 +293,7 @@ public class G1 extends Concurrent {
     if (phaseId == REMEMBERED_SETS) {
       double remsetPages = regionSpace.calculateRemSetPages();
       double remsetCards = regionSpace.calculateRemSetCards();
-      int totalPages = (regionSpace.committedRegions() / 15 * 16) << Region.LOG_PAGES_IN_REGION;
+      int totalPages = regionSpace.committedRegions() << Region.LOG_PAGES_IN_REGION;
       if (totalPages != 0) {
         remsetFootprint.log(remsetPages * 100 / totalPages);
       }
@@ -304,16 +304,16 @@ public class G1 extends Concurrent {
       return;
     }
 
-    if (phaseId == EVACUATE) {
-      regionSpace.resetTLABs();
-      return;
-    }
+//    if (phaseId == EVACUATE) {
+//      regionSpace.resetTLABs();
+//      return;
+//    }
 
 
     if (phaseId == FORWARD_PREPARE) {
       if (nurseryGC()) {
         VM.memory.globalPrepareVMSpace();
-        regionSpace.prepare();
+        regionSpace.prepare(true);
         nurseryTrace.prepare();
       } else {
 //        regionSpace.prepareNursery();
