@@ -831,13 +831,6 @@ public final class RegionSpace extends Space {
       if (index >= regions.length()) break;
       region = regionIterator.next();//(region);
     }
-//    if (VM.VERIFY_ASSERTIONS) {
-//      if (regionsCount != index) {
-//        Log.write("Invalid iterations: ", index);
-//        Log.writeln("/", regionsCount);
-//      }
-//      VM.assertions._assert(regionsCount == index);
-//    }
 
     return regions;
   }
@@ -869,19 +862,6 @@ public final class RegionSpace extends Space {
 
     int currentSize = 0;
     int relocationRegions = 0;
-
-//    for (int i = 0; i < regions.length(); i++) {
-//      Address region = regions.get(i);
-//      if (!region.isZero()) {
-//        if (VM.VERIFY_ASSERTIONS) {
-//          Log.write("Region ", region);
-//          float live = (float) Region.metaDataOf(region, Region.METADATA_ALIVE_SIZE_OFFSET).loadInt();
-//          float total = (float) Region.BYTES_IN_REGION;
-//          Log.write(" live ");
-//          Log.writeln(live / total);
-//        }
-//      }
-//    }
 
     // Include all nursery regions
     if (includeAllNursery) {

@@ -4,14 +4,18 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Conversions;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
+
+import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class RemSet {
@@ -42,6 +46,123 @@ public class RemSet {
 
   @Uninterruptible
   private static class PerRegionTable {
+    @Uninterruptible
+    private static class MemoryPool {
+      private static final Lock lock = VM.newLock("MemPoolLock");
+      private static final int BYTES_IN_UNIT = Region.BYTES_IN_REGION / Region.Card.BYTES_IN_CARD / BITS_IN_BYTE;
+      private static final int UNITS_IN_PAGE = BYTES_IN_PAGE / BYTES_IN_UNIT - 1;
+      private static Address list = Address.zero();
+      private static final Offset NEXT_SLOT = Offset.fromIntZeroExtend(0);
+      private static final Offset PREV_SLOT = Offset.fromIntZeroExtend(BYTES_IN_ADDRESS);
+      // PRT: [ next (4b), prev (4b), bitmap... ]
+
+      static Address deadbeaf(Address a, int bytes) {
+        for (int i = 0; i < bytes; i += 4) {
+          a.store(0xdeadbeaf, Offset.fromIntZeroExtend(i));
+        }
+        return a;
+      }
+
+      static Address alloc() {
+        lock.acquire();
+        if (list.isZero()) {
+          Address cursor = Plan.metaDataSpace.acquire(1);
+          Address limit = cursor.plus(BYTES_IN_PAGE);
+          cursor = cursor.plus(BYTES_IN_UNIT);
+          list = cursor;
+          while (cursor.LT(limit)) {
+            Address next = cursor.plus(BYTES_IN_UNIT);
+            if (next.LT(limit)) {
+              if (VM.VERIFY_ASSERTIONS) {
+                VM.assertions._assert(Space.isInSpace(Plan.metaDataSpace.getDescriptor(), list));
+              }
+              cursor.store(next, NEXT_SLOT);
+              next.store(cursor, PREV_SLOT);
+            }
+            cursor = next;
+          }
+        }
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!list.isZero());
+        Address rtn = list;
+        // Increment live-remset count
+        Address page = Conversions.pageAlign(rtn);
+        page.store(page.loadInt() + 1);
+
+        // Update freelist
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!list.isZero());
+        list = list.loadAddress(NEXT_SLOT);
+//        Log.writeln("next cell ", list);
+        if (!list.isZero()) {
+          if (VM.VERIFY_ASSERTIONS) {
+            VM.assertions._assert(Space.isInSpace(Plan.metaDataSpace.getDescriptor(), list));
+          }
+
+//          Log.writeln("PREV_SLOT: ", PREV_SLOT);
+//          Log.writeln("BYTES_IN_UNIT: ", BYTES_IN_UNIT);
+          list.store(Address.zero(), PREV_SLOT);
+        }
+        // Zero memory
+        VM.memory.zero(false, rtn, Extent.fromIntZeroExtend(BYTES_IN_UNIT));
+        lock.release();
+        return rtn;
+      }
+
+      static void free(Address block) {
+        lock.acquire();
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(!block.isZero());
+          VM.assertions._assert(Space.isInSpace(Plan.metaDataSpace.getDescriptor(), block));
+        }
+//        Log.writeln("alloc cell ", block);
+        // Add block to freelist
+        deadbeaf(block, BYTES_IN_UNIT);
+        block.store(list, NEXT_SLOT);
+        block.store(Address.zero(), PREV_SLOT);
+        if (!list.isZero())
+          list.store(block, PREV_SLOT);
+        list = block;
+        // Decrement live-remset count
+        final Address page = Conversions.pageAlign(block);
+        int count = page.loadInt();
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(count >= 1 && count <= UNITS_IN_PAGE);
+        if (count > 1) {
+          page.store(count - 1);
+        } else {
+          // Free this page
+          // 1. Remove all cells from freelist
+          while (Conversions.pageAlign(list).EQ(page)) {
+            list = list.loadAddress(NEXT_SLOT);
+            list.store(Address.zero(), PREV_SLOT);
+          }
+          Address cursor = page.plus(BYTES_IN_UNIT), limit = page.plus(BYTES_IN_PAGE);
+          while (cursor.LT(limit)) {
+            Address prev = cursor.loadAddress(PREV_SLOT);
+            Address next = cursor.loadAddress(NEXT_SLOT);
+            if (!prev.isZero()) {
+              prev.store(next, NEXT_SLOT);
+            }
+            if (!next.isZero()) {
+              next.store(prev, PREV_SLOT);
+            }
+            cursor = cursor.plus(BYTES_IN_UNIT);
+          }
+          // 2. Release page
+          Plan.metaDataSpace.release(page);
+        }
+        lock.release();
+      }
+    }
+
+    @Inline
+    static Address alloc() {
+      return MemoryPool.alloc();
+    }
+
+    @Inline
+    static void free(Address a) {
+      MemoryPool.free(a);
+    }
+
     @Inline
     private static boolean attemptBitInBuffer(Address buf, int index, boolean newBit) {
       int intIndex = index >>> Constants.LOG_BITS_IN_INT;
@@ -115,29 +236,26 @@ public class RemSet {
   private static Address preparePRT(Address region, Address card, boolean create) {
     // Get region index
     int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
-    // Get card region index
-    int cardRegionIndex = Region.of(card).diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
+    // Get foreign region index
+    int foreignRegionIndex = Region.of(card).diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
     // Get PerRegionTable list, this is a page size
     Address prtList = rememberedSets.get(regionIndex);//rememberedSets[regionIndex];
     Address remsetPagesSlot = Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET);
     if (prtList.isZero()) { // create remset
       if (create) {
-        // rememberedSets[regionIndex] = new int[TOTAL_REGIONS][];
-        rememberedSets.set(regionIndex, Plan.metaDataSpace.acquire(REMSET_PAGES));
+        prtList = Plan.metaDataSpace.acquire(REMSET_PAGES);
+        rememberedSets.set(regionIndex, prtList);
         remsetPagesSlot.store(remsetPagesSlot.loadInt() + REMSET_PAGES);
-        prtList = rememberedSets.get(regionIndex); // rememberedSets[regionIndex];
       } else {
         return Address.zero();
       }
     }
     // Insert PerRegionTable if necessary
-    Address prtEntry = prtList.plus(cardRegionIndex << Constants.LOG_BYTES_IN_ADDRESS);
+    Address prtEntry = prtList.plus(foreignRegionIndex << Constants.LOG_BYTES_IN_ADDRESS);
     if (VM.VERIFY_ASSERTIONS)
       VM.assertions._assert(prtEntry.LT(prtList.plus(Constants.BYTES_IN_PAGE * REMSET_PAGES)));
     if (create && prtEntry.loadAddress().isZero()) {
-      // prtList[cardRegionIndex] = new int[PER_REGION_TABLE_BYTES];
-      prtEntry.store(Plan.metaDataSpace.acquire(PAGES_IN_PRT));
-      remsetPagesSlot.store(remsetPagesSlot.loadInt() + PAGES_IN_PRT);
+      prtEntry.store(PerRegionTable.alloc());
     }
     // Get PerRegionTable
     return prtEntry.loadAddress();
@@ -145,12 +263,7 @@ public class RemSet {
 
   @Inline
   public static void addCard(Address region, Address card) {
-    addCard(region, card, true);
-  }
-
-  @Inline
-  private static void addCard(Address region, Address card, boolean lock) {
-    if (lock) lock(region);
+    lock(region);
 
     Address prt = preparePRT(region, card, true);
 
@@ -165,31 +278,8 @@ public class RemSet {
       } while (!sizePointer.attempt(oldSize, newSize));
     }
 
-    if (lock) unlock(region);
+    unlock(region);
   }
-
-//  @Inline
-//  public static void removeCard(Address region, Address card) {
-//    lock(region);
-//
-//    Address prt = preparePRT(region, card, false);
-//    if (prt.isZero()) {
-//      unlock(region);
-//      return;
-//    }
-//
-//    if (PerRegionTable.remove(prt, card)) {
-//      Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
-//      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-//      do {
-//        oldSize = sizePointer.prepareInt();
-//        if (oldSize == 0) break;
-//        newSize = oldSize - 1;
-//      } while (!sizePointer.attempt(oldSize, newSize));
-//    }
-//
-//    unlock(region);
-//  }
 
   @Inline
   public static boolean contains(Address region, Address card) {
@@ -221,7 +311,7 @@ public class RemSet {
       this.nursery = nursery;
     }
 
-    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
+    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(BYTES_IN_ADDRESS);
 
     static {
       if (VM.VERIFY_ASSERTIONS) {
@@ -365,25 +455,6 @@ public class RemSet {
     }
   }
 
-  @Inline
-  public static void removeRemsetForRegion(RegionSpace regionSpace, Address region) {
-    int cursor = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();//..plus(cursor << Region.LOG_BYTES_IN_REGION);
-    Address prtList = rememberedSets.get(cursor);
-    if (!prtList.isZero()) {
-      Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
-      for (Address prtPtr = prtList; prtPtr.LT(prtPrtEnd); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
-        if (VM.VERIFY_ASSERTIONS)
-          VM.assertions._assert(prtPtr.LT(prtList.plus(Constants.BYTES_IN_PAGE * REMSET_PAGES)));
-        Address prt = prtPtr.loadAddress();
-        if (!prt.isZero()) {
-          Plan.metaDataSpace.release(prt);
-        }
-      }
-      Plan.metaDataSpace.release(prtList);
-      rememberedSets.set(cursor, Address.zero());
-    }
-  }
-
   /** Remove cards in collection regions from remsets of other regions & Release remsets of collection regions */
   @Inline
   public static void cleanupRemSetRefsToRelocationSet(RegionSpace regionSpace, AddressArray relocationSet, boolean emptyRegionsOnly) {
@@ -404,12 +475,13 @@ public class RemSet {
         Address prtList = rememberedSets.get(cursor);
         if (!prtList.isZero()) {
           Address prtPrtEnd = prtList.plus(REMSET_PAGES << Constants.LOG_BYTES_IN_PAGE);
-          for (Address prtPtr = prtList; prtPtr.LT(prtPrtEnd); prtPtr = prtPtr.plus(Constants.BYTES_IN_ADDRESS)) {
+          for (Address prtPtr = prtList; prtPtr.LT(prtPrtEnd); prtPtr = prtPtr.plus(BYTES_IN_ADDRESS)) {
             if (VM.VERIFY_ASSERTIONS)
               VM.assertions._assert(prtPtr.LT(prtList.plus(Constants.BYTES_IN_PAGE * REMSET_PAGES)));
             Address prt = prtPtr.loadAddress();
             if (!prt.isZero()) {
-              Plan.metaDataSpace.release(prt);
+              PerRegionTable.free(prt);
+//              Plan.metaDataSpace.release(prt);
             }
           }
           Plan.metaDataSpace.release(prtList);
@@ -427,7 +499,8 @@ public class RemSet {
         int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION;
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {
-          Plan.metaDataSpace.release(prtEntry.loadAddress());
+          PerRegionTable.free(prtEntry.loadAddress());
+//          Plan.metaDataSpace.release(prtEntry.loadAddress());
           Address remsetPagesSlot = Region.metaDataOf(visitedRegion, Region.METADATA_REMSET_PAGES_OFFSET);
           int n = remsetPagesSlot.loadInt() - PAGES_IN_PRT;
           remsetPagesSlot.store(n > 0 ? n : 0);
