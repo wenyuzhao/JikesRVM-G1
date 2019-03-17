@@ -40,6 +40,7 @@ public class Region {
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
 //  public static final Word REGION_MASK = (1 << LOG_BYTES_IN_REGION) - 1;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;
+  public static final int MAX_ALLOC_SIZE = (int) (BYTES_IN_REGION * 3 / 4);
   public static final int REGIONS_IN_CHUNK = (1 << (EmbeddedMetaData.LOG_PAGES_IN_REGION - LOG_PAGES_IN_REGION)) - 1;
 
 //  public static final int LOG_TLABS_IN_REGION = LOG_BYTES_IN_REGION - LOG_BYTES_IN_TLAB;
@@ -80,7 +81,7 @@ public class Region {
   private static final int LOG_PAGES_IN_MARKTABLE = 7;
   public static final int BYTES_IN_MARKTABLE = 1 << (LOG_PAGES_IN_MARKTABLE + LOG_BYTES_IN_PAGE);
   // Per region metadata
-  public static final int METADATA_ALIVE_SIZE_OFFSET = 0;
+  private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
   private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   private static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
   public static final int METADATA_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
@@ -89,8 +90,8 @@ public class Region {
   public static final int METADATA_REMSET_PAGES_OFFSET = METADATA_REMSET_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_POINTER_OFFSET = METADATA_REMSET_PAGES_OFFSET + BYTES_IN_INT;
   public static final int METADATA_GENERATION_OFFSET = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
-//  public static final int METADATA_TAMS_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
-  private static final int PER_REGION_METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
+  public static final int METADATA_TAMS_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
+  private static final int PER_REGION_METADATA_BYTES = METADATA_TAMS_OFFSET + BYTES_IN_ADDRESS;
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE;
 
   public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE)  + 1;
@@ -98,7 +99,7 @@ public class Region {
   static {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
-      VM.assertions._assert(PER_REGION_METADATA_BYTES == 32);
+      VM.assertions._assert(PER_REGION_METADATA_BYTES == 36);
 //        VM.assertions._assert(REGIONS_IN_CHUNK == 3);
     }
   }
@@ -147,7 +148,19 @@ public class Region {
 
   @Inline
   public static int usedSize(Address region) {
-    return metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET).loadInt();
+    int size = metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET).loadInt();
+    Address cursor = Region.metaDataOf(region, Region.METADATA_CURSOR_OFFSET).loadAddress();
+    Address tams = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(cursor.GE(region));
+      VM.assertions._assert(cursor.LE(region.plus(Region.BYTES_IN_REGION)));
+      VM.assertions._assert(tams.GE(region));
+      VM.assertions._assert(tams.LE(region.plus(Region.BYTES_IN_REGION)));
+      VM.assertions._assert(cursor.GE(tams));
+    }
+    int delta = cursor.diff(tams).toInt();
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(delta >= 0);
+    return size + delta;
   }
 
   @Inline
@@ -159,7 +172,8 @@ public class Region {
   public static void register(Address region, int allocationKind) {
     clearState(region);
     metaDataOf(region, METADATA_ALLOCATED_OFFSET).store((byte) 1);
-//    metaDataOf(region, METADATA_TAMS_OFFSET).store(region);
+    metaDataOf(region, METADATA_CURSOR_OFFSET).store(region);
+    metaDataOf(region, METADATA_TAMS_OFFSET).store(region);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }

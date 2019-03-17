@@ -42,9 +42,8 @@ public class RegionAllocator extends Allocator {
   protected final RegionSpace space;
   protected final int spaceDescriptor;
   private final int allocationKind;
-  private Address cursorSlot = Address.zero();
-  private Address cursor = Address.zero();
   private Address region = Address.zero();
+  private Address cursor = Address.zero();
   private Address limit = Address.zero();
 
   /**
@@ -57,28 +56,18 @@ public class RegionAllocator extends Allocator {
     this.space = space;
     this.spaceDescriptor = space.getDescriptor();
     this.allocationKind = allocationKind;
-//    reset();
   }
 
   public void retireTLAB() {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!cursor.isZero());
-      VM.assertions._assert(!cursorSlot.isZero());
       VM.assertions._assert(!limit.isZero());
-//      Address region = Region.of(cursor);
       VM.assertions._assert(Region.allocated(region));
     }
 
     fillAlignmentGap(cursor, limit);
-//    Address start = cursor, end = limit;
-//    while (start.LT(end)) {
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(start.loadInt() == 0);
-////      if (start.loadInt() != 0) {
-////        VM.assertions.fail("ERROR");
-////      }
-//      start.store(ALIGNMENT_VALUE);
-//      start = start.plus(BYTES_IN_INT);
-//    }
+
+    final Address cursorSlot = Region.metaDataOf(region, Region.METADATA_CURSOR_OFFSET);
     Address oldLimit;
     final Address newLimit = cursor;
     do {
@@ -86,30 +75,22 @@ public class RegionAllocator extends Allocator {
       if (oldLimit.GE(newLimit)) break;
     } while (cursorSlot.attempt(oldLimit, newLimit));
 
-    cursorSlot = Address.zero();
-    cursor = Address.zero();
     region = Address.zero();
+    cursor = Address.zero();
     limit = Address.zero();
-//    Log.writeln("Retire TLAB End");
   }
 
   /**
    * Reset the allocator. Note that this does not reset the space.
    */
   public void reset() {
-
     if (!cursor.isZero()) {
       retireTLAB();
-//      cursor = Address.zero();
-//      limit = Address.zero();
     }
     if (refills != 0) {
       totalRefills.add(refills);
       refills = 0;
     }
-//    if (!cursor.isZero()) {
-//      retireTLAB();
-//    }
   }
 
   /*****************************************************************************
@@ -160,12 +141,10 @@ public class RegionAllocator extends Allocator {
    */
   @Override
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
-//    reset();
     if (!cursor.isZero()) {
       retireTLAB();
     }
     int newTlabSize = bytes < tlabSize ? tlabSize : bytes;
-//    int tlabs = space.getRequiredTLABs(bytes);
     Address ptr = space.allocTLAB(allocationKind, newTlabSize); // New tlab
     if (ptr.isZero()) {
       return ptr; // failed allocation --- we will need to GC
@@ -173,7 +152,6 @@ public class RegionAllocator extends Allocator {
     /* we have been given a clean block */
     cursor = ptr;
     region = Region.of(cursor);
-    cursorSlot = Region.metaDataOf(ptr, Region.METADATA_CURSOR_OFFSET);
     limit = ptr.plus(newTlabSize);
     return alloc(bytes, align, offset);
   }

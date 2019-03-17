@@ -170,7 +170,7 @@ public class Regional extends Concurrent {
 //      if (VM.VERIFY_ASSERTIONS) modbufPool.assertExhausted();
       modbufPool.prepareNonBlocking();
       modbufPool.clearDeque(1);
-      HeaderByte.flip();
+//      HeaderByte.flip();
       return;
     }
 

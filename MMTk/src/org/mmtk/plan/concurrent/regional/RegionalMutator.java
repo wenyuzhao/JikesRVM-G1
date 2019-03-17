@@ -91,7 +91,7 @@ public class RegionalMutator extends ConcurrentMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     if (allocator == Regional.ALLOC_RS) {
-      Regional.regionSpace.initializeHeader(object, bytes);
+//      Regional.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -160,10 +160,11 @@ public class RegionalMutator extends ConcurrentMutator {
   @Override
   @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
-    if (ref.isNull()) return;
+    if (!ref.isNull()) {
 //    if (HeaderByte.attemptLog(ref)) {
 //      slow.add(1);
       modbuf.insert(ref);
+    }
 //    }
 //    if (barrierActive) {
 //      if (!ref.isNull()) {

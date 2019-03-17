@@ -44,6 +44,6 @@ public class RegionalConstraints extends StopTheWorldConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return (int) (Region.BYTES_IN_REGION * 0.7);
+    return Region.MAX_ALLOC_SIZE;
   }
 }

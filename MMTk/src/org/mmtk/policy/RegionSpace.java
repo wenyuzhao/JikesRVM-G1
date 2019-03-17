@@ -51,7 +51,7 @@ public final class RegionSpace extends Space {
   /* local status bits */
   public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
   public static final int GLOBAL_GC_BITS_REQUIRED = 0;
-  public static final int GC_HEADER_WORDS_REQUIRED = 2;
+  public static final int GC_HEADER_WORDS_REQUIRED = 1;
   private static boolean allocAsMarked = true;
 
   private Atomic.Int youngRegions = new Atomic.Int();
@@ -179,9 +179,21 @@ public final class RegionSpace extends Space {
       Region.clearMarkBitMap(r);
       Region.setUsedSize(r, 0);
       // Set TAMS
-//      if (!nursery) Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(r.plus(Region.BYTES_IN_REGION));
+      if (!nursery) {
+        Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(cursor.GE(r));
+          if (!cursor.LE(r.plus(Region.BYTES_IN_REGION))) {
+            Log.write("Invalid cursor ", cursor);
+            Log.write( " region ", r);
+            Log.writeln( " end ", r.plus(Region.BYTES_IN_REGION));
+          }
+          VM.assertions._assert(cursor.LE(r.plus(Region.BYTES_IN_REGION)));
+        }
+        Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(cursor);
+      }
     }
-    resetTLABs(!nursery);
+//    resetTLABs(1);
   }
 
   /**
@@ -192,13 +204,18 @@ public final class RegionSpace extends Space {
 //    Address r;
 //    regionIterator.reset();
 //    while (!(r = regionIterator.next()).isZero()) {
-      // Set TAMS
+//      // Set TAMS
 //      Address slot = Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET);
-//      Address oldTAMS = slot.loadAddress();
-//      if (oldTAMS.isZero() || oldTAMS.EQ(r))
-//        slot.store(r.plus(Region.BYTES_IN_REGION));
+//      if (!nursery) {
+//        Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
+//        if (VM.VERIFY_ASSERTIONS) {
+//          VM.assertions._assert(TAMS.GE(cursor));
+//          VM.assertions._assert(TAMS.LT(cursor.plus(Region.BYTES_IN_REGION)));
+//        }
+//        Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(cursor);
+//      }
 //    }
-    resetTLABs(false);
+    resetTLABs(0);
   }
 
   /**
@@ -245,19 +262,10 @@ public final class RegionSpace extends Space {
     tlabLock2.set(0);
   }
 
-  public void resetTLABs(boolean updateTAMS) {
-    for (int i = 0; i < 3; i++) {
-      Address cursor = allocTLABs.get(i);
-      if (!cursor.isZero()) {
-        Address region = Region.of(cursor);
-        if (updateTAMS) {
-//          Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).store(cursor);
-        } else {
-//          Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).store(region);
-        }
-      }
+  @Inline
+  public void resetTLABs(int start) {
+    for (int i = start; i < 3; i++) {
       allocTLABs.set(i, Address.zero());
-//      allocTLABIndex.set(i, Word.zero());
     }
   }
 
@@ -378,7 +386,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public Address allocTLAB(int allocationKind, int tlabSize) {
-    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
+//    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
     Address tlab = allocTLABFast(allocationKind, tlabSize);
     if (!tlab.isZero()) {
       return tlab;
@@ -462,19 +470,19 @@ public final class RegionSpace extends Space {
   @Inline
   public void initializeHeader(ObjectReference object, int size) {
 //    if (allocAsMarked) {
-      testAndMark(object);
-      if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
-      Region.updateRegionAliveSize(Region.of(object), object);
+//      testAndMark(object);
+//      if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
+//      Region.updateRegionAliveSize(Region.of(object), object);
 //    } else {
 //      VM.objectModel.writeAvailableByte(object, (byte) 0);
 //    }
-    Region.updateRegionAliveSize(Region.of(object), object);
-    object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
+//    Region.updateRegionAliveSize(Region.of(object), object);
+//    object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
   }
 
   @Inline
   public void postCopy(ObjectReference object, int size) {
-    testAndMark(object);
+//    testAndMark(object);
 //    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
 //    ForwardingWord.clearForwardingBits(object);
@@ -653,6 +661,18 @@ public final class RegionSpace extends Space {
   @Inline
   public boolean isLive(ObjectReference object) {
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
+    Address region = Region.of(object);
+    Address TAMS = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
+    if (VM.VERIFY_ASSERTIONS) {
+      if (TAMS.LT(region)) {
+        Log.write("Invalid tams ", TAMS);
+        Log.writeln(" region ", region);
+        VM.objectModel.dumpObject(object);
+      }
+      VM.assertions._assert(TAMS.GE(region));
+      VM.assertions._assert(TAMS.LE(region.plus(Region.BYTES_IN_REGION)));
+    }
+    if (VM.objectModel.refToAddress(object).GT(TAMS)) return true;
 //    Address tams = Region.metaDataOf(Region.of(object), Region.METADATA_TAMS_OFFSET).loadAddress();
 //    if (VM.objectModel.refToAddress(object).GE(tams)) {
 //      return true;
@@ -899,10 +919,13 @@ public final class RegionSpace extends Space {
     for (int i = 0; i < regionsCount; i++) {
       Address region = regions.get(i);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
-      //if (region.isZero()) continue;
-      int size = region.isZero() ? 0 : Region.usedSize(region);
-      Address size2 = Address.fromIntZeroExtend(size);
-      regionsSizes.set(i, size2);
+      if (!region.isZero()) {
+        int size = Region.usedSize(region);
+//        size += delta;
+        regionsSizes.set(i, Address.fromIntZeroExtend(size));
+      } else {
+        regionsSizes.set(i, Address.zero());
+      }
     }
 
     // quick sort

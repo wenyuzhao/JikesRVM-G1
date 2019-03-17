@@ -48,7 +48,7 @@ public class RegionalCollector extends StopTheWorldCollector {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator copy = new RegionAllocator(Regional.regionSpace, Region.NORMAL);
+  protected final RegionAllocator copy = new RegionAllocator(Regional.regionSpace, Region.OLD);
   protected final RegionalMarkTraceLocal markTrace = new RegionalMarkTraceLocal(global().markTrace);
   protected final RegionalForwardTraceLocal forwardTrace = new RegionalForwardTraceLocal(global().forwardTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
