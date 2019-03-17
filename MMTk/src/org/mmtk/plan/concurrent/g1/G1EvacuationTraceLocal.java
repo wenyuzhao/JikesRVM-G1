@@ -24,10 +24,11 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
 
   @Inline
   @Override
-  public ObjectReference traceObject(ObjectReference object, boolean root) {
+  public final ObjectReference traceObject(ObjectReference object, boolean root) {
     ObjectReference newObject = super.traceObject(object, root);
 
     if (!object.isNull() && root) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(newObject));
       this.processNode(newObject);
     }
 
@@ -36,6 +37,18 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
 
   @Inline
   public void processEdge(ObjectReference source, Address slot) {
+    if (VM.VERIFY_ASSERTIONS) {
+      ObjectReference ref = slot.loadObjectReference();
+      if (!ref.isNull()) {
+        if (!VM.debugging.validRef(ref)) {
+          Log.writeln("Invalid source ", source);
+          Log.writeln("Invalid edge ", ref);
+        }
+        VM.assertions._assert(VM.debugging.validRef(ref));
+      }
+    }
+
+
     super.processEdge(source, slot);
 
     ObjectReference ref = slot.loadObjectReference();

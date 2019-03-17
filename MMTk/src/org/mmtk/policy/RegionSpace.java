@@ -16,13 +16,16 @@ package org.mmtk.policy;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.utility.*;
+//import org.mmtk.utility.;
+import org.mmtk.utility.HeaderByte;
+import org.mmtk.utility.Atomic;
+import org.mmtk.utility.Conversions;
+import org.mmtk.utility.Constants;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
-import org.mmtk.utility.options.EnableLatencyTimer;
-import org.mmtk.utility.options.Options;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
@@ -216,14 +219,35 @@ public final class RegionSpace extends Space {
     return pr.reservedPages() - getCollectionReserve();
   }
 
-  Lock tlabLock = VM.newLock("tlab-lock");
+  Lock tlabLock = VM.newLock("tlab-lock-m");
+
+  Atomic.Int tlabLock2 = new Atomic.Int();
+//  int[] tlabLock3 = new int[] { 0 };
+//  Lock tlabLockCollector = VM.newLock("tlab-lock-c");
 //  Lock tlabCollectorLock = VM.newLock("tlab-lock-collector");
-  AddressArray allocRegions = AddressArray.create(3);
+  AddressArray allocTLABs = AddressArray.create(3);
+//  AddressArray allocRegions = AddressArray.create(3);
+//  AddressArray allocTLABs = AddressArray.create(3);
 //  WordArray allocTLABIndex = WordArray.create(3);
+
+  @Inline
+  private void lock() {
+    do {
+      if (VM.VERIFY_ASSERTIONS) {
+        int oldValue = tlabLock2.get();
+        VM.assertions._assert(oldValue == 0 || oldValue == 1);
+      }
+    } while (!tlabLock2.attempt(0, 1));
+  }
+
+  @Inline
+  private void unlock() {
+    tlabLock2.set(0);
+  }
 
   public void resetTLABs(boolean updateTAMS) {
     for (int i = 0; i < 3; i++) {
-      Address cursor = allocRegions.get(i);
+      Address cursor = allocTLABs.get(i);
       if (!cursor.isZero()) {
         Address region = Region.of(cursor);
         if (updateTAMS) {
@@ -232,17 +256,13 @@ public final class RegionSpace extends Space {
 //          Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).store(region);
         }
       }
-      allocRegions.set(i, Address.zero());
+      allocTLABs.set(i, Address.zero());
 //      allocTLABIndex.set(i, Word.zero());
     }
   }
 
-  public int getRequiredTLABs(int size) {
-    return (size + Region.BYTES_IN_TLAB - 1) >> Region.LOG_BYTES_IN_TLAB;
-  }
-
 //  public Address tryAllocTLAB(int allocationKind, int tlabs) {
-//    Address slot = ObjectReference.fromObject(allocRegions).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
+//    Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
 //    Address oldTLAB = slot.prepareAddress();
 //    Address newTLAB = oldTLAB.plus(tlabs << Region.LOG_BYTES_IN_TLAB);
 //    boolean newRegionAllocated = false;
@@ -259,41 +279,63 @@ public final class RegionSpace extends Space {
 //    }
 //    return newRegionAllocated ? Region.of(newTLAB) : oldTLAB;
 //  }
-
-  public Address allocTLABFast(int allocationKind, int tlabs) {
-    final Address slot = ObjectReference.fromObject(allocRegions).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-    final int totalTLABSize = tlabs << Region.LOG_BYTES_IN_TLAB;
-    Address oldTLAB, newTLAB;
+  @Inline
+  public Address allocTLABFast(int allocationKind, int tlabSize0) {
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(tlabSize0 >= Region.BYTES_IN_TLAB);
+//      VM.assertions._assert(tlabSize0 <= Region.BYTES_IN_REGION);
+//    }
+    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
+    Extent tlabSize = Extent.fromIntZeroExtend(tlabSize0);
+    Word oldCursor, newCursor;
     do {
-      oldTLAB = slot.prepareAddress();
-      newTLAB = oldTLAB.plus(totalTLABSize);
-      if (oldTLAB.isZero() || Region.of(newTLAB).NE(Region.of(oldTLAB))) {
-        return Address.zero();
+      oldCursor = slot.prepareWord();
+      if (oldCursor.isZero()) return Address.zero();
+      newCursor = oldCursor.plus(tlabSize);
+      if (!newCursor.xor(oldCursor).rshl(Region.LOG_BYTES_IN_REGION).isZero()) {
+        if (newCursor.and(Region.REGION_MASK).isZero()) {
+          newCursor = Word.zero();
+        } else {
+          return Address.zero();
+        }
       }
-    } while (!slot.attempt(oldTLAB, newTLAB));
-    return oldTLAB;
+    } while (!slot.attempt(oldCursor, newCursor));
+    return oldCursor.toAddress();
   }
 
-  int lockID = -1;
-
-  public Address allocTLABSlow(int allocationKind, int tlabs) {
-//    if (lockID == VM.activePlan.mutator().getId()) {
-//      VM.assertions._assert(false);
+  public Address allocTLABSlow(int allocationKind, int tlabSize) {
+//    lock();
+//    Address result = allocTLABFast(allocationKind, tlabSize);
+//    if (!result.isZero()) {
+//      unlock();
+//      return result;
 //    }
-    tlabLock.acquire();
-//    lockID = VM.activePlan.mutator().getId();
-    Address result = allocTLABFast(allocationKind, tlabs);
-    if (!result.isZero()) {
-      tlabLock.release();
-      return result;
-    }
+//    Address region = getSpace(allocationKind);
+//    if (region.isZero()) {
+//      unlock();
+//      return region;
+//    }
+//    Address newCursor = region.plus(tlabSize);
+//    if (tlabSize == Region.BYTES_IN_REGION) newCursor = Address.zero();
+//    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
+//    slot.store(newCursor);
+//    unlock();
+    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
+    Address oldCursor = slot.prepareAddress();
     Address region = getSpace(allocationKind);
-    Address newTLAB = region.isZero() ? region : region.plus(tlabs << Region.LOG_BYTES_IN_TLAB);
-    final Address slot = ObjectReference.fromObject(allocRegions).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-    slot.store(newTLAB);
-//    lockID = -1;
-    tlabLock.release();
+    if (region.isZero()) return region;
+    if (tlabSize == Region.BYTES_IN_REGION) {
+      return region;
+    }
+    Address newCursor = region.plus(tlabSize);
+    slot.store(newCursor);
     return region;
+//    if (slot.attempt(oldCursor, newCursor)) {
+//      return region;
+//    } else {
+//      release(region);
+//      return allocTLAB(allocationKind, tlabSize);
+//    }
   }
 
   @LogicallyUninterruptible
@@ -308,9 +350,9 @@ public final class RegionSpace extends Space {
     if (allowPoll && VM.activePlan.global().poll(false, this)) {
       pr.clearRequest(pagesReserved);
 //      Log.writeln("Block for GC");
-      tlabLock.release();
+      unlock();
       VM.collection.blockForGC();
-      tlabLock.acquire();
+      lock();
       return Address.zero(); // GC required, return failure
     }
 
@@ -323,74 +365,27 @@ public final class RegionSpace extends Space {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(gcPerformed, "GC not performed when forced.");
       pr.clearRequest(pagesReserved);
 //      Log.writeln("Block for GC");
-      tlabLock.release();
+//      tlabLock.release();
+      unlock();
       VM.collection.blockForGC();
-      tlabLock.acquire();
+//      tlabLock.acquire();
+      lock();
       return Address.zero();
     }
 
     return rtn;
   }
 
-  public Address allocTLAB(int allocationKind, int tlabs) {
-    Address tlab = allocTLABFast(allocationKind, tlabs);
+  @Inline
+  public Address allocTLAB(int allocationKind, int tlabSize) {
+    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
+    Address tlab = allocTLABFast(allocationKind, tlabSize);
     if (!tlab.isZero()) {
       return tlab;
     }
-    return allocTLABSlow(allocationKind, tlabs);
+    return allocTLABSlow(allocationKind, tlabSize);
   }
 
-  public Address getTLAB(int allocationKind, int tlabs) {
-    final Address slot = ObjectReference.fromObject(allocRegions).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-    final int totalTLABSize = tlabs << Region.LOG_BYTES_IN_TLAB;
-    Address oldTLAB, newTLAB, newTLABRegion;
-    boolean newRegionAllocated;
-    do {
-      oldTLAB = slot.prepareAddress();
-      newTLAB = oldTLAB.plus(totalTLABSize);
-      newTLABRegion = Region.of(newTLAB);
-      newRegionAllocated = false;
-      if (oldTLAB.isZero() || newTLABRegion.NE(Region.of(oldTLAB))) {
-        newTLABRegion = getSpace(allocationKind);
-        if (newTLABRegion.isZero()) return Address.zero();
-        newTLAB = newTLABRegion.plus(totalTLABSize);
-        newRegionAllocated = true;
-      }
-      if (slot.attempt(oldTLAB, newTLAB)) break;
-      if (newRegionAllocated) release(newTLABRegion);
-    } while (true);
-    return newRegionAllocated ? newTLABRegion : oldTLAB;
-  }
-
-  public Address getTLAB2(int allocationKind, int tlabs) {
-//    Address tlab = tryAllocTLAB(allocationKind, tlabs);
-//    Log.writeln("New TLAB ", tlab);
-    return Address.zero();
-//    Log.writeln("Try Enter TLAB Lock");
-//    tlabLock.acquire();
-//    Log.writeln("Entered TLAB Lock");
-//    Address region = allocRegions.get(allocationKind);
-//    int tlabIndexStart = allocTLABIndex.get(allocationKind).toInt();
-////    Log.writeln("Cursor: ", tlabIndexStart);
-//    int tlabIndexEnd = tlabIndexStart + tlabs;
-//    if (region.isZero() || (tlabIndexEnd - 1) >= Region.TLABS_IN_REGION) {
-//      // Get new region
-//      region = getSpace(allocationKind);
-////      Log.writeln("TLAB new region ", region);
-//      if (region.isZero()) {
-//        tlabLock.release();
-//        return Address.zero();
-//      }
-//      allocRegions.set(allocationKind, region);
-//      tlabIndexStart = 0;
-//      tlabIndexEnd = tlabIndexStart + tlabs;
-//    }
-//    Address rtn = region.plus(tlabIndexStart << Region.LOG_BYTES_IN_TLAB);
-////    Log.writeln("New cursor: ", tlabIndexEnd);
-//    allocTLABIndex.set(allocationKind, Word.fromIntZeroExtend(tlabIndexEnd));
-//    tlabLock.release();
-//    return rtn;
-  }
   /**
    * Return a pointer to a new usable region, or null if none are available.
    *
@@ -401,7 +396,8 @@ public final class RegionSpace extends Space {
   public Address getSpace(int allocationKind) {
     // Allocate
 //    Log.writeln("Acquire start");
-    Address region = acquire(Region.PAGES_IN_REGION);
+//    if (concurrent)
+    Address region = super.acquire(Region.PAGES_IN_REGION);
 //    Log.writeln("Acquire end");
     if (VM.VERIFY_ASSERTIONS) {
       if (!Region.isAligned(region)) {
@@ -421,9 +417,17 @@ public final class RegionSpace extends Space {
 //      if (Region.USE_CARDS) Region.Card.clearCardMetaForRegion(region);
       insertRegion(region);
       Region.register(region, allocationKind);
-
-      if (allocationKind != Region.OLD) youngRegions.add(1);
-      committedRegions.add(1);
+//      if (!slowPath) {
+        if (allocationKind != Region.OLD) youngRegions.add(1);
+        committedRegions.add(1);
+//      } else {
+//        if (allocationKind != Region.OLD) youngRegions.addNonAtomic(1);
+//        committedRegions.addNonAtomic(1);
+//      }
+    } else {
+      if (Region.verbose()) {
+        Log.write("Region allocation failure");
+      }
     }
 
     return region;
@@ -464,8 +468,8 @@ public final class RegionSpace extends Space {
 //    } else {
 //      VM.objectModel.writeAvailableByte(object, (byte) 0);
 //    }
-//    Region.updateRegionAliveSize(Region.of(object), object);
-//    object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
+    Region.updateRegionAliveSize(Region.of(object), object);
+    object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
   }
 
   @Inline
@@ -473,6 +477,7 @@ public final class RegionSpace extends Space {
     testAndMark(object);
 //    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
     object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
+//    ForwardingWord.clearForwardingBits(object);
     if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
   }
 
@@ -542,6 +547,43 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
+  public ObjectReference traceEvacuateCSetObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationAccumulator evacuationTimer) {
+    if (Region.relocationRequired(Region.of(object))) {
+      Word priorStatusWord = ForwardingWord.attemptToForward(object);
+
+      if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+        return ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+      } else {
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(VM.debugging.validRef(object));
+        }
+        long time = VM.statistics.nanoTime();
+        ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+        evacuationTimer.updateObjectEvacuationTime(VM.objectModel.getSizeWhenCopied(newObject), VM.statistics.nanoTime() - time);
+        trace.processNode(newObject);
+        return newObject;
+      }
+    } else {
+      if (testAndMark(object))
+        trace.processNode(object);
+      return object;
+    }
+  }
+
+  @Inline
+  public ObjectReference traceForwardCSetObject(TransitiveClosure trace, ObjectReference object) {
+//    if (Region.relocationRequired(Region.of(object)))
+    if (!ForwardingWord.isForwarded(object)) return object;
+//    Word status = VM.objectModel.readAvailableBitsWord(object);
+    ObjectReference ref = ForwardingWord.getForwardedObject(object);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
+    return ref;
+//    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
+//    object = newObject.isNull() ? object : newObject;
+//    return object;
+  }
+
+  @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationAccumulator evacuationTimer) {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 //    final Address region = Region.of(object);
@@ -574,7 +616,12 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
-    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
+    if (Region.relocationRequired(Region.of(object))) {
+//      Word status = VM.objectModel.readAvailableBitsWord(object);
+      object = ForwardingWord.getForwardedObject(object);
+    }
+
+//    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
 //    if (VM.VERIFY_ASSERTIONS) {
 //      if (Region.relocationRequired(Region.of(object))) {
 //        if (newObject.isNull())
@@ -583,7 +630,7 @@ public final class RegionSpace extends Space {
 //        VM.assertions._assert(newObject.toAddress().NE(object.toAddress()));
 //      }
 //    }
-    object = newObject.isNull() ? object : newObject;
+//    object = newObject.isNull() ? object : newObject;
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
     if (testAndMark(object)) {
 //      HeaderByte.markAsLogged(object);
@@ -693,7 +740,14 @@ public final class RegionSpace extends Space {
 //    Address ptr = ObjectReference.fromObject(regions).toAddress();
 //    int index = region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION;
 //    ptr.plus(index).store(1);
-    regions.set(region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION, region);
+    final int index = region.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION;
+    if (VM.VERIFY_ASSERTIONS) {
+      if (index < 0 || index >= regions.length()) {
+        Log.writeln("invalid region: ", region);
+        VM.assertions.fail("ArrayIndexOutOfBoundsException");
+      }
+    }
+    regions.set(index, region);
 //    regionsLock.release();
   }
   @Inline
@@ -702,7 +756,7 @@ public final class RegionSpace extends Space {
 //    int index = region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION;
 //    ptr.plus(index).store(0);
 //    regionsLock.acquire();
-    regions.set(region.diff(VM.HEAP_START).toInt() >> Region.LOG_BYTES_IN_REGION, Address.zero());
+    regions.set(region.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION, Address.zero());
 //    regionsLock.release();
   }
 

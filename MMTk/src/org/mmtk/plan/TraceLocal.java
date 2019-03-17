@@ -538,11 +538,11 @@ public abstract class TraceLocal extends TransitiveClosure {
   private void assertMutatorRemsetsFlushed() {
     // FIXME: PNT
     if (VM.VERIFY_ASSERTIONS) {
-      VM.activePlan.resetMutatorIterator();
-      MutatorContext m;
-      while ((m = (MutatorContext) VM.activePlan.getNextMutator()) != null) {
-        m.assertRemsetsFlushed();
-      }
+//      VM.activePlan.resetMutatorIterator();
+//      MutatorContext m;
+//      while ((m = (MutatorContext) VM.activePlan.getNextMutator()) != null) {
+//        m.assertRemsetsFlushed();
+//      }
     }
   }
 

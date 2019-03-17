@@ -97,7 +97,7 @@ public class RegionalCollector extends StopTheWorldCollector {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (VM.VERIFY_ASSERTIONS) Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
     if (phaseId == Regional.PREPARE) {
       currentTrace = markTrace;
       markTrace.prepare();
@@ -153,6 +153,7 @@ public class RegionalCollector extends StopTheWorldCollector {
       forwardTrace.release();
       copy.reset();
       super.collectionPhase(Regional.RELEASE, primary);
+      if (primary) RegionAllocator.adjustTLABSize();
       return;
     }
 

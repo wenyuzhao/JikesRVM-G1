@@ -6,6 +6,7 @@ import org.mmtk.policy.RegionSpace.ForwardingWord;
 import org.mmtk.policy.RemSet;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Atomic;
+//import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.VM;
@@ -63,9 +64,9 @@ public class EvacuationLinearScan extends LinearScan {
       // Forward
       long time = VM.statistics.nanoTime();
       ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
-//      totalEvacuationTime += (VM.statistics.nanoTime() - time);
-//      totalObjectSize += VM.objectModel.getSizeWhenCopied(newObject);
-      PauseTimePredictor.updateObjectEvacuationTime(VM.objectModel.getSizeWhenCopied(newObject), VM.statistics.nanoTime() - time);
+      totalEvacuationTime += (VM.statistics.nanoTime() - time);
+      totalObjectSize += VM.objectModel.getSizeWhenCopied(newObject);
+//      PauseTimePredictor.updateObjectEvacuationTime(VM.objectModel.getSizeWhenCopied(newObject), VM.statistics.nanoTime() - time);
 
       VM.scanning.scanObject(updateRemSetTransitiveClosure, newObject);
 //      Region.Card.updateCardMeta(newObject);

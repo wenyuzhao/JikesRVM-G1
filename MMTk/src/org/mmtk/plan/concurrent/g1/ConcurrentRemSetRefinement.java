@@ -46,7 +46,7 @@ import org.vmmagic.unboxed.*;
 public class ConcurrentRemSetRefinement extends CollectorContext {
   @Uninterruptible
   public static class FilledRSBufferQueue {
-    public static final int CAPACITY = 512;
+    public static final int CAPACITY = 5;
     public static final Lock lock = VM.newLock("filled-rs-buffer-queue-lock");
     public static AddressArray array = AddressArray.create(CAPACITY);
     public static int head = 0, tail = 0, size = 0;
@@ -123,7 +123,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }
   }
 
-  public static final int REMSET_LOG_BUFFER_SIZE = Constants.BYTES_IN_PAGE >>> Constants.LOG_BYTES_IN_ADDRESS;
+  public static final int REMSET_LOG_BUFFER_SIZE = 256;//Constants.BYTES_IN_PAGE >>> Constants.LOG_BYTES_IN_ADDRESS;
   public static Monitor monitor;
   public static Lock lock = VM.newLock("RefineLock");
 
@@ -193,18 +193,19 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   };
 
   @Inline
-  public static int processCard(Address card) {
+  public static long processCard(Address card) {
     if (!Space.isMappedAddress(card)) return 0;
-    if (card.LT(VM.AVAILABLE_START) || Space.isInSpace(Plan.VM_SPACE, card)) return 0;
+//    if (card.LT(VM.AVAILABLE_START) || Space.isInSpace(Plan.VM_SPACE, card)) return 0;
+    if (card.LT(VM.AVAILABLE_START)) return 0;
     if (Space.isInSpace(G1.G1, card) && !Region.allocated(Region.of(card))) return 0;
 
     long time = VM.statistics.nanoTime();
     Region.Card.linearScan(cardLinearScan, G1.regionSpace, card, false);
-    if (Plan.gcInProgress()) {
-//      return (int) (VM.statistics.nanoTime() - time);
-      PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
-    }
-    return 0;
+//    if (Plan.gcInProgress()) {
+    return VM.statistics.nanoTime() - time;
+//      PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
+//    }
+//    return 0;
 //      PauseTimePredictor.updateRefinementCardScanningTime(VM.statistics.nanoTime() - time);
   }
 
@@ -243,6 +244,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 //      }
 //    }
     long totalTime = 0;
+    int cards = 0;
     final Address cardTable = ObjectReference.fromObject(CardTable.cardTable).toAddress();
     final int startIndex = id * cardsToClear, endIndex = id * cardsToClear + cardsToClear;
     for (int i = startIndex; i < endIndex; i++) {
@@ -256,11 +258,15 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       }
       Address c = VM.HEAP_START.plus(i << Region.Card.LOG_BYTES_IN_CARD);
       if (CardTable.attemptToMarkCard(c, false)) {
-        totalTime += processCard(c);
+        long time = processCard(c);
+        if (time != 0) {
+          totalTime += time;
+          cards += 1;
+        }
       }
     }
 
-//    PauseTimePredictor.updateRefinementCardScanningTime(totalTime);
+    PauseTimePredictor.updateRefinementCardScanningTime(totalTime, cards);
 
     int rendezvousID = VM.activePlan.collector().rendezvous();
     if (rendezvousID == 0) {

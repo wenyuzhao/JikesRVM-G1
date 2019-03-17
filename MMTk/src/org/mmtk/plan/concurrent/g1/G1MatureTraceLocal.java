@@ -29,9 +29,9 @@ public class G1MatureTraceLocal extends G1EvacuationTraceLocal {
     if (object.isNull()) return object;
 //    Region.Card.updateCardMeta(object);
     if (Space.isInSpace(G1.G1, object)) {
-      return G1.regionSpace.traceForwardObject(this, object);
+      return G1.regionSpace.traceForwardCSetObject(this, object);
     } else {
-      return super.traceObject(object);
+      return object;// super.traceObject(object);
     }
   }
 

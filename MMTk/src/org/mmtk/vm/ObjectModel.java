@@ -18,6 +18,8 @@ import org.vmmagic.unboxed.*;
 @Uninterruptible
 public abstract class ObjectModel {
 
+  public abstract int getObjectRefOffset();
+
   public abstract boolean attemptInt(Object object, Offset offset, int oldValue, int newValue);
   /**
    * Copy an object using a plan's allocCopy to get space and install
@@ -269,5 +271,10 @@ public abstract class ObjectModel {
    */
   static Offset arrayBaseOffsetTrapdoor(ObjectModel o) {
     return o.getArrayBaseOffset();
+  }
+
+
+  static int objectRefOffsetTrapdoor(ObjectModel o) {
+    return o.getObjectRefOffset();
   }
 }

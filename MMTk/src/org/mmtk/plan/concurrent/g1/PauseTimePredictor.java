@@ -40,6 +40,10 @@ public class PauseTimePredictor {
   private static long[] CData = new long[] { 0, 0 };
 
   @Inline public static void updateRefinementCardScanningTime(long ns) {
+    updateRefinementCardScanningTime(ns, 1);
+  }
+
+  @Inline public static void updateRefinementCardScanningTime(long ns, int cards) {
     long oldValue, newValue;
     do {
       oldValue = UData[0];
@@ -47,7 +51,7 @@ public class PauseTimePredictor {
     } while (!VM.memory.attemptLong(UData, Offset.fromIntZeroExtend(0), oldValue, newValue));
     do {
       oldValue = UData[1];
-      newValue = oldValue + 1;
+      newValue = oldValue + cards;
     } while (!VM.memory.attemptLong(UData, Offset.fromIntZeroExtend(8), oldValue, newValue));
   }
   @Inline public static void updateRemSetCardScanningTime(long ns) {

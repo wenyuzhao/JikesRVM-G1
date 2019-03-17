@@ -241,8 +241,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Override
   @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
-    if (ref.isNull()) return;
-    if (HeaderByte.attemptLog(ref)) {
+    if (!ref.isNull()) {
       modbuf.insert(ref);
     }
   }

@@ -56,7 +56,7 @@ public class G1Constraints extends ConcurrentConstraints {
   }
   @Override
   public boolean needsLogBitInHeader() {
-    return true;
+    return false;
   }
   @Override
   public int LOG_PAGES_IN_G1_REGION() {

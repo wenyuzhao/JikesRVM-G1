@@ -107,8 +107,6 @@ public class RegionalMutator extends StopTheWorldMutator {
    */
   @Override
   public void collectionPhase(short phaseId, boolean primary) {
-    //Log.write("[Mutator] ");
-    //Log.writeln(Phase.getName(phaseId));
     if (Region.verbose()) {
       Log.write("Mutator ");
       Log.writeln(Phase.getName(phaseId));

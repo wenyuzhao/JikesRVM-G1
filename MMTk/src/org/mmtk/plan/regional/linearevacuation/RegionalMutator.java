@@ -13,11 +13,13 @@
 package org.mmtk.plan.regional.linearevacuation;
 
 import org.mmtk.plan.MutatorContext;
+import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.plan.TraceWriteBuffer;
 import org.mmtk.plan.concurrent.ConcurrentMutator;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.vm.VM;
@@ -85,7 +87,7 @@ public class RegionalMutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     if (allocator == Regional.ALLOC_RS) {
-      Regional.regionSpace.initializeHeader(object, bytes);
+//      Regional.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -108,8 +110,11 @@ public class RegionalMutator extends StopTheWorldMutator {
   @Override
   @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    //Log.write("[Mutator] ");
-    //Log.writeln(Phase.getName(phaseId));
+    if (Region.verbose()) {
+      Log.write("[Mutator] ", getId());
+      Log.write(primary ? " primary " : " normal ");
+      Log.writeln(Phase.getName(phaseId));
+    }
     if (phaseId == Regional.PREPARE) {
 //      VM.collection.prepareMutator(this);
       super.collectionPhase(phaseId, primary);
@@ -120,6 +125,22 @@ public class RegionalMutator extends StopTheWorldMutator {
     if (phaseId == Regional.RELEASE) {
       ra.reset();
       super.collectionPhase(phaseId, primary);
+      return;
+    }
+
+    if (phaseId == Regional.FORWARD_PREPARE) {
+      ra.reset();
+      super.collectionPhase(Regional.PREPARE, primary);
+      return;
+    }
+
+    if (phaseId == Regional.FORWARD_RELEASE) {
+      ra.reset();
+      if (primary) {
+//        Log.writeln("primary ", getId());
+        RegionAllocator.adjustTLABSize();
+      }
+      super.collectionPhase(Regional.RELEASE, primary);
       return;
     }
 

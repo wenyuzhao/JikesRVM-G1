@@ -312,7 +312,7 @@ public class G1 extends Concurrent {
 
     if (phaseId == FORWARD_PREPARE) {
       if (nurseryGC()) {
-        VM.memory.globalPrepareVMSpace();
+//        VM.memory.globalPrepareVMSpace();
         regionSpace.prepare(true);
         nurseryTrace.prepare();
       } else {
@@ -327,7 +327,7 @@ public class G1 extends Concurrent {
       if (!nurseryGC()) {
         super.collectionPhase(RELEASE);
       } else {
-        VM.memory.globalReleaseVMSpace();
+//        VM.memory.globalReleaseVMSpace();
       }
       regionSpace.release();
 

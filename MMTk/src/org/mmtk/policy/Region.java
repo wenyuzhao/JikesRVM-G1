@@ -34,20 +34,25 @@ public class Region {
 
   // Region size
 //  public static final boolean USE_PLAN_SPECIFIC_REGION_SIZE = true;
-  public static final int LOG_BYTES_IN_TLAB = 11;
-  public static final int BYTES_IN_TLAB = 1 << LOG_BYTES_IN_TLAB;
+
   public static final int LOG_PAGES_IN_REGION = VM.activePlan.constraints().LOG_PAGES_IN_G1_REGION();
   public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION;
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
+//  public static final Word REGION_MASK = (1 << LOG_BYTES_IN_REGION) - 1;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;
   public static final int REGIONS_IN_CHUNK = (1 << (EmbeddedMetaData.LOG_PAGES_IN_REGION - LOG_PAGES_IN_REGION)) - 1;
 
-  public static final int LOG_TLABS_IN_REGION = LOG_BYTES_IN_REGION - LOG_BYTES_IN_TLAB;
-  public static final int TLABS_IN_REGION = 1 << LOG_TLABS_IN_REGION;
+//  public static final int LOG_TLABS_IN_REGION = LOG_BYTES_IN_REGION - LOG_BYTES_IN_TLAB;
+//  public static final int TLABS_IN_REGION = 1 << LOG_TLABS_IN_REGION;
 
 
-  private static final Word REGION_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
-  private static final Word TLAB_MASK = Word.fromIntZeroExtend(BYTES_IN_TLAB - 1);
+  private static final int INITIAL_LOG_BYTES_IN_TLAB = 11;
+  public static final int MIN_TLAB_SIZE = 1 << INITIAL_LOG_BYTES_IN_TLAB;
+  public static final int MAX_TLAB_SIZE = BYTES_IN_REGION;
+//  public static int BYTES_IN_TLAB = MIN_TLAB_SIZE;
+
+  public static final Word REGION_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
+//  private static final Word TLAB_MASK = Word.fromIntZeroExtend(BYTES_IN_TLAB - 1);
 
   // Mark table:
   // 1 bit per 4 byte: 1/32 ratio
@@ -103,10 +108,10 @@ public class Region {
     return (a + b - 1) / b;
   }
 
-  @Inline
-  public static Address tlabOf(final Address ptr) {
-    return ptr.toWord().and(TLAB_MASK.not()).toAddress();
-  }
+//  @Inline
+//  public static Address tlabOf(final Address ptr) {
+//    return ptr.toWord().and(TLAB_MASK.not()).toAddress();
+//  }
 
   // Metadata setter
   @Inline
@@ -442,9 +447,8 @@ public class Region {
           }
           continue;
         }
-//        if (nursery) continue;
-        if (Space.isInSpace(G1_SPACE, firstCard)) continue;
-
+        if (nursery) continue;
+//        if (Space.isInSpace(G1_SPACE, firstCard)) continue;
 
         Space space = Space.getSpaceForAddress(firstCard);
         if (true) {
@@ -486,8 +490,6 @@ public class Region {
     @Inline
     @Uninterruptible
     public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean skipDeadRegion) {
-      final int RS = regionSpace.getDescriptor();
-
       final Address end = getCardLimit(card);
       if (end.isZero()) return;
       final Address cursor = Region.Card.getCardAnchor(card);
@@ -500,7 +502,9 @@ public class Region {
         regionEnd = Region.of(card).plus(BYTES_IN_REGION);
       }
 
-      ObjectReference ref = inRegionSpace ? getObjectFromStartAddress(cursor, regionEnd) : VM.objectModel.getObjectFromStartAddress(cursor);
+      final int objectRefOffset = VM.objectModel.getObjectRefOffset();
+
+      ObjectReference ref = inRegionSpace ? getObjectFromStartAddress(cursor, regionEnd, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(cursor);
       if (ref.isNull() || VM.objectModel.objectStartRef(ref).GE(end)) return;//VM.objectModel.getObjectFromStartAddress(cursor);
 
       do {
@@ -533,7 +537,7 @@ public class Region {
         if (currentObjectEnd.GE(end)) {
           break;
         } else {
-          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, regionEnd) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, regionEnd, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
           if (next.isNull() || VM.objectModel.objectStartRef(next).GE(end)) break;
           ref = next;
         }
@@ -548,7 +552,7 @@ public class Region {
       VM.assertions._assert(relocationRequired(region));
     }
 //    final Address end = getCursor(region);
-    final Address limit = region.plus(BYTES_IN_REGION);
+    final Address limit = metaDataOf(region, METADATA_CURSOR_OFFSET).loadAddress();//region.plus(BYTES_IN_REGION);
     if (VM.VERIFY_ASSERTIONS) {
 //      VM.assertions._assert(!end.isZero());
 //      VM.assertions._assert(end.LE(limit));
@@ -562,9 +566,10 @@ public class Region {
 //    if (cursor.GE(end)) {
 //      return;
 //    }
+    final int objectRefOffset = VM.objectModel.getObjectRefOffset();
 
     ObjectReference ref;
-    while (!(ref = getObjectFromStartAddress(cursor, limit)).isNull()) {
+    while (!(ref = getObjectFromStartAddress(cursor, limit, objectRefOffset)).isNull()) {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(VM.debugging.validRef(ref));
         VM.assertions._assert(Region.of(ref).EQ(region));
@@ -572,7 +577,10 @@ public class Region {
 //      if (!ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
 //        cursor = ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).toAddress();
 //      } else {
+//        VM.objectModel.dumpObject(ref);
+
         cursor = VM.objectModel.getObjectEndAddress(ref);
+//        Log.writeln("End ", cursor);
         scan.scan(ref);
 //      }
 //      cursor = VM.objectModel.getObjectEndAddress(ref);
@@ -597,23 +605,30 @@ public class Region {
   }
 
   @Inline
-  private static ObjectReference getObjectFromStartAddress(Address start, Address regionEnd) {
+  private static ObjectReference getObjectFromStartAddress(Address start, Address regionEnd, int objectRefOffset) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!start.isZero());
       VM.assertions._assert(!regionEnd.isZero());
 //      VM.assertions._assert(start.LT(regionEnd));
     }
-    while (true) {
+//    while (true) {
       if (start.GE(regionEnd)) return ObjectReference.nullReference();
-      ObjectReference ref = VM.objectModel.getObjectFromStartAddress(start);
-      if (ref.toAddress().GT(regionEnd)) {
+      while ((start.loadInt()) == ALIGNMENT_VALUE) {
+        start = start.plus(BYTES_IN_INT);
+        if (start.GE(regionEnd)) return ObjectReference.nullReference();
+      }
+      ObjectReference ref = start.plus(objectRefOffset).toObjectReference();
+//      VM.objectModel.dumpObject(ref);
+      if (VM.objectModel.refToAddress(ref).GE(regionEnd)) {
         return ObjectReference.nullReference();
       } else {
         int v = VM.objectModel.refToAddress(ref).loadInt();
-        if (v == 0 || v == VM.ALIGNMENT_VALUE) {
-          start = tlabOf(start).plus(BYTES_IN_TLAB);
+        if (v == 0) {
+          return ObjectReference.nullReference();
+//          start = tlabOf(start).plus(BYTES_IN_TLAB);
         } else {
           if (VM.VERIFY_ASSERTIONS) {
+            VM.assertions._assert(v != VM.ALIGNMENT_VALUE);
             VM.assertions._assert(!ref.isNull());
 //            if (ref.toAddress().loadWord(OBJECT_END_ADDRESS_OFFSET).isZero()) {
               VM.assertions._assert(!VM.objectModel.refToAddress(ref).loadObjectReference().isNull());
@@ -623,7 +638,7 @@ public class Region {
           return ref;
         }
       }
-    }
+//    }
 //    while (true) {
 //      if (start.GE(regionEnd)) return ObjectReference.nullReference();
 //      final int v = start.loadInt();

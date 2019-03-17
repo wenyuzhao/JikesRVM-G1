@@ -175,6 +175,7 @@ public class RegionalCollector extends ConcurrentCollector {
     if (phaseId == Regional.FORWARD_RELEASE) {
       forwardTrace.release();
       super.collectionPhase(Regional.RELEASE, primary);
+      if (primary) RegionAllocator.adjustTLABSize();
       return;
     }
 

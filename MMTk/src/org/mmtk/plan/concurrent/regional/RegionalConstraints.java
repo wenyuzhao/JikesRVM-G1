@@ -44,12 +44,12 @@ public class RegionalConstraints extends ConcurrentConstraints {
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {
-    return Region.BYTES_IN_REGION;
+    return (int) (Region.BYTES_IN_REGION * 0.7);
   }
-  @Override
-  public boolean needsLogBitInHeader() {
-    return true;
-  }
+//  @Override
+//  public boolean needsLogBitInHeader() {
+//    return true;
+//  }
   //@Override
   //public boolean needsObjectReferenceWriteBarrier() {
     //return true;

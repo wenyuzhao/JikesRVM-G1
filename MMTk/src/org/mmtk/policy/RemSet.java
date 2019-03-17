@@ -132,7 +132,8 @@ public class RemSet {
           // 1. Remove all cells from freelist
           while (Conversions.pageAlign(list).EQ(page)) {
             list = list.loadAddress(NEXT_SLOT);
-            list.store(Address.zero(), PREV_SLOT);
+            if (!list.isZero())
+              list.store(Address.zero(), PREV_SLOT);
           }
           Address cursor = page.plus(BYTES_IN_UNIT), limit = page.plus(BYTES_IN_PAGE);
           while (cursor.LT(limit)) {
@@ -328,7 +329,8 @@ public class RemSet {
 //          if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
 //            return;
 //          } else
-            if (redirectPointerTrace.isLive(object)) {
+//          redirectPointerTrace.traceObject(object, true);
+          if (redirectPointerTrace.isLive(object)) {
 //            VM.scanning.scanObject(tc, object);
 //            Log.writeln("REMSET Trace ", object);
 //            if (nursery && (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace)) {
@@ -353,8 +355,8 @@ public class RemSet {
                 VM.assertions.fail("");
               }
             }
-            if (!nursery)
-              redirectPointerTrace.traceObject(tib, true);
+//            if (!nursery)
+//              redirectPointerTrace.traceObject(tib, true);
 //            if (VM.VERIFY_ASSERTIONS) {
 //
 //              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {

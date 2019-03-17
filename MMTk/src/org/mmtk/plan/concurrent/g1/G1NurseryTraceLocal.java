@@ -2,6 +2,7 @@ package org.mmtk.plan.concurrent.g1;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.policy.*;
+import org.mmtk.policy.RegionSpace.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BlockAllocator;
 import org.mmtk.vm.VM;
@@ -18,12 +19,23 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
     super(G1.SCAN_NURSERY, trace);
   }
 
+
+
   @Override
   public boolean isLive(ObjectReference object) {
+//    if (object.isNull()) return false;
+//    if (Space.isInSpace(G1.G1, object)) return G1.regionSpace.isLive(object);
+//    return true;
+
     if (object.isNull()) return false;
     if (Space.isInSpace(G1.G1, object)) {
-      if (!Region.allocated(Region.of(object))) return false;
-      return G1.regionSpace.isLive(object);
+      Address region = Region.of(object);
+      if (!Region.allocated(region)) return false;
+////      if (Region.relocationRequired(Region.of(object))) {
+////        return ForwardingWord.isForwarded(object);
+////      } else {
+        return G1.regionSpace.isLive(object);
+////      }
     }
     return super.isLive(object);
   }
@@ -41,15 +53,15 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
 
     @Inline
     public void flush() {
-//      PauseTimePredictor.updateObjectEvacuationTime(totalObjectSize, totalTime);
+      PauseTimePredictor.updateObjectEvacuationTime(totalObjectSize, totalTime);
     }
 
     @Override
     @Inline
     public void updateObjectEvacuationTime(long size, long time) {
-//      totalObjectSize += size;
-//      totalTime += time;
-      PauseTimePredictor.updateObjectEvacuationTime(size, time);
+      totalObjectSize += size;
+      totalTime += time;
+//      PauseTimePredictor.updateObjectEvacuationTime(size, time);
     }
   }
 
@@ -61,9 +73,10 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
     if (object.isNull()) return object;
 
     if (Space.isInSpace(G1.G1, object)) {
+      if (VM.VERIFY_ASSERTIONS)
+        VM.assertions._assert(Region.allocated(Region.of(object)));
       int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
-      if (!Region.allocated(Region.of(object))) return object;
-      return G1.regionSpace.traceEvacuateObject(this, object, allocator, evacuationAccumulator);
+      return G1.regionSpace.traceEvacuateCSetObject(this, object, allocator, evacuationAccumulator);
     } else {
       return super.traceObject(object);
     }

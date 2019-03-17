@@ -75,8 +75,7 @@ public class RegionalCollector extends StopTheWorldCollector {
   @Override
   @Inline
   public Address allocCopy(ObjectReference original, int bytes, int align, int offset, int allocator) {
-    Address addr = copy.alloc(bytes, align, offset);
-    return addr;
+    return copy.alloc(bytes, align, offset);
   }
 
   @Override
@@ -147,6 +146,7 @@ public class RegionalCollector extends StopTheWorldCollector {
       evacuateTrace.release();
       copy.reset();
       super.collectionPhase(Regional.RELEASE, primary);
+      if (primary) RegionAllocator.adjustTLABSize();
       return;
     }
 

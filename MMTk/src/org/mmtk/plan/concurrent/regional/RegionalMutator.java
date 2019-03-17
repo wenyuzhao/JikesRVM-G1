@@ -161,10 +161,10 @@ public class RegionalMutator extends ConcurrentMutator {
   @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-    if (HeaderByte.attemptLog(ref)) {
+//    if (HeaderByte.attemptLog(ref)) {
 //      slow.add(1);
       modbuf.insert(ref);
-    }
+//    }
 //    if (barrierActive) {
 //      if (!ref.isNull()) {
 //        if (HeaderByte.isUnlogged(ref)) {

@@ -75,9 +75,9 @@ public class Regional extends StopTheWorld {
     // Evacuate
     Phase.scheduleCollector(EVACUATE),
     // Update refs
+    Phase.scheduleMutator  (FORWARD_PREPARE),
     Phase.scheduleGlobal   (FORWARD_PREPARE),
     Phase.scheduleCollector(FORWARD_PREPARE),
-    Phase.scheduleMutator  (PREPARE),
     Phase.scheduleMutator  (PREPARE_STACKS),
     Phase.scheduleGlobal   (PREPARE_STACKS),
     Phase.scheduleCollector(STACK_ROOTS),
@@ -91,7 +91,7 @@ public class Regional extends StopTheWorld {
     Phase.scheduleCollector(FINALIZABLE),
     Phase.scheduleCollector(FORWARD_CLOSURE),
     Phase.scheduleCollector(PHANTOM_REFS),
-    Phase.scheduleMutator  (RELEASE),
+    Phase.scheduleMutator  (FORWARD_RELEASE),
     Phase.scheduleCollector(FORWARD_RELEASE),
     Phase.scheduleGlobal   (FORWARD_RELEASE),
 

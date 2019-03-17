@@ -16,6 +16,9 @@ package org.mmtk.utility.alloc;
 import org.mmtk.policy.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.RegionSpace;
+import org.mmtk.utility.Atomic;
+import org.mmtk.utility.Constants;
+import org.mmtk.utility.Conversions;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -41,6 +44,7 @@ public class RegionAllocator extends Allocator {
   private final int allocationKind;
   private Address cursorSlot = Address.zero();
   private Address cursor = Address.zero();
+  private Address region = Address.zero();
   private Address limit = Address.zero();
 
   /**
@@ -57,14 +61,14 @@ public class RegionAllocator extends Allocator {
   }
 
   public void retireTLAB() {
-//    Log.writeln("Retire TLAB");
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!cursor.isZero());
       VM.assertions._assert(!cursorSlot.isZero());
       VM.assertions._assert(!limit.isZero());
-      Address region = Region.of(cursor);
+//      Address region = Region.of(cursor);
       VM.assertions._assert(Region.allocated(region));
     }
+
     fillAlignmentGap(cursor, limit);
 //    Address start = cursor, end = limit;
 //    while (start.LT(end)) {
@@ -76,11 +80,16 @@ public class RegionAllocator extends Allocator {
 //      start = start.plus(BYTES_IN_INT);
 //    }
     Address oldLimit;
-    final Address newLimit = limit;
+    final Address newLimit = cursor;
     do {
       oldLimit = cursorSlot.prepareAddress();
       if (oldLimit.GE(newLimit)) break;
     } while (cursorSlot.attempt(oldLimit, newLimit));
+
+    cursorSlot = Address.zero();
+    cursor = Address.zero();
+    region = Address.zero();
+    limit = Address.zero();
 //    Log.writeln("Retire TLAB End");
   }
 
@@ -88,12 +97,19 @@ public class RegionAllocator extends Allocator {
    * Reset the allocator. Note that this does not reset the space.
    */
   public void reset() {
+
     if (!cursor.isZero()) {
-//      retireTLAB();
+      retireTLAB();
+//      cursor = Address.zero();
+//      limit = Address.zero();
     }
-    cursorSlot = Address.zero();
-    cursor = Address.zero();
-    limit = Address.zero();
+    if (refills != 0) {
+      totalRefills.add(refills);
+      refills = 0;
+    }
+//    if (!cursor.isZero()) {
+//      retireTLAB();
+//    }
   }
 
   /*****************************************************************************
@@ -120,6 +136,7 @@ public class RegionAllocator extends Allocator {
     if (end.GT(limit)) {
 //      if (!cursor.isZero()) retireTLAB(cursor);
 //      reset();
+      if (VM.activePlan.isMutator()) refills += 1;
       return allocSlowInline(bytes, align, offset);
     }
     /* sufficient memory is available, so we can finish performing the allocation */
@@ -143,17 +160,67 @@ public class RegionAllocator extends Allocator {
    */
   @Override
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
-    reset();
-    int tlabs = space.getRequiredTLABs(bytes);
-    Address ptr = space.allocTLAB(allocationKind, tlabs); // New tlab
+//    reset();
+    if (!cursor.isZero()) {
+      retireTLAB();
+    }
+    int newTlabSize = bytes < tlabSize ? tlabSize : bytes;
+//    int tlabs = space.getRequiredTLABs(bytes);
+    Address ptr = space.allocTLAB(allocationKind, newTlabSize); // New tlab
     if (ptr.isZero()) {
       return ptr; // failed allocation --- we will need to GC
     }
     /* we have been given a clean block */
     cursor = ptr;
+    region = Region.of(cursor);
     cursorSlot = Region.metaDataOf(ptr, Region.METADATA_CURSOR_OFFSET);
-    limit = ptr.plus(tlabs << Region.LOG_BYTES_IN_TLAB);
+    limit = ptr.plus(newTlabSize);
     return alloc(bytes, align, offset);
+  }
+
+
+  static Atomic.Int totalRefills = new Atomic.Int();
+  int refills = 0;
+  static int gc = 0;
+  static int tlabSize = Region.MIN_TLAB_SIZE;
+
+  @Inline
+  public static void adjustTLABSize() {
+    gc += 1;
+    int refills = totalRefills.get();
+    if (refills == 50) return;
+    int s = tlabSize;
+    s *= (refills / gc / 50);
+    final int KB = Constants.BYTES_IN_KBYTE;
+
+    if (s < 2 * KB) {
+      s = 2 * KB;
+    } else if (s < 4 * KB) {
+      s = 4 * KB;
+    } else if (s < 8 * KB) {
+      s = 8 * KB;
+    } else if (s < 16 * KB) {
+      s = 16 * KB;
+    } else if (s < 32 * KB) {
+      s = 32 * KB;
+    } else if (s < 64 * KB) {
+      s = 64 * KB;
+    } else if (s < 128 * KB) {
+      s = 128 * KB;
+    } else if (s < 256 * KB) {
+      s = 256 * KB;
+    } else if (s < 512 * KB) {
+      s = 512 * KB;
+    } else {
+      s = 1024 * KB;
+    }
+//    tlabSize = Conversions.alignUp(Address.fromIntZeroExtend(refills), Constants.LOG_BYTES_IN_KBYTE).toInt();
+//    tlabSize = Region.BYTES_IN_REGION / ((int) (Region.BYTES_IN_REGION / tlabSize));
+    if (s < Region.MIN_TLAB_SIZE) s = Region.MIN_TLAB_SIZE;
+    if (s > Region.MAX_TLAB_SIZE) s = Region.MAX_TLAB_SIZE;
+    tlabSize = s;
+    Log.writeln("TLABSize: ", tlabSize);
+//    Log.writeln("GC Per: ", tlabSize);
   }
 
   /** @return the space associated with this squish allocator */
