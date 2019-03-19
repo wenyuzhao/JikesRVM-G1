@@ -169,6 +169,15 @@ public final class RegionSpace extends Space {
     prepare(false);
   }
 
+  public void clearCSetMarkMap() {
+    Address r;
+    regionIterator.reset();
+    while (!(r = regionIterator.next()).isZero()) {
+      if (Region.relocationRequired(r))
+        Region.clearMarkBitMap(r);
+    }
+  }
+
   @NoInline
   public void prepare(boolean nursery) {
     // Update mark state
@@ -181,6 +190,8 @@ public final class RegionSpace extends Space {
       // Set TAMS
       if (!nursery) {
         Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
+//        Log.write("region ", r);
+//        Log.writeln(" cursor ", cursor);
         if (VM.VERIFY_ASSERTIONS) {
           VM.assertions._assert(cursor.GE(r));
           if (!cursor.LE(r.plus(Region.BYTES_IN_REGION))) {
@@ -434,7 +445,7 @@ public final class RegionSpace extends Space {
 //      }
     } else {
       if (Region.verbose()) {
-        Log.write("Region allocation failure");
+        Log.writeln("Region allocation failure");
       }
     }
 
@@ -581,9 +592,17 @@ public final class RegionSpace extends Space {
   @Inline
   public ObjectReference traceForwardCSetObject(TransitiveClosure trace, ObjectReference object) {
 //    if (Region.relocationRequired(Region.of(object)))
-    if (!ForwardingWord.isForwarded(object)) return object;
+    if (!ForwardingWord.isForwarded(object)) {
+//      if (VM.VERIFY_ASSERTIONS)
+//        VM.assertions._assert(!Region.relocationRequired(Region.of(object)));
+      return object;
+    }
+    if (VM.VERIFY_ASSERTIONS)
+      VM.assertions._assert(Region.relocationRequired(Region.of(object)));
 //    Word status = VM.objectModel.readAvailableBitsWord(object);
     ObjectReference ref = ForwardingWord.getForwardedObject(object);
+
+    if (testAndMark(ref)) trace.processNode(ref);
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
     return ref;
 //    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
@@ -627,6 +646,10 @@ public final class RegionSpace extends Space {
     if (Region.relocationRequired(Region.of(object))) {
 //      Word status = VM.objectModel.readAvailableBitsWord(object);
       object = ForwardingWord.getForwardedObject(object);
+//
+//      if (VM.VERIFY_ASSERTIONS) {
+//        VM.assertions._assert(!object.isNull());
+//      }
     }
 
 //    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
@@ -660,7 +683,7 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public boolean isLive(ObjectReference object) {
-    if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
+    if (ForwardingWord.isForwarded(object)) return true;
     Address region = Region.of(object);
     Address TAMS = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
     if (VM.VERIFY_ASSERTIONS) {
@@ -672,12 +695,19 @@ public final class RegionSpace extends Space {
       VM.assertions._assert(TAMS.GE(region));
       VM.assertions._assert(TAMS.LE(region.plus(Region.BYTES_IN_REGION)));
     }
-    if (VM.objectModel.refToAddress(object).GT(TAMS)) return true;
+    if (VM.objectModel.objectStartRef(object).GE(TAMS)) return true;
 //    Address tams = Region.metaDataOf(Region.of(object), Region.METADATA_TAMS_OFFSET).loadAddress();
 //    if (VM.objectModel.refToAddress(object).GE(tams)) {
 //      return true;
 //    }
     return isMarked(object);
+  }
+
+  @Inline
+  public boolean isAfterTAMS(ObjectReference object) {
+    Address region = Region.of(object);
+    Address TAMS = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
+    return VM.objectModel.objectStartRef(object).GE(TAMS);
   }
 
   @Inline
@@ -1172,28 +1202,28 @@ public final class RegionSpace extends Space {
 //        return object;
     }
 
-    public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
-    @Inline
-    public static void zeroObject(ObjectReference object) {
-
-      Address objectEndAddress = VM.objectModel.getObjectEndAddress(object);
-      int size = VM.objectModel.getCurrentSize(object);
-
-      Address start1 = VM.objectModel.objectStartRef(object);
-      int headerSize = object.toAddress().diff(start1).toInt();
-      Extent extent1 = Extent.fromIntZeroExtend(headerSize + FORWARDING_POINTER_OFFSET.toInt());
-
-      Address start2 = object.toAddress().plus(FORWARDING_POINTER_OFFSET).plus(Constants.BYTES_IN_ADDRESS * 2);
-      Extent extent2 = Extent.fromIntZeroExtend(objectEndAddress.diff(start2).toInt());
-
-//      VM.memory.zero(false, start1, extent1);
-//      VM.memory.zero(false, start2, extent2);
-
-      object.toAddress().store(objectEndAddress, OBJECT_END_ADDRESS_OFFSET);
-
-      VM.assertions._assert(extent1.toInt() + extent2.toInt() + 8 == size);
-//      VM.memory.mprotect(start, size);
-    }
+//    public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
+//    @Inline
+//    public static void zeroObject(ObjectReference object) {
+//
+//      Address objectEndAddress = VM.objectModel.getObjectEndAddress(object);
+//      int size = VM.objectModel.getCurrentSize(object);
+//
+//      Address start1 = VM.objectModel.objectStartRef(object);
+//      int headerSize = object.toAddress().diff(start1).toInt();
+//      Extent extent1 = Extent.fromIntZeroExtend(headerSize + FORWARDING_POINTER_OFFSET.toInt());
+//
+//      Address start2 = object.toAddress().plus(FORWARDING_POINTER_OFFSET).plus(Constants.BYTES_IN_ADDRESS * 2);
+//      Extent extent2 = Extent.fromIntZeroExtend(objectEndAddress.diff(start2).toInt());
+//
+////      VM.memory.zero(false, start1, extent1);
+////      VM.memory.zero(false, start2, extent2);
+//
+//      object.toAddress().store(objectEndAddress, OBJECT_END_ADDRESS_OFFSET);
+//
+//      VM.assertions._assert(extent1.toInt() + extent2.toInt() + 8 == size);
+////      VM.memory.mprotect(start, size);
+//    }
 
     @Inline
     public static ObjectReference forwardObject(ObjectReference object, int allocator) {

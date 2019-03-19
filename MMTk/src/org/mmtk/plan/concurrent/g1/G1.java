@@ -18,6 +18,7 @@ import org.mmtk.policy.*;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.alloc.RegionAllocator;
 import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
@@ -64,7 +65,6 @@ public class G1 extends Concurrent {
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace nurseryTrace = new Trace(metaDataSpace);
   public final Trace matureTrace = new Trace(metaDataSpace);
-  public final Trace validateTrace = new Trace(metaDataSpace);
   public static AddressArray relocationSet;
 
   static {
@@ -99,10 +99,6 @@ public class G1 extends Concurrent {
 
   /* Phases */
   public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
-//  public static final short preemptConcurrentEagerCleanup = Phase.createComplex("preempt-concurrent-eager-cleanup", null,
-//      Phase.scheduleCollector(EAGER_CLEANUP));
-//  public static final short CONCURRENT_EAGER_CLEANUP = Phase.createConcurrent("concurrent-eager-cleanup",
-//      Phase.scheduleComplex(preemptConcurrentEagerCleanup));
   public static final short EVACUATE = Phase.createSimple("evacuate");
   public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
   public static final short REMEMBERED_SETS = Phase.createSimple("remembered-sets");
@@ -112,26 +108,12 @@ public class G1 extends Concurrent {
   public static final short CLEAR_CARD_META = Phase.createSimple("clear-card-meta");
   // Relocation set selection phases
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-//  public static final short preemptConcurrentRelocationSetSelection = Phase.createComplex("preempt-relocation-set-selection", null,
-//      Phase.scheduleCollector(RELOCATION_SET_SELECTION));
-//  public static final short CONCURRENT_RELOCATION_SET_SELECTION = Phase.createConcurrent("concurrent-relocation-set-selection",
-//      Phase.scheduleComplex(preemptConcurrentRelocationSetSelection));
-  // Cleanup phases
   public static final short CLEANUP = Phase.createSimple("cleanup");
-//  public static final short preemptConcurrentCleanup = Phase.createComplex("preempt-concurrent-cleanup", null,
-//      Phase.scheduleCollector(CLEANUP));
-//  public static final short CONCURRENT_CLEANUP = Phase.createConcurrent("concurrent-cleanup",
-//      Phase.scheduleComplex(preemptConcurrentCleanup));
 
-//  public static final short refineDirtyCards = Phase.createComplex("refine-cards-phase", null,
-//      Phase.scheduleMutator  (REFINE_CARDS),
-//      Phase.scheduleGlobal   (REFINE_CARDS),
-//      Phase.scheduleCollector(REFINE_CARDS)
-//  );
   protected static final short forwardRootClosurePhase = Phase.createComplex("forward-initial-closure", null,
       Phase.scheduleMutator  (FORWARD_PREPARE),
-      Phase.scheduleGlobal   (FORWARD_PREPARE),
       Phase.scheduleCollector(FORWARD_PREPARE),
+      Phase.scheduleGlobal   (FORWARD_PREPARE),
       Phase.scheduleMutator  (PREPARE_STACKS),
       Phase.scheduleGlobal   (PREPARE_STACKS),
       Phase.scheduleCollector(STACK_ROOTS),
@@ -170,14 +152,10 @@ public class G1 extends Concurrent {
       // Evacuate
       Phase.scheduleCollector(RELOCATION_SET_SELECTION),
       Phase.scheduleMutator  (RELOCATION_SET_SELECTION),
-//      Phase.scheduleGlobal   (EVACUATE),
-//      Phase.scheduleComplex  (refineDirtyCards),
+
       Phase.scheduleComplex  (forwardRootClosurePhase),
       Phase.scheduleComplex  (forwardRefTypeClosurePhase),
       Phase.scheduleComplex  (forwardCompleteClosurePhase),
-
-//      Phase.scheduleComplex  (Validator.validationPhase),
-//      Phase.scheduleCollector(CLEAR_CARD_META),
       // Complete
       Phase.scheduleComplex  (finishPhase)
   );
@@ -215,16 +193,6 @@ public class G1 extends Concurrent {
    */
   public G1() {
     collection = matureCollection;
-  }
-
-  @Override
-  @Interruptible
-  public void processOptions() {
-    super.processOptions();
-    /* Set up the concurrent marking phase */
-//    replacePhase(Phase.scheduleCollector(RELOCATION_SET_SELECTION), Phase.scheduleConcurrent(CONCURRENT_RELOCATION_SET_SELECTION));
-//    replacePhase(Phase.scheduleCollector(EAGER_CLEANUP), Phase.scheduleConcurrent(CONCURRENT_EAGER_CLEANUP));
-//    replacePhase(Phase.scheduleCollector(CLEANUP), Phase.scheduleConcurrent(CONCURRENT_CLEANUP));
   }
 
   DoubleCounter remsetFootprint = new DoubleCounter("remset.footprint", true, true, true);
@@ -269,7 +237,7 @@ public class G1 extends Concurrent {
       regionSpace.prepare();
       modbufPool.prepareNonBlocking();
       modbufPool.clearDeque(1);
-      HeaderByte.flip();
+//      HeaderByte.flip();
       return;
     }
 
@@ -316,6 +284,7 @@ public class G1 extends Concurrent {
         regionSpace.prepare(true);
         nurseryTrace.prepare();
       } else {
+//        regionSpace.clearCSetMarkMap();
 //        regionSpace.prepareNursery();
         matureTrace.prepare();
       }
@@ -330,7 +299,7 @@ public class G1 extends Concurrent {
 //        VM.memory.globalReleaseVMSpace();
       }
       regionSpace.release();
-
+      RegionAllocator.adjustTLABSize();
       return;
     }
 

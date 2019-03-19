@@ -131,11 +131,11 @@ public class LatencyTimer {
     }
   }
 
-  static LongCounter2 counterMin = new LongCounter2("pause.min", true, true);
-  static LongCounter2 counterMax = new LongCounter2("pause.max", true, true);
-  static LongCounter2 counterMid = new LongCounter2("pause.mid", true, true);
-  static LongCounter2 counterAvg = new LongCounter2("pause.avg", true, true);
-  static LongCounter2 counter95  = new LongCounter2("pause.95", true, true);
+//  static LongCounter2 counterMin = new LongCounter2("pause.min", true, true);
+//  static LongCounter2 counterMax = new LongCounter2("pause.max", true, true);
+//  static LongCounter2 counterMid = new LongCounter2("pause.mid", true, true);
+//  static LongCounter2 counterAvg = new LongCounter2("pause.avg", true, true);
+//  static LongCounter2 counter95  = new LongCounter2("pause.95", true, true);
 
   @Inline
   @Interruptible
@@ -176,11 +176,11 @@ public class LatencyTimer {
     for (int i = 0; i < pausesCursor; i++)
       pauses2[i] = pauses[i];
     Arrays.sort(pauses2);
-    counterMin.log(pauses2[0]);
-    counterMax.log(pauses2[pausesCursor - 1]);
-    counterAvg.log(mean(pauses2));
-    counterMid.log(pauses2[pausesCursor / 2]);
-    counter95.log(pauses2[(int) (pausesCursor * 0.95)]);
+//    counterMin.log(pauses2[0]);
+//    counterMax.log(pauses2[pausesCursor - 1]);
+//    counterAvg.log(mean(pauses2));
+//    counterMid.log(pauses2[pausesCursor / 2]);
+//    counter95.log(pauses2[(int) (pausesCursor * 0.95)]);
 //    Arrays.mea
   }
 

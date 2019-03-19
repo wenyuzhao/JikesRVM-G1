@@ -312,17 +312,56 @@ public class RemSet {
       this.nursery = nursery;
     }
 
-    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(BYTES_IN_ADDRESS);
+//    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(BYTES_IN_ADDRESS);
 
     static {
       if (VM.VERIFY_ASSERTIONS) {
-        VM.assertions._assert(RegionSpace.GC_HEADER_WORDS_REQUIRED == 2);
+//        VM.assertions._assert(RegionSpace.GC_HEADER_WORDS_REQUIRED == 1);
       }
     }
 
+    TransitiveClosure scanEdge = new TransitiveClosure() {
+      @Override @Uninterruptible
+      public void processEdge(ObjectReference source, Address slot) {
+//        Log.writeln("Root edge ", slot);
+        ObjectReference ref = slot.loadObjectReference();
+        if (!ref.isNull() && Space.isInSpace(regionSpace.getDescriptor(), ref) && Region.relocationRequired(Region.of(ref))) {
+//          Log.write("Root edge ", source);
+//          Log.writeln(" -> ", ref);
+          ref = redirectPointerTrace.traceObject(ref);
+          slot.store(ref);
+          if (!ref.isNull() && Space.isInSpace(regionSpace.getDescriptor(), ref)) {
+            Address region = Region.of(ref);
+            if (region.NE(Region.of(source))) {
+              Address card = Region.Card.of(source);
+              RemSet.addCard(region, card);
+            }
+          }
+        }
+      }
+    };
+
+
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
-        if (!object.isNull()) {
+        if (redirectPointerTrace.isLive(object)) {
+          VM.scanning.scanObject(scanEdge, object);
+//          redirectPointerTrace.traceObject(object, true);
+        }// else {
+//          Log.write("skip ", object);
+//            Log.write(" tib ", tib);
+//            Space space = Space.getSpaceForObject(object);
+//            if (space instanceof RegionSpace) {
+//              Log.write(regionSpace.isMarked(object) ? " marked " : " unmarked ");
+//              Log.write(regionSpace.isAfterTAMS(object) ? " after_tams " : " before_tams ");
+//              Log.write(Region.relocationRequired(Region.of(object)) ? " reloc " : " no-reloc ");
+//              Log.writeln(RegionSpace.ForwardingWord.isForwarded(object) ? " forwarded " : " unforwarded ");
+//
+//            } else {
+//              Log.writeln(space.getName());
+//            }
+        //}
+//        if (!object.isNull()) {
 //          if (Region.verbose()) Log.writeln("Scan", object);
 //          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 
@@ -330,33 +369,54 @@ public class RemSet {
 //            return;
 //          } else
 //          redirectPointerTrace.traceObject(object, true);
-          if (redirectPointerTrace.isLive(object)) {
-//            VM.scanning.scanObject(tc, object);
+//          if (redirectPointerTrace.isLive(object)) {
+//            Log.writeln("scan ", object);
+//            VM.scanning.scanObject(scanEdge, object);
+
+//            redirectPointerTrace.traceObject(object, true);
 //            Log.writeln("REMSET Trace ", object);
 //            if (nursery && (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace)) {
 //              VM.objectModel.dumpObject(object);
 //            }
 //            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!regionSpace.contains(object) || !Region.relocationRequired());
 //            VM.scanning.scanObject(redirectPointerTrace, object);
-            redirectPointerTrace.traceObject(object, true);
+//            redirectPointerTrace.traceObject(object, true);
 //            redirectPointerTrace.processNode(object);
-          } else {
+//          } else {
+//            Log.writeln("skip ", object);
 //            Log.write("REMSET Not Trace Dead ", object);
 //            Log.writeln(Space.getSpaceForObject(object).getName());
             // This is a dead object. During next card scanning this object may have a invalid TIB pointing
             // to a released region. So we set the objectEndAddress into the header to allow skipping this object.
-            Address tibSlot = VM.objectModel.refToAddress(object);
-            ObjectReference tib = tibSlot.loadObjectReference();
-            if (VM.VERIFY_ASSERTIONS) {
-              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
-                Log.write("TIB ", tib);
-                Log.write(" space ");
-                Log.writeln(Space.getSpaceForObject(tib).getName());
-                VM.assertions.fail("");
-              }
-            }
+//            Log.write("skip ", object);
+//            Log.write(" tib ", tib);
+//            Space space = Space.getSpaceForObject(object);
+//            if (space instanceof RegionSpace) {
+//              Log.write(regionSpace.isMarked(object) ? " marked " : " unmarked ");
+//              Log.write(regionSpace.isAfterTAMS(object) ? " after_tams " : " before_tams ");
+//              Log.writeln(RegionSpace.ForwardingWord.isForwarded(object) ? " forwarded " : " unforwarded ");
+
+//            } else {
+//              Log.writeln(space.getName());
+//            }
+//            if (tib.isNull()) {
+//              Log.write("skip ", object);
+//              Log.writeln(" tib ", tib);
+//            };
+//            if (VM.VERIFY_ASSERTIONS) {
+//              Address tibSlot = VM.objectModel.refToAddress(object);
+//              ObjectReference tib = tibSlot.loadObjectReference();
+//              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
+//                Log.write("TIB ", tib);
+//                Log.write(" space ");
+//                Log.writeln(Space.getSpaceForObject(tib).getName());
+//                VM.assertions.fail("");
+//              }
+//            }
 //            if (!nursery)
-//              redirectPointerTrace.traceObject(tib, true);
+//            Log.writeln("scan dead ", object);
+//            VM.scanning.scanObject(scanEdge, object);
+//            redirectPointerTrace.traceObject(object, true);
 //            if (VM.VERIFY_ASSERTIONS) {
 //
 //              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
@@ -383,8 +443,8 @@ public class RemSet {
 //              Log.writeln(space.isLive(object) ? " live " : " dead ");
 //            }
 //            object.toAddress().store(VM.objectModel.getObjectEndAddress(object), LIVE_STATE_OFFSET);
-          }
-        }
+//          }
+//        }
       }
     };
 
@@ -441,6 +501,7 @@ public class RemSet {
 //                  if (nursery) Log.writeln("Skip G1 card ", card);
                   continue;
                 }
+                if (Region.of(card).EQ(EmbeddedMetaData.getMetaDataBase(card))) continue;
               }
 //              if (Region.Card.getCardAnchor(card).isZero())
 

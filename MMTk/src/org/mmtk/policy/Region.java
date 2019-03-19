@@ -238,7 +238,13 @@ public class Region {
   @Inline
   private static int indexOf(Address region) {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(region.NE(chunk));
+    if (VM.VERIFY_ASSERTIONS) {
+      if (region.EQ(chunk)) {
+        Log.write("Invalid region ", region);
+        Log.writeln(" chunk ", chunk);
+      }
+      VM.assertions._assert(region.NE(chunk));
+    }
     int index = region.diff(chunk).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
     if (VM.VERIFY_ASSERTIONS) {
       if (!(index >= 1 && index <= REGIONS_IN_CHUNK)) {
@@ -499,26 +505,50 @@ public class Region {
     }
     public static String tag = null;
 
-    public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
+//    public static final Offset OBJECT_END_ADDRESS_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(Constants.BYTES_IN_ADDRESS);
 
     @Inline
     @Uninterruptible
-    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean skipDeadRegion) {
-      final Address end = getCardLimit(card);
+    public static void linearScan(LinearScan scan, RegionSpace regionSpace, Address card, boolean verbose) {
+      Address end = getCardLimit(card);
       if (end.isZero()) return;
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(!end.isZero());
+        VM.assertions._assert(end.GE(card));
+        VM.assertions._assert(end.LE(card.plus(BYTES_IN_CARD)));
+      }
       final Address cursor = Region.Card.getCardAnchor(card);
       if (cursor.isZero()) return;
-      final boolean inMSSpace = Space.getSpaceForAddress(card) instanceof MarkSweepSpace;
-      final boolean inRegionSpace = Space.getSpaceForAddress(card) instanceof RegionSpace;
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(!cursor.isZero());
+        VM.assertions._assert(cursor.GE(card));
+        VM.assertions._assert(cursor.LT(end));
+      }
+      final Space cardSpace = Space.getSpaceForAddress(card);
+      final boolean inMSSpace = cardSpace instanceof MarkSweepSpace;
+      final boolean inRegionSpace = cardSpace instanceof RegionSpace;
+
+      if (Region.verbose() && verbose) {
+        Log log = VM.activePlan.mutator().getLog();
+        log.write("scan card ", card);
+        log.write(": ", cursor);
+        log.write("..", end);
+        log.write(" ");
+        log.writeln(Space.getSpaceForAddress(card).getName());
+      }
 
       Address regionEnd = Address.zero();
       if (inRegionSpace) {
         regionEnd = Region.of(card).plus(BYTES_IN_REGION);
+        if (VM.VERIFY_ASSERTIONS) {
+          VM.assertions._assert(Region.of(card).NE(EmbeddedMetaData.getMetaDataBase(card)));
+        }
+//        if (regionEnd.)
       }
 
       final int objectRefOffset = VM.objectModel.getObjectRefOffset();
 
-      ObjectReference ref = inRegionSpace ? getObjectFromStartAddress(cursor, regionEnd, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(cursor);
+      ObjectReference ref = inRegionSpace ? getObjectFromStartAddress(cursor, end, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(cursor);
       if (ref.isNull() || VM.objectModel.objectStartRef(ref).GE(end)) return;//VM.objectModel.getObjectFromStartAddress(cursor);
 
       do {
@@ -546,12 +576,15 @@ public class Region {
             currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
         }
 
+//        if (Region.verbose() && verbose) {
+//          Log.writeln("scan ", ref);
+//        }
         scan.scan(ref);
 
         if (currentObjectEnd.GE(end)) {
           break;
         } else {
-          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, regionEnd, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, end, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
           if (next.isNull() || VM.objectModel.objectStartRef(next).GE(end)) break;
           ref = next;
         }
@@ -619,21 +652,21 @@ public class Region {
   }
 
   @Inline
-  private static ObjectReference getObjectFromStartAddress(Address start, Address regionEnd, int objectRefOffset) {
+  private static ObjectReference getObjectFromStartAddress(Address start, Address limit, int objectRefOffset) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!start.isZero());
-      VM.assertions._assert(!regionEnd.isZero());
+      VM.assertions._assert(!limit.isZero());
 //      VM.assertions._assert(start.LT(regionEnd));
     }
 //    while (true) {
-      if (start.GE(regionEnd)) return ObjectReference.nullReference();
+      if (start.GE(limit)) return ObjectReference.nullReference();
       while ((start.loadInt()) == ALIGNMENT_VALUE) {
         start = start.plus(BYTES_IN_INT);
-        if (start.GE(regionEnd)) return ObjectReference.nullReference();
+        if (start.GE(limit)) return ObjectReference.nullReference();
       }
       ObjectReference ref = start.plus(objectRefOffset).toObjectReference();
 //      VM.objectModel.dumpObject(ref);
-      if (VM.objectModel.refToAddress(ref).GE(regionEnd)) {
+      if (VM.objectModel.objectStartRef(ref).GE(limit)) {
         return ObjectReference.nullReference();
       } else {
         int v = VM.objectModel.refToAddress(ref).loadInt();

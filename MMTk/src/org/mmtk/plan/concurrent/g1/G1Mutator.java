@@ -53,8 +53,6 @@ public class G1Mutator extends ConcurrentMutator {
    * Instance fields
    */
   protected final RegionAllocator g1Eden = new RegionAllocator(G1.regionSpace, Region.EDEN);
-  protected final RegionAllocator g1Survivor = new RegionAllocator(G1.regionSpace, Region.SURVIVOR);
-  protected final RegionAllocator g1Old = new RegionAllocator(G1.regionSpace, Region.OLD);
   private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
@@ -103,8 +101,8 @@ public class G1Mutator extends ConcurrentMutator {
   @Inline
   public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
     Region.Card.updateCardMeta(object);
-    if (allocator == G1.ALLOC_EDEN || allocator == G1.ALLOC_SURVIVOR || allocator == G1.ALLOC_OLD) {
-      G1.regionSpace.initializeHeader(object, bytes);
+    if (allocator == G1.ALLOC_EDEN) {
+//      G1.regionSpace.initializeHeader(object, bytes);
     } else {
       super.postAlloc(object, typeRef, bytes, allocator);
     }
@@ -134,24 +132,18 @@ public class G1Mutator extends ConcurrentMutator {
       super.collectionPhase(phaseId, primary);
       modbuf.resetLocal();
       g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
       return;
     }
 
     if (phaseId == G1.RELEASE) {
       modbuf.flushLocal();
       g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
     if (phaseId == G1.RELOCATION_SET_SELECTION) {
       g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
       return;
     }
 
@@ -163,16 +155,12 @@ public class G1Mutator extends ConcurrentMutator {
     if (phaseId == G1.FORWARD_PREPARE) {
 //      VM.collection.prepareMutator(this);
       g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
       super.collectionPhase(G1.PREPARE, primary);
       return;
     }
 
     if (phaseId == G1.FORWARD_RELEASE) {
       g1Eden.reset();
-      g1Survivor.reset();
-      g1Old.reset();
       super.collectionPhase(G1.RELEASE, primary);
       return;
     }
@@ -184,8 +172,6 @@ public class G1Mutator extends ConcurrentMutator {
   public void flushRememberedSets() {
     modbuf.flushLocal();
     g1Eden.reset();
-    g1Survivor.reset();
-    g1Old.reset();
     assertRemsetsFlushed();
   }
 
@@ -217,7 +203,8 @@ public class G1Mutator extends ConcurrentMutator {
   }
 
   @NoInline
-  public void markAndEnqueueCard(Address card) {
+  public void rsEnqueue(ObjectReference src) {
+    Address card = Region.Card.of(src);
     if (CardTable.attemptToMarkCard(card, true)) {
       remSetLogBuffer().plus(remSetLogBufferCursor << Constants.LOG_BYTES_IN_ADDRESS).store(card);
       remSetLogBufferCursor += 1;
@@ -234,7 +221,8 @@ public class G1Mutator extends ConcurrentMutator {
     Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
     tmp = ref.isNull() ? Word.zero() : tmp;
     if (!tmp.isZero()) {
-      markAndEnqueueCard(Region.Card.of(src));
+//      Log.writeln("root ", ref);
+      rsEnqueue(src);
     }
   }
 
@@ -263,6 +251,7 @@ public class G1Mutator extends ConcurrentMutator {
 
   @Override
   public final void assertRemsetsFlushed() {
+//    VM.activePlan.getNextMutator()
 //    if (VM.VERIFY_ASSERTIONS) {
 //      VM.assertions._assert(modbuf.isFlushed());
 //    }

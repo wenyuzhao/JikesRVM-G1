@@ -64,7 +64,7 @@ public class G1Collector extends ConcurrentCollector {
   protected final G1MatureTraceLocal matureTrace = new G1MatureTraceLocal(global().matureTrace);
   protected final EvacuationLinearScan evacuationLinearScan = new EvacuationLinearScan();
   protected int currentTrace = 0;
-  public static final int TRACE_MAKR = 0;
+  public static final int TRACE_MARK = 0;
   public static final int TRACE_NURSERY = 1;
   public static final int TRACE_MATURE = 2;
   private static final Atomic.Int atomicCounter = new Atomic.Int();
@@ -122,7 +122,7 @@ public class G1Collector extends ConcurrentCollector {
   public void collectionPhase(short phaseId, boolean primary) {
     if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
-      currentTrace = TRACE_MAKR;
+      currentTrace = TRACE_MARK;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
@@ -178,6 +178,8 @@ public class G1Collector extends ConcurrentCollector {
     }
 
     if (phaseId == G1.EVACUATE) {
+      g1CopySurvivor.reset();
+      g1CopyOld.reset();
       evacuationLinearScan.evacuateRegions();
       return;
     }
@@ -249,7 +251,7 @@ public class G1Collector extends ConcurrentCollector {
     if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
 
     if (phaseId == G1.CONCURRENT_CLOSURE) {
-      currentTrace = TRACE_MAKR;
+      currentTrace = TRACE_MARK;
       super.concurrentCollectionPhase(phaseId);
     }
   }
@@ -268,7 +270,7 @@ public class G1Collector extends ConcurrentCollector {
   @Override
   public TraceLocal getCurrentTrace() {
     switch (currentTrace) {
-      case TRACE_MAKR: return markTrace;
+      case TRACE_MARK: return markTrace;
       case TRACE_NURSERY: return nurseryTrace;
       case TRACE_MATURE: return matureTrace;
       default: return null;

@@ -27,7 +27,7 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
   public final ObjectReference traceObject(ObjectReference object, boolean root) {
     ObjectReference newObject = super.traceObject(object, root);
 
-    if (!object.isNull() && root) {
+    if (!newObject.isNull() && root) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(newObject));
       this.processNode(newObject);
     }
