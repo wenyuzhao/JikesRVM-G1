@@ -127,6 +127,7 @@ public class PauseTimePredictor {
   static double totalNurseryRegions;
 
   @Inline public static void nurseryGCEnd() {
+    int totalLogicalRegions = global().getTotalPages() >>> Region.LOG_PAGES_IN_REGION;
     double totalTime = (double) (VM.statistics.nanoTime() - startTime);
     U = UData[1] == 0 ? U : (UData[0] / UData[1]);
     double cardScanningTime = U * dirtyCards / G1.parallelWorkers.activeWorkerCount();
@@ -143,10 +144,10 @@ public class PauseTimePredictor {
       Log.write("newEdenRegions0=");
       Log.writeln(newEdenRegions);
     }
-    int maxEdenRegions = (int) ((Options.g1MaxNewSizePercent.getValue() / 100f) * global().TOTAL_LOGICAL_REGIONS);
+    int maxEdenRegions = (int) ((Options.g1MaxNewSizePercent.getValue() / 100f) * totalLogicalRegions);
     if (newEdenRegions > maxEdenRegions) newEdenRegions = maxEdenRegions;
     if (newEdenRegions < 1) newEdenRegions = 1;
-    global().newSizeRatio = (float) (((double) newEdenRegions) / ((double) global().TOTAL_LOGICAL_REGIONS));
+    global().newSizeRatio = (float) (((double) newEdenRegions) / ((double) totalLogicalRegions));
     if (Region.verbose()) {
       Log.write("averageCardScanningTime=");
       Log.writeln(averageCardScanningTime);

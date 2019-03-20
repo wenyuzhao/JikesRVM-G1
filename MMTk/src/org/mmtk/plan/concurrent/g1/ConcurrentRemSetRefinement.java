@@ -68,21 +68,29 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
       lock.release();
       return true;
     }
-    @Inline public static Address tryDequeue() {
-      lock.acquire();
+
+    @Inline private static Address tryDequeueNoLock() {
       if (size == 0) {
-        lock.release();
         return Address.zero();
       }
       Address item = array.get(head);
       array.set(head, Address.zero());
       head = (head + 1) % array.length();
       size--;
+      return item;
+    }
+    @Inline public static Address tryDequeue() {
+      lock.acquire();
+      Address item = tryDequeueNoLock();
       lock.release();
       return item;
     }
     @Inline public static void clear() {
       lock.acquire();
+      Address buf;
+      while (!(buf = tryDequeueNoLock()).isZero()) {
+        G1.remsetLogBufferPool.free(buf);
+      }
       head = 0;
       tail = 0;
       size = 0;
@@ -170,19 +178,20 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
   }
 
   static TransitiveClosure scanPointers = new TransitiveClosure() {
-    @Override @Inline @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      Address card = Region.Card.of(source);
-      ObjectReference ref = slot.loadObjectReference();
-      Address value = VM.objectModel.objectStartRef(ref);
-
-      if (source.isNull() || ref.isNull()) return;
-      Word tmp = VM.objectModel.objectStartRef(source).toWord().xor(value.toWord());
-      tmp = tmp.rshl(Region.LOG_BYTES_IN_REGION);
-      if (tmp.isZero()) return;
-      if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.of(value).NE(EmbeddedMetaData.getMetaDataBase(value)) && Region.allocated(Region.of(value))) {
-        Address foreignBlock = Region.of(ref);
-        RemSet.addCard(foreignBlock, card);
-      }
+    @Override @Inline @Uninterruptible public void processEdge(ObjectReference src, Address slot) {
+      RemSet.updateEdge(G1.G1, src, slot.loadObjectReference());
+//      Address card = Region.Card.of(source);
+//      ObjectReference ref = slot.loadObjectReference();
+//      Address value = VM.objectModel.objectStartRef(ref);
+//
+//      if (source.isNull() || ref.isNull()) return;
+//      Word tmp = VM.objectModel.objectStartRef(source).toWord().xor(value.toWord());
+//      tmp = tmp.rshl(Region.LOG_BYTES_IN_REGION);
+//      if (tmp.isZero()) return;
+//      if (Space.isMappedAddress(value) && Space.isInSpace(G1.G1, value) && Region.of(value).NE(EmbeddedMetaData.getMetaDataBase(value)) && Region.allocated(Region.of(value))) {
+//        Address foreignBlock = Region.of(ref);
+//        RemSet.addCard(foreignBlock, card);
+//      }
     }
   };
 

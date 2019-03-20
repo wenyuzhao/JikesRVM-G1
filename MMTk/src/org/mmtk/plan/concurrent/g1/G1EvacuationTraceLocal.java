@@ -14,6 +14,7 @@ import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 import org.vmmagic.unboxed.Offset;
+import org.vmmagic.unboxed.Word;
 
 @Uninterruptible
 public abstract class G1EvacuationTraceLocal extends TraceLocal {
@@ -36,30 +37,9 @@ public abstract class G1EvacuationTraceLocal extends TraceLocal {
   }
 
   @Inline
-  public void processEdge(ObjectReference source, Address slot) {
-//    if (VM.VERIFY_ASSERTIONS) {
-//      ObjectReference ref = slot.loadObjectReference();
-//      if (!ref.isNull()) {
-//        if (!VM.debugging.validRef(ref)) {
-//          Log.writeln("Invalid source ", source);
-//          Log.writeln("Invalid edge ", ref);
-//        }
-//        VM.assertions._assert(VM.debugging.validRef(ref));
-//      }
-//    }
-
-
-    super.processEdge(source, slot);
-
-    ObjectReference ref = slot.loadObjectReference();
-
-    if (!ref.isNull() && Space.isInSpace(G1.G1, ref)) {
-      Address block = Region.of(ref);
-      if (block.NE(Region.of(source))) {
-        Address card = Region.Card.of(source);
-        RemSet.addCard(block, card);
-      }
-    }
+  public void processEdge(ObjectReference src, Address slot) {
+    super.processEdge(src, slot);
+    RemSet.updateEdge(G1.G1, src, slot.loadObjectReference());
   }
 
   @Override

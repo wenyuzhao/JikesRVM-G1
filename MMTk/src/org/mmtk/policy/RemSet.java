@@ -12,6 +12,7 @@ import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
@@ -126,6 +127,35 @@ public class RemSet {
     remSetLock.store(0);
   }
 
+  @Inline
+  public static void addCardNoCheck(int g1Space, ObjectReference src, ObjectReference ref) {
+    if (Space.isInSpace(g1Space, ref)) {
+      Address card = Region.Card.of(src);
+      if (card.GE(VM.AVAILABLE_START)) {
+        Address region = Region.of(ref);
+//        if (region.NE(Region.of(src)))
+        RemSet.addCard(region, card);
+      }
+    }
+  }
+
+  @NoInline
+  private static void addToRemSet(int g1Space, ObjectReference src, ObjectReference ref) {
+    addCardNoCheck(g1Space, src, ref);
+  }
+
+  @Inline
+  public static void updateEdge(int g1Space, ObjectReference src, ObjectReference ref) {
+    Word x = VM.objectModel.refToAddress(src).toWord();
+    Word y = VM.objectModel.refToAddress(ref).toWord();
+    Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
+    tmp = ref.isNull() ? Word.zero() : tmp;
+    if (!tmp.isZero()) {
+      addToRemSet(g1Space, src, ref);
+    }
+  }
+
+
   /** Get PRT of remset of the `region` that contains `card` */
   @Inline
   private static Address preparePRT(Address region, Address card, boolean create) {
@@ -161,12 +191,11 @@ public class RemSet {
     lock(region);
 
     Address prt = preparePRT(region, card, true);
-
     // Insert card into the target PerRegionTable
     if (PerRegionTable.insert(prt, card)) {
       // Increase REMSET_SIZE
       Address sizePointer = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET);
-      int oldSize, newSize;// = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      int oldSize, newSize;
       do {
         oldSize = sizePointer.prepareInt();
         newSize = oldSize + 1;
@@ -206,41 +235,31 @@ public class RemSet {
       this.nursery = nursery;
     }
 
-//    private static final Offset LIVE_STATE_OFFSET = VM.objectModel.GC_HEADER_OFFSET().plus(BYTES_IN_ADDRESS);
-
-    static {
-      if (VM.VERIFY_ASSERTIONS) {
-//        VM.assertions._assert(RegionSpace.GC_HEADER_WORDS_REQUIRED == 1);
-      }
-    }
-
     TransitiveClosure scanEdge = new TransitiveClosure() {
       @Override @Uninterruptible
       public void processEdge(ObjectReference source, Address slot) {
-//        Log.writeln("Root edge ", slot);
         ObjectReference ref = slot.loadObjectReference();
-        if (!ref.isNull() && Space.isInSpace(regionSpace.getDescriptor(), ref) && Region.relocationRequired(Region.of(ref))) {
-//          Log.write("Root edge ", source);
-//          Log.writeln(" -> ", ref);
-          ref = redirectPointerTrace.traceObject(ref);
-          slot.store(ref);
-          if (!ref.isNull() && Space.isInSpace(regionSpace.getDescriptor(), ref)) {
-            Address region = Region.of(ref);
-            if (region.NE(Region.of(source))) {
-              Address card = Region.Card.of(source);
-              RemSet.addCard(region, card);
-            }
-          }
+        final int g1Space = regionSpace.getDescriptor();
+        if (!ref.isNull() && Space.isInSpace(g1Space, ref) && Region.relocationRequired(Region.of(ref))) {
+          ObjectReference newRef = redirectPointerTrace.traceObject(ref);
+          slot.store(newRef);
+//          if (newRef.toAddress().NE(ref.toAddress()))
+          RemSet.updateEdge(g1Space, source, newRef);
+//          if (!ref.isNull() && Space.isInSpace(regionSpace.getDescriptor(), ref)) {
+//            Address region = Region.of(ref);
+//            if (region.NE(Region.of(source))) {
+//              Address card = Region.Card.of(source);
+//              RemSet.addCard(region, card);
+//            }
+//          }
         }
       }
     };
-
 
     LinearScan cardLinearScan = new LinearScan() {
       @Override @Uninterruptible @Inline public void scan(ObjectReference object) {
         if (redirectPointerTrace.isLive(object)) {
           VM.scanning.scanObject(scanEdge, object);
-//          redirectPointerTrace.traceObject(object, true);
         }
       }
     };
@@ -282,31 +301,22 @@ public class RemSet {
               if (!PerRegionTable.getBit(prt, cardIndex)) continue;
               Address card = currentRegion.plus(cardIndex << Region.Card.LOG_BYTES_IN_CARD);
               // This `card` is in rem-set of `region`
-              if (!Space.isMappedAddress(card)) continue;
-              if (card.LT(VM.AVAILABLE_START)) continue;
-              if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
-              if (Space.isInSpace(Plan.META, card)) continue;
-              if (Space.getSpaceForAddress(card) instanceof SegregatedFreeListSpace) {
-//                if (!BlockAllocator.checkBlockMeta(card)) {
-//                  if (nursery) Log.writeln("Skip MS card ", card);
-//                  continue;
-//                }
-              }
+//              if (!Space.isMappedAddress(card)) continue;
+//              if (card.LT(VM.AVAILABLE_START)) continue;
+//              if (Space.isInSpace(Plan.VM_SPACE, card)) continue;
+//              if (Space.isInSpace(Plan.META, card)) continue;
               if (Space.isInSpace(REGION_SPACE, card)) {
                 Address regionOfCard = Region.of(card);
                 if (!Region.allocated(regionOfCard) || Region.relocationRequired(regionOfCard)) {
-//                  if (nursery) Log.writeln("Skip G1 card ", card);
                   continue;
                 }
-                if (Region.of(card).EQ(EmbeddedMetaData.getMetaDataBase(card))) continue;
+//                if (Region.of(card).EQ(EmbeddedMetaData.getMetaDataBase(card))) continue;
               }
-//              if (Region.Card.getCardAnchor(card).isZero())
 
               long time = VM.statistics.nanoTime();
               Region.Card.linearScan(cardLinearScan, regionSpace, card, false);
               totalTime += (VM.statistics.nanoTime() - time);
               totalCards += 1;
-//              remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
             }
           }
         }
@@ -342,7 +352,6 @@ public class RemSet {
             Address prt = prtPtr.loadAddress();
             if (!prt.isZero()) {
               PerRegionTable.free(prt);
-//              Plan.metaDataSpace.release(prt);
             }
           }
           Plan.metaDataSpace.release(prtList);
@@ -361,7 +370,6 @@ public class RemSet {
         Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
         if (!prtEntry.loadAddress().isZero()) {
           PerRegionTable.free(prtEntry.loadAddress());
-//          Plan.metaDataSpace.release(prtEntry.loadAddress());
           Address remsetPagesSlot = Region.metaDataOf(visitedRegion, Region.METADATA_REMSET_PAGES_OFFSET);
           int n = remsetPagesSlot.loadInt() - PAGES_IN_PRT;
           remsetPagesSlot.store(n > 0 ? n : 0);

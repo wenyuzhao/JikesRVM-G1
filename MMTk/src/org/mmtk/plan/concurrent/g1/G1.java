@@ -336,7 +336,7 @@ public class G1 extends Concurrent {
    * Accounting
    */
 
-  final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
+//  final int TOTAL_LOGICAL_REGIONS = VM.AVAILABLE_END.diff(VM.AVAILABLE_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
 //  final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
 //  final float INIT_HEAP_OCCUPANCY_PERCENT = 1f - Options.g1InitiatingHeapOccupancyPercent.getValue() / 100f;
   float newSizeRatio = Options.g1NewSizePercent.getValue() / 100;
@@ -352,8 +352,9 @@ public class G1 extends Concurrent {
   @Inline
   protected boolean collectionRequired(boolean spaceFull, Space space) {
 //    final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
+    int totalLogicalRegions = getTotalPages() >>> Region.LOG_PAGES_IN_REGION;
     // Young GC
-    if (generationalMode() && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) > newSizeRatio * ((float) TOTAL_LOGICAL_REGIONS))) {
+    if (generationalMode() && Phase.isPhaseStackEmpty() && (!Plan.gcInProgress()) && (!Phase.concurrentPhaseActive()) && (((float) regionSpace.youngRegions()) > newSizeRatio * ((float) totalLogicalRegions))) {
       collection = nurseryCollection;
       return true;
     }
@@ -393,12 +394,22 @@ public class G1 extends Concurrent {
   final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
   @Override
   protected boolean concurrentCollectionRequired() {
+//    Log.wl
+//    float ratio = max(INIT_HEAP_OCCUPANCY_PERCENT, newSizeRatio * 100);
+//    int totalLogicalRegions = getTotalPages() >>> Region.LOG_PAGES_IN_REGION;
+    final float INIT_HEAP_OCCUPANCY_PERCENT = Options.g1InitiatingHeapOccupancyPercent.getValue();
     boolean mixedGCRequired = !Phase.concurrentPhaseActive() &&
-        ((getPagesReserved() * 100) / (getTotalPages())) > INIT_HEAP_OCCUPANCY_PERCENT;
+//            (((float) regionSpace.committedRegions()) > ratio * ((float) totalLogicalRegions));
+        ((getPagesReserved() * 100) / (getTotalPages()) > INIT_HEAP_OCCUPANCY_PERCENT);//, newSizeRatio * 100);
     if (mixedGCRequired) {
       collection = matureCollection;
     }
     return mixedGCRequired;
+  }
+
+  @Inline
+  float max(float a, float b) {
+    return a > b ? a : b;
   }
 
   /**
