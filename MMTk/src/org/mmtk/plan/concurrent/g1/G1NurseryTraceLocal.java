@@ -78,7 +78,7 @@ public class G1NurseryTraceLocal extends G1EvacuationTraceLocal {
       int allocator = Region.kind(Region.of(object)) == Region.EDEN ? G1.ALLOC_SURVIVOR : G1.ALLOC_OLD;
       return G1.regionSpace.traceEvacuateCSetObject(this, object, allocator, evacuationAccumulator);
     } else {
-      return super.traceObject(object);
+      return object;//super.traceObject(object);
     }
   }
 

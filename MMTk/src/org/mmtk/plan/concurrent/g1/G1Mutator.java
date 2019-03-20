@@ -53,7 +53,6 @@ public class G1Mutator extends ConcurrentMutator {
    * Instance fields
    */
   protected final RegionAllocator g1Eden = new RegionAllocator(G1.regionSpace, Region.EDEN);
-  private static final int REMSET_LOG_BUFFER_SIZE = ConcurrentRemSetRefinement.REMSET_LOG_BUFFER_SIZE;
   private Address remSetLogBuffer = Address.zero();
   private int remSetLogBufferCursor = 0;
   private final ObjectReferenceDeque modbuf;
@@ -70,7 +69,7 @@ public class G1Mutator extends ConcurrentMutator {
   @Inline
   private Address remSetLogBuffer() {
     if (remSetLogBuffer.isZero())
-      remSetLogBuffer = Plan.metaDataSpace.acquire(1);
+      remSetLogBuffer = G1.remsetLogBufferPool.alloc();
     return remSetLogBuffer;
   }
 
@@ -187,7 +186,8 @@ public class G1Mutator extends ConcurrentMutator {
       remSetLogBufferCursor = 0;
     }
     if (!remSetLogBuffer.isZero()) {
-      Plan.metaDataSpace.release(remSetLogBuffer);
+      G1.remsetLogBufferPool.free(remSetLogBuffer);
+//      Plan.metaDataSpace.release(remSetLogBuffer);
       remSetLogBuffer = Address.zero();
     }
   }
@@ -208,7 +208,7 @@ public class G1Mutator extends ConcurrentMutator {
     if (CardTable.attemptToMarkCard(card, true)) {
       remSetLogBuffer().plus(remSetLogBufferCursor << Constants.LOG_BYTES_IN_ADDRESS).store(card);
       remSetLogBufferCursor += 1;
-      if (remSetLogBufferCursor >= REMSET_LOG_BUFFER_SIZE) {
+      if (remSetLogBufferCursor >= G1.REMSET_LOG_BUFFER_SIZE) {
         enqueueCurrentRSBuffer(true);
       }
     }

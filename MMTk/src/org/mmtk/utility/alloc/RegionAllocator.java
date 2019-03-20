@@ -197,7 +197,7 @@ public class RegionAllocator extends Allocator {
     if (s < Region.MIN_TLAB_SIZE) s = Region.MIN_TLAB_SIZE;
     if (s > Region.MAX_TLAB_SIZE) s = Region.MAX_TLAB_SIZE;
     tlabSize = s;
-    Log.writeln("TLABSize: ", tlabSize);
+//    Log.writeln("TLABSize: ", tlabSize);
 //    Log.writeln("GC Per: ", tlabSize);
   }
 

@@ -123,7 +123,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
     }
   }
 
-  public static final int REMSET_LOG_BUFFER_SIZE = 256;//Constants.BYTES_IN_PAGE >>> Constants.LOG_BYTES_IN_ADDRESS;
+//  public static final int REMSET_LOG_BUFFER_SIZE = 256;//Constants.BYTES_IN_PAGE >>> Constants.LOG_BYTES_IN_ADDRESS;
   public static Monitor monitor;
   public static Lock lock = VM.newLock("RefineLock");
 
@@ -211,7 +211,7 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
 
   @Inline
   public static void refineSingleBuffer(Address buffer) {
-    for (int i = 0; i < REMSET_LOG_BUFFER_SIZE; i++) {
+    for (int i = 0; i < G1.REMSET_LOG_BUFFER_SIZE; i++) {
       Address card = buffer.plus(i << Constants.LOG_BYTES_IN_ADDRESS).loadAddress();
       if (!card.isZero()) {
         if (CardTable.cardIsMarked(card) && CardTable.increaseHotness(card)) {
@@ -223,7 +223,8 @@ public class ConcurrentRemSetRefinement extends CollectorContext {
         }
       }
     }
-    Plan.metaDataSpace.release(buffer);
+//    Plan.metaDataSpace.release(buffer);
+    G1.remsetLogBufferPool.free(buffer);
   }
 
   final static int INT_MASK = (1 << Constants.LOG_BITS_IN_INT) - 1;

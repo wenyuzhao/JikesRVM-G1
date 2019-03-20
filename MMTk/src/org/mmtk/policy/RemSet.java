@@ -46,122 +46,16 @@ public class RemSet {
 
   @Uninterruptible
   private static class PerRegionTable {
-    @Uninterruptible
-    private static class MemoryPool {
-      private static final Lock lock = VM.newLock("MemPoolLock");
-      private static final int BYTES_IN_UNIT = Region.BYTES_IN_REGION / Region.Card.BYTES_IN_CARD / BITS_IN_BYTE;
-      private static final int UNITS_IN_PAGE = BYTES_IN_PAGE / BYTES_IN_UNIT - 1;
-      private static Address list = Address.zero();
-      private static final Offset NEXT_SLOT = Offset.fromIntZeroExtend(0);
-      private static final Offset PREV_SLOT = Offset.fromIntZeroExtend(BYTES_IN_ADDRESS);
-      // PRT: [ next (4b), prev (4b), bitmap... ]
-
-      static Address deadbeaf(Address a, int bytes) {
-        for (int i = 0; i < bytes; i += 4) {
-          a.store(0xdeadbeaf, Offset.fromIntZeroExtend(i));
-        }
-        return a;
-      }
-
-      static Address alloc() {
-        lock.acquire();
-        if (list.isZero()) {
-          Address cursor = Plan.metaDataSpace.acquire(1);
-          Address limit = cursor.plus(BYTES_IN_PAGE);
-          cursor = cursor.plus(BYTES_IN_UNIT);
-          list = cursor;
-          while (cursor.LT(limit)) {
-            Address next = cursor.plus(BYTES_IN_UNIT);
-            if (next.LT(limit)) {
-              if (VM.VERIFY_ASSERTIONS) {
-                VM.assertions._assert(Space.isInSpace(Plan.metaDataSpace.getDescriptor(), list));
-              }
-              cursor.store(next, NEXT_SLOT);
-              next.store(cursor, PREV_SLOT);
-            }
-            cursor = next;
-          }
-        }
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!list.isZero());
-        Address rtn = list;
-        // Increment live-remset count
-        Address page = Conversions.pageAlign(rtn);
-        page.store(page.loadInt() + 1);
-
-        // Update freelist
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!list.isZero());
-        list = list.loadAddress(NEXT_SLOT);
-//        Log.writeln("next cell ", list);
-        if (!list.isZero()) {
-          if (VM.VERIFY_ASSERTIONS) {
-            VM.assertions._assert(Space.isInSpace(Plan.metaDataSpace.getDescriptor(), list));
-          }
-
-//          Log.writeln("PREV_SLOT: ", PREV_SLOT);
-//          Log.writeln("BYTES_IN_UNIT: ", BYTES_IN_UNIT);
-          list.store(Address.zero(), PREV_SLOT);
-        }
-        // Zero memory
-        VM.memory.zero(false, rtn, Extent.fromIntZeroExtend(BYTES_IN_UNIT));
-        lock.release();
-        return rtn;
-      }
-
-      static void free(Address block) {
-        lock.acquire();
-        if (VM.VERIFY_ASSERTIONS) {
-          VM.assertions._assert(!block.isZero());
-          VM.assertions._assert(Space.isInSpace(Plan.metaDataSpace.getDescriptor(), block));
-        }
-//        Log.writeln("alloc cell ", block);
-        // Add block to freelist
-        deadbeaf(block, BYTES_IN_UNIT);
-        block.store(list, NEXT_SLOT);
-        block.store(Address.zero(), PREV_SLOT);
-        if (!list.isZero())
-          list.store(block, PREV_SLOT);
-        list = block;
-        // Decrement live-remset count
-        final Address page = Conversions.pageAlign(block);
-        int count = page.loadInt();
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(count >= 1 && count <= UNITS_IN_PAGE);
-        if (count > 1) {
-          page.store(count - 1);
-        } else {
-          // Free this page
-          // 1. Remove all cells from freelist
-          while (Conversions.pageAlign(list).EQ(page)) {
-            list = list.loadAddress(NEXT_SLOT);
-            if (!list.isZero())
-              list.store(Address.zero(), PREV_SLOT);
-          }
-          Address cursor = page.plus(BYTES_IN_UNIT), limit = page.plus(BYTES_IN_PAGE);
-          while (cursor.LT(limit)) {
-            Address prev = cursor.loadAddress(PREV_SLOT);
-            Address next = cursor.loadAddress(NEXT_SLOT);
-            if (!prev.isZero()) {
-              prev.store(next, NEXT_SLOT);
-            }
-            if (!next.isZero()) {
-              next.store(prev, PREV_SLOT);
-            }
-            cursor = cursor.plus(BYTES_IN_UNIT);
-          }
-          // 2. Release page
-          Plan.metaDataSpace.release(page);
-        }
-        lock.release();
-      }
-    }
+    static final MemoryPool memoryPool = new MemoryPool(Region.BYTES_IN_REGION / Region.Card.BYTES_IN_CARD / BITS_IN_BYTE);
 
     @Inline
     static Address alloc() {
-      return MemoryPool.alloc();
+      return memoryPool.alloc();
     }
 
     @Inline
     static void free(Address a) {
-      MemoryPool.free(a);
+      memoryPool.free(a);
     }
 
     @Inline
@@ -297,7 +191,7 @@ public class RemSet {
   @Uninterruptible
   static public abstract class RemSetCardScanningTimer {
     @Inline
-    public abstract void updateRemSetCardScanningTime(long time);
+    public abstract void updateRemSetCardScanningTime(long time, long cards);
   }
 
   @Uninterruptible
@@ -347,104 +241,7 @@ public class RemSet {
         if (redirectPointerTrace.isLive(object)) {
           VM.scanning.scanObject(scanEdge, object);
 //          redirectPointerTrace.traceObject(object, true);
-        }// else {
-//          Log.write("skip ", object);
-//            Log.write(" tib ", tib);
-//            Space space = Space.getSpaceForObject(object);
-//            if (space instanceof RegionSpace) {
-//              Log.write(regionSpace.isMarked(object) ? " marked " : " unmarked ");
-//              Log.write(regionSpace.isAfterTAMS(object) ? " after_tams " : " before_tams ");
-//              Log.write(Region.relocationRequired(Region.of(object)) ? " reloc " : " no-reloc ");
-//              Log.writeln(RegionSpace.ForwardingWord.isForwarded(object) ? " forwarded " : " unforwarded ");
-//
-//            } else {
-//              Log.writeln(space.getName());
-//            }
-        //}
-//        if (!object.isNull()) {
-//          if (Region.verbose()) Log.writeln("Scan", object);
-//          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-
-//          if (!object.toAddress().loadWord(LIVE_STATE_OFFSET).isZero()) {
-//            return;
-//          } else
-//          redirectPointerTrace.traceObject(object, true);
-//          if (redirectPointerTrace.isLive(object)) {
-//            Log.writeln("scan ", object);
-//            VM.scanning.scanObject(scanEdge, object);
-
-//            redirectPointerTrace.traceObject(object, true);
-//            Log.writeln("REMSET Trace ", object);
-//            if (nursery && (Space.getSpaceForObject(object) instanceof SegregatedFreeListSpace)) {
-//              VM.objectModel.dumpObject(object);
-//            }
-//            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!regionSpace.contains(object) || !Region.relocationRequired());
-//            VM.scanning.scanObject(redirectPointerTrace, object);
-//            redirectPointerTrace.traceObject(object, true);
-//            redirectPointerTrace.processNode(object);
-//          } else {
-//            Log.writeln("skip ", object);
-//            Log.write("REMSET Not Trace Dead ", object);
-//            Log.writeln(Space.getSpaceForObject(object).getName());
-            // This is a dead object. During next card scanning this object may have a invalid TIB pointing
-            // to a released region. So we set the objectEndAddress into the header to allow skipping this object.
-//            Log.write("skip ", object);
-//            Log.write(" tib ", tib);
-//            Space space = Space.getSpaceForObject(object);
-//            if (space instanceof RegionSpace) {
-//              Log.write(regionSpace.isMarked(object) ? " marked " : " unmarked ");
-//              Log.write(regionSpace.isAfterTAMS(object) ? " after_tams " : " before_tams ");
-//              Log.writeln(RegionSpace.ForwardingWord.isForwarded(object) ? " forwarded " : " unforwarded ");
-
-//            } else {
-//              Log.writeln(space.getName());
-//            }
-//            if (tib.isNull()) {
-//              Log.write("skip ", object);
-//              Log.writeln(" tib ", tib);
-//            };
-//            if (VM.VERIFY_ASSERTIONS) {
-//              Address tibSlot = VM.objectModel.refToAddress(object);
-//              ObjectReference tib = tibSlot.loadObjectReference();
-//              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
-//                Log.write("TIB ", tib);
-//                Log.write(" space ");
-//                Log.writeln(Space.getSpaceForObject(tib).getName());
-//                VM.assertions.fail("");
-//              }
-//            }
-//            if (!nursery)
-//            Log.writeln("scan dead ", object);
-//            VM.scanning.scanObject(scanEdge, object);
-//            redirectPointerTrace.traceObject(object, true);
-//            if (VM.VERIFY_ASSERTIONS) {
-//
-//              if (!(Space.isInSpace(Plan.NON_MOVING, tib) || Space.isInSpace(Plan.VM_SPACE, tib))) {
-//                Log.write("TIB ", tib);
-//                Log.write(" space ");
-//                Log.writeln(Space.getSpaceForObject(tib).getName());
-//                VM.assertions.fail("");
-//              }
-//            }
-//            tibSlot.store(tib);
-//            if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(object.toAddress().loadWord(LIVE_STATE_OFFSET).LE(Word.one()));
-//            if (!Space.isMappedObject(object) || (Space.isInSpace(regionSpace.getDescriptor(), object) && !Region.allocated(Region.of(object)))) {
-//              return;
-//            }
-//            Space space = Space.getSpaceForObject(object);
-//            if ((space instanceof SegregatedFreeListSpace)) {
-//              object.toAddress().store(Word.one(), LIVE_STATE_OFFSET);
-//              return;
-//            }
-//            if (!VM.debugging.validRef(object)) {
-//              Log.write("Space: ");
-//              Log.write(space.getName());
-//              Log.writeln(space.isLive(object) ? " live " : " dead ");
-//              Log.writeln(space.isLive(object) ? " live " : " dead ");
-//            }
-//            object.toAddress().store(VM.objectModel.getObjectEndAddress(object), LIVE_STATE_OFFSET);
-//          }
-//        }
+        }
       }
     };
 
@@ -456,7 +253,7 @@ public class RemSet {
       if (concurrent) id -= workers;
       int regionsToVisit = ceilDiv(relocationSet.length(), workers);
       final int REGION_SPACE = regionSpace.getDescriptor();
-      long totalTime = 0;
+      long totalTime = 0, totalCards = 0;
 
       for (int i = 0; i < regionsToVisit; i++) {
         //int cursor = regionsToVisit * id + i;
@@ -507,14 +304,15 @@ public class RemSet {
 
               long time = VM.statistics.nanoTime();
               Region.Card.linearScan(cardLinearScan, regionSpace, card, false);
-//              totalTime += (VM.statistics.nanoTime() - time);
-              remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
+              totalTime += (VM.statistics.nanoTime() - time);
+              totalCards += 1;
+//              remSetCardScanningTimer.updateRemSetCardScanningTime(VM.statistics.nanoTime() - time);
             }
           }
         }
       }
 
-//      remSetCardScanningTimer.updateRemSetCardScanningTime(totalTime);
+      remSetCardScanningTimer.updateRemSetCardScanningTime(totalTime, totalCards);
     }
   }
 

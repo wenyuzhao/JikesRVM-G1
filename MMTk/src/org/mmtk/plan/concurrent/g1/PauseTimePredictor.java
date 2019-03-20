@@ -28,8 +28,7 @@ public class PauseTimePredictor {
   }
 
   public static double gcCost(int d, int rsSize, int liveBytes) {
-//    float VFixed = liveBytes * a + b;
-    return VFixed + (U * d) / (G1.parallelWorkers.activeWorkerCount()) + S * rsSize + C * liveBytes;
+    return VFixed + (U * d + S * rsSize + C * liveBytes) / G1.parallelWorkers.activeWorkerCount();
   }
 
   /** Runtime information of current pause */
@@ -38,10 +37,6 @@ public class PauseTimePredictor {
   private static long[] UData = new long[] { 0, 0 };
   private static long[] SData = new long[] { 0, 0 };
   private static long[] CData = new long[] { 0, 0 };
-
-  @Inline public static void updateRefinementCardScanningTime(long ns) {
-    updateRefinementCardScanningTime(ns, 1);
-  }
 
   @Inline public static void updateRefinementCardScanningTime(long ns, int cards) {
     long oldValue, newValue;
@@ -54,7 +49,7 @@ public class PauseTimePredictor {
       newValue = oldValue + cards;
     } while (!VM.memory.attemptLong(UData, Offset.fromIntZeroExtend(8), oldValue, newValue));
   }
-  @Inline public static void updateRemSetCardScanningTime(long ns) {
+  @Inline public static void updateRemSetCardScanningTime(long ns, long cards) {
     long oldValue, newValue;
     do {
       oldValue = SData[0];
@@ -62,7 +57,7 @@ public class PauseTimePredictor {
     } while (!VM.memory.attemptLong(SData, Offset.fromIntZeroExtend(0), oldValue, newValue));
     do {
       oldValue = SData[1];
-      newValue = oldValue + 1;
+      newValue = oldValue + cards;
     } while (!VM.memory.attemptLong(SData, Offset.fromIntZeroExtend(8), oldValue, newValue));
   }
 //  @Inline public static void updateObjectEvacuationTime(ObjectReference ref, long ns) {
@@ -93,8 +88,8 @@ public class PauseTimePredictor {
     @Override
     @Inline
     @Uninterruptible
-    public void updateRemSetCardScanningTime(long ns) {
-      PauseTimePredictor.updateRemSetCardScanningTime(ns);
+    public void updateRemSetCardScanningTime(long ns, long cards) {
+      PauseTimePredictor.updateRemSetCardScanningTime(ns, cards);
     }
   };
 

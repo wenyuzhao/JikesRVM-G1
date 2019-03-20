@@ -61,6 +61,8 @@ public class G1 extends Concurrent {
   public static final RegionSpace regionSpace = new RegionSpace("g1", VMRequest.discontiguous());
   public static final int G1 = regionSpace.getDescriptor();
   public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
+  public static final int REMSET_LOG_BUFFER_SIZE = 256;
+  public static final MemoryPool remsetLogBufferPool = new MemoryPool(REMSET_LOG_BUFFER_SIZE << Constants.LOG_BYTES_IN_ADDRESS);
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace nurseryTrace = new Trace(metaDataSpace);
@@ -279,12 +281,12 @@ public class G1 extends Concurrent {
 
 
     if (phaseId == FORWARD_PREPARE) {
+      regionSpace.clearCSetMarkMap();
       if (nurseryGC()) {
 //        VM.memory.globalPrepareVMSpace();
-        regionSpace.prepare(true);
+//        regionSpace.prepare(true);
         nurseryTrace.prepare();
       } else {
-//        regionSpace.clearCSetMarkMap();
 //        regionSpace.prepareNursery();
         matureTrace.prepare();
       }

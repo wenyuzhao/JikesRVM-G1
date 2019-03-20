@@ -103,11 +103,11 @@ public final class RegionSpace extends Space {
     }
 
     private static final Word WORD_SHIFT_MASK = Word.fromIntZeroExtend(BITS_IN_WORD).minus(Word.one());
-    private static final int LOG_LIVE_COVERAGE = 3 + LOG_BITS_IN_BYTE;
+    private static final int LOG_LIVE_COVERAGE = 2 + LOG_BITS_IN_BYTE;
 
     @Inline
     private static Word getMask(Address address) {
-      int shift = address.toWord().rshl(3).and(WORD_SHIFT_MASK).toInt();
+      int shift = address.toWord().rshl(2).and(WORD_SHIFT_MASK).toInt();
       return Word.one().lsh(shift);
     }
     @Inline
@@ -116,6 +116,12 @@ public final class RegionSpace extends Space {
       Address rtn = chunk.plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(rtn.LT(chunk.plus(Region.BYTES_IN_MARKTABLE)));
+        Address region = Region.of(address);
+        int index = Region.indexOf(region) + 1;
+        Address start = chunk.plus(index * Region.MARK_BYTES_PER_REGION);
+        VM.assertions._assert(rtn.GE(start));
+        Address end = start.plus(Region.MARK_BYTES_PER_REGION);
+        VM.assertions._assert(rtn.LT(end));
       }
       return rtn;
     }
@@ -174,7 +180,7 @@ public final class RegionSpace extends Space {
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
       if (Region.relocationRequired(r))
-        Region.clearMarkBitMap(r);
+        Region.clearMarkBitMapForRegion(r);
     }
   }
 
@@ -185,7 +191,7 @@ public final class RegionSpace extends Space {
     Address r;
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
-      Region.clearMarkBitMap(r);
+      Region.clearMarkBitMapForRegion(r);
       Region.setUsedSize(r, 0);
       // Set TAMS
       if (!nursery) {
@@ -583,8 +589,8 @@ public final class RegionSpace extends Space {
         return newObject;
       }
     } else {
-      if (testAndMark(object))
-        trace.processNode(object);
+//      if (testAndMark(object))
+//        trace.processNode(object);
       return object;
     }
   }

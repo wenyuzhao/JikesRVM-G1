@@ -78,8 +78,9 @@ public class Region {
 
 
   // Mark table
-  private static final int LOG_PAGES_IN_MARKTABLE = 7;
+  private static final int LOG_PAGES_IN_MARKTABLE = 5;
   public static final int BYTES_IN_MARKTABLE = 1 << (LOG_PAGES_IN_MARKTABLE + LOG_BYTES_IN_PAGE);
+  public static final int MARK_BYTES_PER_REGION = BYTES_IN_MARKTABLE / (REGIONS_IN_CHUNK + 1);
   // Per region metadata
   private static final int METADATA_ALIVE_SIZE_OFFSET = 0;
   private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
@@ -136,9 +137,17 @@ public class Region {
   }
 
   @Inline
-  public static void clearMarkBitMap(Address region) {
-    Address start = EmbeddedMetaData.getMetaDataBase(region);
-    VM.memory.zero(false, start, Extent.fromIntZeroExtend(BYTES_IN_MARKTABLE));
+  public static void clearMarkBitMapForRegion(Address region) {
+    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+    int index = indexOf(region) + 1;
+    Address start = chunk.plus(index * MARK_BYTES_PER_REGION);
+    if (VM.VERIFY_ASSERTIONS) {
+//      Log.writeln("start ", start);
+      VM.assertions._assert(MARK_BYTES_PER_REGION * (REGIONS_IN_CHUNK + 1) == BYTES_IN_MARKTABLE);
+      Address end = start.plus(MARK_BYTES_PER_REGION);
+      VM.assertions._assert(end.LE(chunk.plus(BYTES_IN_MARKTABLE)));
+    }
+    VM.memory.zero(false, start, Extent.fromIntZeroExtend(MARK_BYTES_PER_REGION));
   }
 
   @Inline
@@ -236,7 +245,7 @@ public class Region {
   }
 
   @Inline
-  private static int indexOf(Address region) {
+  static int indexOf(Address region) {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
     if (VM.VERIFY_ASSERTIONS) {
       if (region.EQ(chunk)) {
