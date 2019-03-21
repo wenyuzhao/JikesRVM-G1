@@ -36,7 +36,7 @@ public class DoubleCounter extends Counter {
   protected long count = 0;
   protected double value = 0;
   private boolean running = false;
-  private boolean reportMean = false;
+  private final boolean reportMean;
 
   /****************************************************************************
    *
@@ -171,6 +171,11 @@ public class DoubleCounter extends Counter {
 
   @Override
   public final void printTotal() {
+//    Log.write(name);
+//    Log.writeln(value);
+//    Log.writeln(name, count);
+//    Log.write(name);
+//    Log.writeln(value / count);
     if (reportMean) {
 //      if (count == 0) {
         printValue(value / count);

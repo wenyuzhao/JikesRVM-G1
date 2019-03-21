@@ -897,19 +897,19 @@ public final class RegionSpace extends Space {
 
   public final RegionIterator regionIterator = new RegionIterator();
 
-  @NoInline
-  public int calculateRemSetPages() {
-      int remsetPages = 0;
-      int fixedPages = 0;
-      regionIterator.reset();
-      Address region;
-      while (!(region = regionIterator.next()).isZero()) {
-        fixedPages += 1;
-        remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
-//          remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-      }
-      return (remsetPages / 16) + fixedPages;
-  }
+//  @NoInline
+//  public int calculateRemSetPages() {
+//      int remsetPages = 0;
+//      int fixedPages = 0;
+//      regionIterator.reset();
+//      Address region;
+//      while (!(region = regionIterator.next()).isZero()) {
+//        fixedPages += 1;
+//        remsetPages += Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET).loadInt();
+////          remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+//      }
+//      return (remsetPages / 16) + fixedPages;
+//  }
 
   @NoInline
   public int calculateRemSetCards() {
@@ -917,7 +917,8 @@ public final class RegionSpace extends Space {
     regionIterator.reset();
     Address region;
     while (!(region = regionIterator.next()).isZero()) {
-      remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+      if (Region.allocated(region))
+        remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
     }
     return remsetCards;
   }

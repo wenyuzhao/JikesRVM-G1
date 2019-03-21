@@ -23,6 +23,7 @@ public class MemoryPool {
     private Address list = Address.zero();
     private final Offset NEXT_SLOT = Offset.fromIntZeroExtend(0);
     private final Offset PREV_SLOT = Offset.fromIntZeroExtend(BYTES_IN_ADDRESS);
+    private int pages = 0;
 
     public MemoryPool(int bytesInUnit) {
         BYTES_IN_UNIT = bytesInUnit;
@@ -36,10 +37,15 @@ public class MemoryPool {
         return a;
     }
 
+    public int pages() {
+        return pages;
+    }
+
     public Address alloc() {
         lock.acquire();
         if (list.isZero()) {
             Address cursor = Plan.metaDataSpace.acquire(1);
+            pages += 1;
             Address limit = cursor.plus(BYTES_IN_PAGE);
             cursor = cursor.plus(BYTES_IN_UNIT);
             list = cursor;
@@ -133,6 +139,7 @@ public class MemoryPool {
             }
             // 2. Release page
             Plan.metaDataSpace.release(page);
+            pages -= 1;
         }
         lock.release();
     }

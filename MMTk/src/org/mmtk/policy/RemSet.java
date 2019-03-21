@@ -23,7 +23,7 @@ public class RemSet {
   private final static AddressArray rememberedSets; // Array<RemSet: Array<PRT>>
   public final static int TOTAL_REGIONS;
   public final static int REMSET_PAGES;
-  public final static int PAGES_IN_PRT;
+  public final static int MAX_CARDS_PER_REGION;
   private final static int INTS_IN_PRT;
 
   static {
@@ -33,16 +33,23 @@ public class RemSet {
       rememberedSets = AddressArray.create(TOTAL_REGIONS);//new int[TOTAL_REGIONS][][];
       REMSET_PAGES = ceilDiv(TOTAL_REGIONS << Constants.LOG_BYTES_IN_ADDRESS, Constants.BYTES_IN_PAGE);
       int cardsPerRegion = Region.BYTES_IN_REGION >>> Region.Card.LOG_BYTES_IN_CARD;
+      MAX_CARDS_PER_REGION = cardsPerRegion;
       int bytesInPRT = cardsPerRegion >>> Constants.LOG_BITS_IN_BYTE;
       INTS_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_INT);
-      PAGES_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_PAGE);
+//      PAGES_IN_PRT = ceilDiv(bytesInPRT, Constants.BYTES_IN_PAGE);
     } else {
       rememberedSets = null;
       TOTAL_REGIONS = 0;
       REMSET_PAGES = 0;
-      PAGES_IN_PRT = 0;
+      MAX_CARDS_PER_REGION = 0;
+//      PAGES_IN_PRT = 0;
       INTS_IN_PRT = 0;
     }
+  }
+
+  @NoInline
+  public static int calculateRemSetPages() {
+    return PerRegionTable.memoryPool.pages();
   }
 
   @Uninterruptible
@@ -64,12 +71,12 @@ public class RemSet {
       int intIndex = index >>> Constants.LOG_BITS_IN_INT;
       int bitIndex = index ^ (intIndex << Constants.LOG_BITS_IN_INT);
       Offset offset = Offset.fromIntZeroExtend(intIndex << Constants.LOG_BYTES_IN_INT);
-      Address pointer = buf.plus(offset);
+      Address slot = buf.plus(offset);
 //      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(pointer.LT(buf.plus(Constants.BYTES_IN_PAGE * PAGES_IN_PRT)));
       int oldValue, newValue;
       do {
         // Get old int
-        oldValue = buf.plus(intIndex << Constants.LOG_BYTES_IN_INT).loadInt();//buf[intIndex];
+        oldValue = slot.prepareInt();//buf[intIndex];
         boolean oldBit = (oldValue & (1 << (31 - bitIndex))) != 0;
         if (oldBit == newBit) return false;
         // Build new int
@@ -79,7 +86,7 @@ public class RemSet {
           newValue = oldValue & (~(1 << (31 - bitIndex)));
         }
         if (oldValue == newValue) return false; // this bit has been set by other threads
-      } while (!pointer.attempt(oldValue, newValue));
+      } while (!slot.attempt(oldValue, newValue));
       return true;
     }
 
@@ -165,12 +172,12 @@ public class RemSet {
     int foreignRegionIndex = Region.of(card).diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
     // Get PerRegionTable list, this is a page size
     Address prtList = rememberedSets.get(regionIndex);//rememberedSets[regionIndex];
-    Address remsetPagesSlot = Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET);
+//    Address remsetPagesSlot = Region.metaDataOf(region, Region.METADATA_REMSET_PAGES_OFFSET);
     if (prtList.isZero()) { // create remset
       if (create) {
         prtList = Plan.metaDataSpace.acquire(REMSET_PAGES);
         rememberedSets.set(regionIndex, prtList);
-        remsetPagesSlot.store(remsetPagesSlot.loadInt() + REMSET_PAGES);
+//        remsetPagesSlot.store(remsetPagesSlot.loadInt() + REMSET_PAGES);
       } else {
         return Address.zero();
       }
@@ -199,6 +206,7 @@ public class RemSet {
       do {
         oldSize = sizePointer.prepareInt();
         newSize = oldSize + 1;
+//        if (oldSize == MAX_CARDS_PER_REGION) break;
       } while (!sizePointer.attempt(oldSize, newSize));
     }
 
@@ -280,8 +288,8 @@ public class RemSet {
         if (cursor >= relocationSet.length()) continue;
         Address region = relocationSet.get(cursor);
         if (region.isZero()) continue;
-        final int totalRemSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-        if (totalRemSetSize == 0) continue;
+//        final int totalRemSetSize = Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+//        if (totalRemSetSize == 0) continue;
         //if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero());
         // Iterate all its PRTs
         int regionIndex = region.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
@@ -362,18 +370,39 @@ public class RemSet {
       // Else, clear all PRT corresponds to CSet
       Address prtList = rememberedSets.get(cursor);
       if (prtList.isZero()) continue;
+      Address cardsSlot = Region.metaDataOf(visitedRegion, Region.METADATA_REMSET_SIZE_OFFSET);
       for (int j = 0; j < relocationSet.length(); j++) {
         Address cRegion = relocationSet.get(j);
         if (cRegion.isZero()) continue;
         if (emptyRegionsOnly && Region.usedSize(cRegion) != 0) continue;
         int index = cRegion.diff(VM.HEAP_START).toInt() >>> Region.LOG_BYTES_IN_REGION;
-        Address prtEntry = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
-        if (!prtEntry.loadAddress().isZero()) {
-          PerRegionTable.free(prtEntry.loadAddress());
-          Address remsetPagesSlot = Region.metaDataOf(visitedRegion, Region.METADATA_REMSET_PAGES_OFFSET);
-          int n = remsetPagesSlot.loadInt() - PAGES_IN_PRT;
-          remsetPagesSlot.store(n > 0 ? n : 0);
-          prtEntry.store(Address.zero());
+        Address prtSlot = prtList.plus(index << Constants.LOG_BYTES_IN_ADDRESS);
+        Address prt = prtSlot.loadAddress();
+        if (!prtSlot.loadAddress().isZero()) {
+          // Decrease cards count
+          // Iterate all entries in prt
+          int cards = 0;
+          for (int k = 0; k < INTS_IN_PRT; k++) {
+            if (prt.plus(k << Constants.LOG_BYTES_IN_INT).loadInt() == 0) continue;
+            int cardIndexStart = k << Constants.LOG_BITS_IN_INT;
+            int cardIndexEnd = cardIndexStart + Constants.BITS_IN_INT;
+            for (int cardIndex = cardIndexStart; cardIndex < cardIndexEnd; cardIndex++) {
+              if (PerRegionTable.getBit(prt, cardIndex)) {
+                cards += 1;
+              }
+            }
+          }
+          int oldCards = cardsSlot.loadInt();
+          int newCards = oldCards - cards;
+          newCards = newCards > 0 ? newCards : 1;
+          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isInSpace(regionSpace.getDescriptor(), cardsSlot));
+          cardsSlot.store(newCards);
+
+          PerRegionTable.free(prt);
+//          Address remsetPagesSlot = Region.metaDataOf(visitedRegion, Region.METADATA_REMSET_PAGES_OFFSET);
+//          int n = remsetPagesSlot.loadInt() - PAGES_IN_PRT;
+//          remsetPagesSlot.store(n > 0 ? n : 0);
+          prtSlot.store(Address.zero());
         }
       }
     }

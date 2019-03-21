@@ -29,7 +29,7 @@ public abstract class Counter {
   /**
    *
    */
-  private final String name;
+  protected final String name;
   private final boolean start;
   private final boolean mergephases;
 

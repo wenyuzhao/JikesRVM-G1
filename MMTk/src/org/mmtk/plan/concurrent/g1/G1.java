@@ -261,14 +261,21 @@ public class G1 extends Concurrent {
     }
 
     if (phaseId == REMEMBERED_SETS) {
-      double remsetPages = regionSpace.calculateRemSetPages();
-      double remsetCards = regionSpace.calculateRemSetCards();
-      int totalPages = regionSpace.committedRegions() << Region.LOG_PAGES_IN_REGION;
-      if (totalPages != 0) {
-        remsetFootprint.log(remsetPages * 100 / totalPages);
-      }
-      if (remsetPages != 0) {
-        remsetUtilization.log(remsetCards * 100 / (remsetPages * Constants.BITS_IN_PAGE));
+      if (Plan.insideHarness) {
+        double remsetPages = RemSet.calculateRemSetPages();
+        double remsetCards = regionSpace.calculateRemSetCards();
+        int totalPages = regionSpace.committedRegions() << Region.LOG_PAGES_IN_REGION;
+        if (totalPages != 0) {
+          remsetFootprint.log(remsetPages * 100 / totalPages);
+        }
+        if (remsetPages != 0) {
+//          if (remsetCards > remsetPages * Constants.BITS_IN_PAGE) {
+//            Log.writeln("cards ", (int) remsetCards);
+//            Log.writeln("pages ", (int) remsetPages);
+//            VM.assertions.fail("> 100%");
+//          }
+          remsetUtilization.log(remsetCards * 100 / (remsetPages * Constants.BITS_IN_PAGE));
+        }
       }
 //      remsetLogCursor += 3;
       return;
