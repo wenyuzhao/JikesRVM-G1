@@ -20,7 +20,7 @@ public class G1Mutator extends org.mmtk.plan.regional.remsetbarrier.G1Mutator {
             Word tmp = x.xor(y).rshl(Region.LOG_BYTES_IN_REGION);
             tmp = ref.isNull() ? Word.zero() : tmp;
             if (!tmp.isZero()) {
-                markAndEnqueueCard(Region.Card.of(src));
+                markAndEnqueueCard(src);
             }
 //        }
     }

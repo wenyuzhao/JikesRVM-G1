@@ -827,7 +827,7 @@ public abstract class Plan {
 
     if (LatencyTimer.isEnabled()) {
       LatencyTimer.stop();
-//      LatencyTimer.dump();
+      LatencyTimer.dump();
     }
     Stats.stopAll();
     insideHarness = false;

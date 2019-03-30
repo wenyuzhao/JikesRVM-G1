@@ -111,7 +111,7 @@ public class LatencyTimer {
   public static void mutatorPause(int mutatorId) {
     if (!loggingEnabled || !isEnabled()) return;
     logEvent(mutatorId, MUTATOR_PAUSE);
-    loggedMutator[mutatorId] = true;
+//    loggedMutator[mutatorId] = true;
   }
 
   @Inline
@@ -147,35 +147,35 @@ public class LatencyTimer {
     loggingEnabled = false;
 //    endTime = VM.statistics.nanoTime();
 
-    long[] pauses = new long[10000];
-    int pausesCursor = 0;
-    for (int threadId = 0; threadId < MAX_THREADS; threadId++) {
-      if (logCursor[threadId] == 0) continue;
-
-      long pauseTime = -1;
-      for (int i = 0; i < logCursor[threadId]; i++) {
-        int base = threadId * (MAX_EVENTS * 2) + i * 2;
-        int eventId = (int) data[base + 0];
-        long time = data[base + 1];
-//        Log.write(time);
-
-        if (eventId == MUTATOR_PAUSE) {
-          pauseTime = time;
-        } else if (eventId == MUTATOR_RESUME) {
-          if (pauseTime == -1 || time <= pauseTime) continue;
-//          log.writeln(time - pauseTime);
-          pauses[pausesCursor++] = time - pauseTime;
-          pauseTime = -1;
-        } else {
-          VM.assertions.fail("Unimplemented");
-        }
-      }
-    }
-
-    long[] pauses2 = new long[pausesCursor];
-    for (int i = 0; i < pausesCursor; i++)
-      pauses2[i] = pauses[i];
-    Arrays.sort(pauses2);
+//    long[] pauses = new long[10000];
+//    int pausesCursor = 0;
+//    for (int threadId = 0; threadId < MAX_THREADS; threadId++) {
+//      if (logCursor[threadId] == 0) continue;
+//
+//      long pauseTime = -1;
+//      for (int i = 0; i < logCursor[threadId]; i++) {
+//        int base = threadId * (MAX_EVENTS * 2) + i * 2;
+//        int eventId = (int) data[base + 0];
+//        long time = data[base + 1];
+////        Log.write(time);
+//
+//        if (eventId == MUTATOR_PAUSE) {
+//          pauseTime = time;
+//        } else if (eventId == MUTATOR_RESUME) {
+//          if (pauseTime == -1 || time <= pauseTime) continue;
+////          log.writeln(time - pauseTime);
+//          pauses[pausesCursor++] = time - pauseTime;
+//          pauseTime = -1;
+//        } else {
+//          VM.assertions.fail("Unimplemented");
+//        }
+//      }
+//    }
+//
+//    long[] pauses2 = new long[pausesCursor];
+//    for (int i = 0; i < pausesCursor; i++)
+//      pauses2[i] = pauses[i];
+//    Arrays.sort(pauses2);
 //    counterMin.log(pauses2[0]);
 //    counterMax.log(pauses2[pausesCursor - 1]);
 //    counterAvg.log(mean(pauses2));
