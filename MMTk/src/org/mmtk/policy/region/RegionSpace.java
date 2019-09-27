@@ -22,6 +22,7 @@ import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
+import org.mmtk.vm.Assert;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
@@ -47,11 +48,12 @@ public final class RegionSpace extends Space {
   /* local status bits */
   public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
   public static final int GLOBAL_GC_BITS_REQUIRED = 0;
-  public static final int GC_HEADER_WORDS_REQUIRED = 1;
+  public static final int GC_HEADER_WORDS_REQUIRED = 0;
   private static boolean allocAsMarked = true;
 
   private Atomic.Int youngRegions = new Atomic.Int();
   private Atomic.Int committedRegions = new Atomic.Int();
+  private Lock allocLock = VM.newLock("alloc-lock");
 
   @Inline
   public int youngRegions() { return youngRegions.get(); }
@@ -120,6 +122,7 @@ public final class RegionSpace extends Space {
   public void prepare(boolean nursery) {
     // Update mark state
     // Clear marking data
+    resetAllocRegions();
     Address r;
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
@@ -127,19 +130,19 @@ public final class RegionSpace extends Space {
       Region.setUsedSize(r, 0);
       // Set TAMS
       if (!nursery) {
-        Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
+//        Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
 //        Log.write("region ", r);
 //        Log.writeln(" cursor ", cursor);
-        if (VM.VERIFY_ASSERTIONS) {
-          VM.assertions._assert(cursor.GE(r));
-          if (!cursor.LE(r.plus(Region.BYTES_IN_REGION))) {
-            Log.write("Invalid cursor ", cursor);
-            Log.write( " region ", r);
-            Log.writeln( " end ", r.plus(Region.BYTES_IN_REGION));
-          }
-          VM.assertions._assert(cursor.LE(r.plus(Region.BYTES_IN_REGION)));
-        }
-        Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(cursor);
+//        if (VM.VERIFY_ASSERTIONS) {
+//          VM.assertions._assert(cursor.GE(r));
+//          if (!cursor.LE(r.plus(Region.BYTES_IN_REGION))) {
+//            Log.write("Invalid cursor ", cursor);
+//            Log.write( " region ", r);
+//            Log.writeln( " end ", r.plus(Region.BYTES_IN_REGION));
+//          }
+//          VM.assertions._assert(cursor.LE(r.plus(Region.BYTES_IN_REGION)));
+//        }
+//        Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(cursor);
       }
     }
 //    resetTLABs(1);
@@ -164,7 +167,7 @@ public final class RegionSpace extends Space {
 //        Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET).store(cursor);
 //      }
 //    }
-    resetTLABs(0);
+    resetAllocRegions();
   }
 
   /**
@@ -172,147 +175,86 @@ public final class RegionSpace extends Space {
    */
   @Inline
   public int getCollectionReserve() {
-    return 0;
+    return reservedPages() / 10;
   }
 
-  /**
-   * Return the number of pages reserved for use given the pending
-   * allocation.  This is <i>exclusive of</i> space reserved for
-   * copying.
-   */
-  @Inline
-  public int getPagesUsed() {
-    return pr.reservedPages() - getCollectionReserve();
-  }
+//  Lock tlabLock = VM.newLock("tlab-lock-m");
 
-  Lock tlabLock = VM.newLock("tlab-lock-m");
-
-  Atomic.Int tlabLock2 = new Atomic.Int();
+//  Atomic.Int tlabLock2 = new Atomic.Int();
 //  int[] tlabLock3 = new int[] { 0 };
 //  Lock tlabLockCollector = VM.newLock("tlab-lock-c");
 //  Lock tlabCollectorLock = VM.newLock("tlab-lock-collector");
-  AddressArray allocTLABs = AddressArray.create(3);
+  AddressArray allocRegions = AddressArray.create(3);
 //  AddressArray allocRegions = AddressArray.create(3);
 //  AddressArray allocTLABs = AddressArray.create(3);
 //  WordArray allocTLABIndex = WordArray.create(3);
 
   @Inline
-  private void lock() {
-    do {
-      if (VM.VERIFY_ASSERTIONS) {
-        int oldValue = tlabLock2.get();
-        VM.assertions._assert(oldValue == 0 || oldValue == 1);
-      }
-    } while (!tlabLock2.attempt(0, 1));
-  }
-
-  @Inline
-  private void unlock() {
-    tlabLock2.set(0);
-  }
-
-  @Inline
-  public void resetTLABs(int start) {
-    for (int i = start; i < 3; i++) {
-      allocTLABs.set(i, Address.zero());
+  public void resetAllocRegions() {
+    for (int i = 0; i < 3; i++) {
+      allocRegions.set(i, Address.zero());
     }
   }
 
-//  public Address tryAllocTLAB(int allocationKind, int tlabs) {
-//    Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-//    Address oldTLAB = slot.prepareAddress();
-//    Address newTLAB = oldTLAB.plus(tlabs << Region.LOG_BYTES_IN_TLAB);
-//    boolean newRegionAllocated = false;
-//    if (oldTLAB.isZero() || Region.of(newTLAB).NE(Region.of(oldTLAB))) {
-//      Address region = getSpace(allocationKind);
-//      if (region.isZero()) return Address.zero();
-//      newTLAB = region.plus(tlabs << Region.LOG_BYTES_IN_TLAB);
-//      newRegionAllocated = true;
-//    }
-//    boolean success = slot.attempt(oldTLAB, newTLAB);
-//    if (!success) {
-//      if (newRegionAllocated) release(Region.of(newTLAB));
-//      return tryAllocTLAB(allocationKind, tlabs);
-//    }
-//    return newRegionAllocated ? Region.of(newTLAB) : oldTLAB;
-//  }
   @Inline
-  public Address allocTLABFast(int allocationKind, int tlabSize0) {
-//    if (VM.VERIFY_ASSERTIONS) {
-//      VM.assertions._assert(tlabSize0 >= Region.BYTES_IN_TLAB);
-//      VM.assertions._assert(tlabSize0 <= Region.BYTES_IN_REGION);
-//    }
-    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-    Extent tlabSize = Extent.fromIntZeroExtend(tlabSize0);
-    Word oldCursor, newCursor;
-    do {
-      oldCursor = slot.prepareWord();
-      if (oldCursor.isZero()) return Address.zero();
-      newCursor = oldCursor.plus(tlabSize);
-      if (!newCursor.xor(oldCursor).rshl(Region.LOG_BYTES_IN_REGION).isZero()) {
-        if (newCursor.and(Region.REGION_MASK).isZero()) {
-          newCursor = Word.zero();
-        } else {
-          return Address.zero();
-        }
-      }
-    } while (!slot.attempt(oldCursor, newCursor));
-    return oldCursor.toAddress();
-  }
-
-  public Address allocTLABSlow(int allocationKind, int tlabSize) {
-//    lock();
-//    Address result = allocTLABFast(allocationKind, tlabSize);
-//    if (!result.isZero()) {
-//      unlock();
-//      return result;
-//    }
-//    Address region = getSpace(allocationKind);
-//    if (region.isZero()) {
-//      unlock();
-//      return region;
-//    }
-//    Address newCursor = region.plus(tlabSize);
-//    if (tlabSize == Region.BYTES_IN_REGION) newCursor = Address.zero();
-//    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-//    slot.store(newCursor);
-//    unlock();
-    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-    Address oldCursor = slot.prepareAddress();
-    Address region = getSpace(allocationKind);
-    if (region.isZero()) return region;
-    if (tlabSize == Region.BYTES_IN_REGION) {
-      return region;
+  public Address allocTLABFastOnce(int allocationKind, int tlabSize) {
+    Address allocRegion = allocRegions.get(allocationKind);
+    if (!allocRegion.isZero()) {
+      return Region.allocate(allocRegion, tlabSize, true);
+    } else {
+      return Address.zero();
     }
-    Address newCursor = region.plus(tlabSize);
-    slot.store(newCursor);
-    return region;
-//    if (slot.attempt(oldCursor, newCursor)) {
-//      return region;
-//    } else {
-//      release(region);
-//      return allocTLAB(allocationKind, tlabSize);
-//    }
   }
 
-  @LogicallyUninterruptible
-  @Override
-  public Address acquire(int pages) {
+  public Address allocTLABSlow(int generation, int tlabSize) {
+    allocLock.acquire();
+    // Try again
+    {
+      Address tlab = allocTLABFastOnce(generation, tlabSize);
+      if (!tlab.isZero()) {
+        allocLock.release();
+        return tlab;
+      }
+    }
+    // Acquire new region
+    Address region = acquireWithLock(Region.PAGES_IN_REGION);
+    if (region.isZero()) {
+      allocLock.release();
+      return Address.zero();
+    }
+    if (generation != Region.OLD) youngRegions.add(1);
+    committedRegions.add(1);
+    insertRegion(region);
+    Region.register(region, generation);
+    Address result = Region.allocate(region, tlabSize, false);
+    allocRegions.set(generation, region);
+    allocLock.release();
+    return result;
+  }
+
+  @Inline
+  public Address allocTLAB(int allocationKind, int tlabSize) {
+    Address tlab = allocTLABFastOnce(allocationKind, tlabSize);
+    if (!tlab.isZero()) {
+      return tlab;
+    }
+    // Slow path
+    Address result = allocTLABSlow(allocationKind, tlabSize);
+    if (result.isZero()) {
+      VM.collection.blockForGC();
+    }
+    return result;
+  }
+
+  public Address acquireWithLock(int pages) {
     boolean allowPoll = VM.activePlan.isMutator() && Plan.isInitialized();
-
     /* Check page budget */
     int pagesReserved = pr.reservePages(pages);
-
     /* Poll, either fixing budget or requiring GC */
     if (allowPoll && VM.activePlan.global().poll(false, this)) {
       pr.clearRequest(pagesReserved);
-//      Log.writeln("Block for GC");
-      unlock();
-      VM.collection.blockForGC();
-      lock();
       return Address.zero(); // GC required, return failure
     }
-
     /* Page budget is ok, try to acquire virtual memory */
     Address rtn = pr.getNewPages(pagesReserved, pages, zeroed);
     if (rtn.isZero()) {
@@ -321,73 +263,9 @@ public final class RegionSpace extends Space {
       boolean gcPerformed = VM.activePlan.global().poll(true, this);
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(gcPerformed, "GC not performed when forced.");
       pr.clearRequest(pagesReserved);
-//      Log.writeln("Block for GC");
-//      tlabLock.release();
-      unlock();
-      VM.collection.blockForGC();
-//      tlabLock.acquire();
-      lock();
       return Address.zero();
     }
-
     return rtn;
-  }
-
-  @Inline
-  public Address allocTLAB(int allocationKind, int tlabSize) {
-//    final Address slot = ObjectReference.fromObject(allocTLABs).toAddress().plus(allocationKind << LOG_BYTES_IN_ADDRESS);
-    Address tlab = allocTLABFast(allocationKind, tlabSize);
-    if (!tlab.isZero()) {
-      return tlab;
-    }
-    return allocTLABSlow(allocationKind, tlabSize);
-  }
-
-  /**
-   * Return a pointer to a new usable region, or null if none are available.
-   *
-   * @param allocationKind The generation kind of the result region
-   * @return the pointer into the alloc table containing the usable region, {@code null}
-   *  if no usable regions are available
-   */
-  public Address getSpace(int allocationKind) {
-    // Allocate
-//    Log.writeln("Acquire start");
-//    if (concurrent)
-    Address region = super.acquire(Region.PAGES_IN_REGION);
-//    Log.writeln("Acquire end");
-    if (VM.VERIFY_ASSERTIONS) {
-      if (!Region.isAligned(region)) {
-        Log.writeln("Unaligned region ", region);
-      }
-      VM.assertions._assert(Region.isAligned(region));
-    }
-
-    if (!region.isZero()) {
-//      Log.writeln(Region.verbose() ? "Region verbose" : "Region not verbose");
-      if (Region.verbose()) {
-        Log.write("Region alloc ");
-        Log.write(allocationKind == Region.EDEN ? "eden " : (allocationKind == Region.SURVIVOR ? "survivor " : "old "), region);
-        Log.writeln(", in chunk ", EmbeddedMetaData.getMetaDataBase(region));
-      }
-
-//      if (Region.USE_CARDS) Region.Card.clearCardMetaForRegion(region);
-      insertRegion(region);
-      Region.register(region, allocationKind);
-//      if (!slowPath) {
-        if (allocationKind != Region.OLD) youngRegions.add(1);
-        committedRegions.add(1);
-//      } else {
-//        if (allocationKind != Region.OLD) youngRegions.addNonAtomic(1);
-//        committedRegions.addNonAtomic(1);
-//      }
-    } else {
-      if (Region.verbose()) {
-        Log.writeln("Region allocation failure");
-      }
-    }
-
-    return region;
   }
 
   /**
@@ -409,9 +287,9 @@ public final class RegionSpace extends Space {
     }
 
     Region.unregister(region);
-    if (Region.USE_CARDS) {
-      Region.Card.clearCardMetaForRegion(region);
-    }
+//    if (Region.USE_CARDS) {
+//      Region.Card.clearCardMetaForRegion(region);
+//    }
     removeRegion(region);
     ((FreeListPageResource) pr).releasePages(region);
   }
@@ -989,35 +867,6 @@ public final class RegionSpace extends Space {
   /**
    * Heap Validation Methods
    */
-
-  private final TransitiveClosure regionValidationTransitiveClosure = new TransitiveClosure() {
-    @Uninterruptible public void processEdge(ObjectReference source, Address slot) {
-      ObjectReference ref = slot.loadObjectReference();
-      if (!VM.debugging.validRef(ref)) {
-        Log.writeln();
-        Log.write("Invalid ", source);
-        Log.write(".", slot);
-        Log.writeln(" -> ", ref);
-      }
-      VM.assertions._assert(VM.debugging.validRef(ref));
-      if (Region.USE_CARDS && contains(ref)) {
-        Address region = Region.of(ref);
-        if (region.NE(Region.of(source))) {
-          Address card = Region.Card.of(source);
-//          VM.assertions._assert(RemSet.contains(region, card));
-        }
-      }
-    }
-  };
-
-  private final LinearScan regionValidationLinearScan = new LinearScan() {
-    @Uninterruptible public void scan(ObjectReference object) {
-      if ((VM.objectModel.readAvailableByte(object) & 3) == 1) return;
-      VM.assertions._assert(VM.debugging.validRef(object));
-      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
-      VM.scanning.scanObject(regionValidationTransitiveClosure, object);
-    }
-  };
 
 //  public void validate() {
 //    VM.assertions.fail("Unimplemented");

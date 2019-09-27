@@ -146,7 +146,6 @@ public class G1Collector extends StopTheWorldCollector {
       evacuateTrace.release();
       copy.reset();
       super.collectionPhase(G1.RELEASE, primary);
-      if (primary) RegionAllocator2.adjustTLABSize();
       return;
     }
 

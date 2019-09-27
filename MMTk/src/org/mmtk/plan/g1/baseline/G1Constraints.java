@@ -46,4 +46,8 @@ public class G1Constraints extends StopTheWorldConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.MAX_ALLOC_SIZE;
   }
+  @Override
+  public int maxNonLOSCopyBytes() {
+    return Region.MAX_ALLOC_SIZE + 32;
+  }
 }

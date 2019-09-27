@@ -187,13 +187,20 @@ public class G1 extends StopTheWorld {
   final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
   final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
 
+
+//  protected boolean collectionRequired(boolean spaceFull, Space space) {
+//    Log.writeln(spaceFull ? "spaceFull=1" : "spaceFull=0");
+//    boolean stressForceGC = stressTestGCRequired();
+//    boolean heapFull = getPagesReserved() > getTotalPages();
+//    Log.writeln("getPagesReserved ", getPagesReserved());
+//    Log.writeln("getTotalPages ", getTotalPages());
+//    Log.writeln(heapFull ? "heapFull=1" : "heapFull=0");
+//
+//    return spaceFull || stressForceGC || heapFull;
+//  }
+
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-//    int totalPages = getTotalPages();
-//    if (getPagesAvail() - BOOT_PAGES < totalPages * RESERVE_PERCENT) {
-//      return true;
-//    }
-//    return super.collectionRequired(spaceFull, space);
     final int totalPages = getTotalPages();
     final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
     return spaceFull || heapFull;
@@ -207,7 +214,7 @@ public class G1 extends StopTheWorld {
   public final int getCollectionReserve() {
     // we must account for the number of pages required for copying,
     // which equals the number of semi-space pages reserved
-    return regionSpace.getCollectionReserve() + super.getCollectionReserve(); // TODO: Fix this
+    return 0;//regionSpace.reservedPages() / 10;
   }
 
   @Override

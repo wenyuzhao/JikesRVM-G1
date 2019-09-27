@@ -29,17 +29,18 @@ import org.vmmagic.unboxed.Address;
 @Uninterruptible
 public class RegionAllocator2 extends Allocator {
 
-  /****************************************************************************
-   *
-   * Instance variables
-   */
+  static final int LOG_UNIT_SIZE = 9;
+  static final int UNIT_SIZE = 1 << LOG_UNIT_SIZE;
+  static final int MIN_TLAB_SIZE = 2 * 1024;
+  static final int MAX_TLAB_SIZE = VM.activePlan.constraints().maxNonLOSCopyBytes();
 
   protected final RegionSpace space;
   protected final int spaceDescriptor;
   private final int allocationKind;
-  private Address region = Address.zero();
   private Address cursor = Address.zero();
   private Address limit = Address.zero();
+  int refills = 0;
+  int tlabSize = (MIN_TLAB_SIZE + MAX_TLAB_SIZE) >> 1;
 
   /**
    * Constructor.
@@ -53,39 +54,35 @@ public class RegionAllocator2 extends Allocator {
     this.allocationKind = allocationKind;
   }
 
-  public void retireTLAB() {
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(!cursor.isZero());
-      VM.assertions._assert(!limit.isZero());
-      VM.assertions._assert(Region.allocated(region));
+  @Inline
+  static int alignTLAB(int size) {
+    size = size + (UNIT_SIZE - 1);
+    return size & ~(UNIT_SIZE - 1);
+  }
+
+  public void adjustTLABSize() {
+    float factor = (float) refills / 50f;
+    tlabSize = (int) (((float) tlabSize) * factor);
+    tlabSize = alignTLAB(tlabSize);
+    if (tlabSize < MIN_TLAB_SIZE) {
+      tlabSize = MIN_TLAB_SIZE;
+    } else if (tlabSize > MAX_TLAB_SIZE) {
+      tlabSize = MAX_TLAB_SIZE;
     }
+    refills = 0;
+  }
 
-    fillAlignmentGap(cursor, limit);
-
-    final Address cursorSlot = Region.metaDataOf(region, Region.METADATA_CURSOR_OFFSET);
-    Address oldLimit;
-    final Address newLimit = cursor;
-    do {
-      oldLimit = cursorSlot.prepareAddress();
-      if (oldLimit.GE(newLimit)) break;
-    } while (cursorSlot.attempt(oldLimit, newLimit));
-
-    region = Address.zero();
+  public void reset() {
+    retireTLAB();
     cursor = Address.zero();
     limit = Address.zero();
   }
 
-  /**
-   * Reset the allocator. Note that this does not reset the space.
-   */
-  public void reset() {
-    if (!cursor.isZero()) {
-      retireTLAB();
+  public void retireTLAB() {
+    if (cursor.isZero() || limit.isZero()) {
+      return;
     }
-    if (refills != 0) {
-      totalRefills.add(refills);
-      refills = 0;
-    }
+    fillAlignmentGap(cursor, limit);
   }
 
   /*****************************************************************************
@@ -110,10 +107,7 @@ public class RegionAllocator2 extends Allocator {
     Address end = start.plus(bytes);
     /* check whether we've exceeded the limit */
     if (end.GT(limit)) {
-//      if (!cursor.isZero()) retireTLAB(cursor);
-//      reset();
-      if (VM.activePlan.isMutator()) refills += 1;
-      return allocSlowInline(bytes, align, offset);
+      return allocSlow(bytes, align, offset);
     }
     /* sufficient memory is available, so we can finish performing the allocation */
     fillAlignmentGap(cursor, start);
@@ -136,64 +130,17 @@ public class RegionAllocator2 extends Allocator {
    */
   @Override
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
-    if (!cursor.isZero()) {
-      retireTLAB();
-    }
-    int newTlabSize = bytes < tlabSize ? tlabSize : bytes;
-    Address ptr = space.allocTLAB(allocationKind, newTlabSize); // New tlab
-    if (ptr.isZero()) {
-      return ptr; // failed allocation --- we will need to GC
-    }
-    /* we have been given a clean block */
-    cursor = ptr;
-    region = Region.of(cursor);
-    limit = ptr.plus(newTlabSize);
+    int size = bytes > tlabSize ? bytes : tlabSize;
+    size = alignTLAB(size);
+//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(size >= bytes);
+    Address tlab = space.allocTLAB(allocationKind, size);
+    if (tlab.isZero()) return tlab;
+    refills += 1;
+    retireTLAB();
+    cursor = tlab;
+    limit = cursor.plus(size);
+    // self.init_offsets(self.cursor, self.limit);
     return alloc(bytes, align, offset);
-  }
-
-
-  static Atomic.Int totalRefills = new Atomic.Int();
-  int refills = 0;
-  static int gc = 0;
-  static int tlabSize = Region.MIN_TLAB_SIZE;
-
-  @Inline
-  public static void adjustTLABSize() {
-    gc += 1;
-    int refills = totalRefills.get();
-    if (refills == 50) return;
-    int s = tlabSize;
-    s *= (refills / gc / 50);
-    final int KB = Constants.BYTES_IN_KBYTE;
-
-    if (s < 2 * KB) {
-      s = 2 * KB;
-    } else if (s < 4 * KB) {
-      s = 4 * KB;
-    } else if (s < 8 * KB) {
-      s = 8 * KB;
-    } else if (s < 16 * KB) {
-      s = 16 * KB;
-    } else if (s < 32 * KB) {
-      s = 32 * KB;
-    } else if (s < 64 * KB) {
-      s = 64 * KB;
-    } else if (s < 128 * KB) {
-      s = 128 * KB;
-    } else if (s < 256 * KB) {
-      s = 256 * KB;
-    } else if (s < 512 * KB) {
-      s = 512 * KB;
-    } else {
-      s = 1024 * KB;
-    }
-//    tlabSize = Conversions.alignUp(Address.fromIntZeroExtend(refills), Constants.LOG_BYTES_IN_KBYTE).toInt();
-//    tlabSize = Region.BYTES_IN_REGION / ((int) (Region.BYTES_IN_REGION / tlabSize));
-    if (s < Region.MIN_TLAB_SIZE) s = Region.MIN_TLAB_SIZE;
-    if (s > Region.MAX_TLAB_SIZE) s = Region.MAX_TLAB_SIZE;
-    tlabSize = s;
-//    Log.writeln("TLABSize: ", tlabSize);
-//    Log.writeln("GC Per: ", tlabSize);
   }
 
   /** @return the space associated with this squish allocator */

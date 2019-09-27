@@ -112,6 +112,7 @@ public class G1Mutator extends StopTheWorldMutator {
       Log.writeln(Phase.getName(phaseId));
     }
     if (phaseId == G1.PREPARE) {
+      ra.adjustTLABSize();
       ra.reset();
       super.collectionPhase(phaseId, primary);
       return;
