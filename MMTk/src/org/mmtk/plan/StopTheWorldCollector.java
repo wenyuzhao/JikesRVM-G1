@@ -42,7 +42,7 @@ public abstract class StopTheWorldCollector extends SimpleCollector {
 
   /** Perform some concurrent garbage collection */
   @Unpreemptible
-  public final void concurrentCollect() {
+  public void concurrentCollect() {
     VM.assertions.fail("concurrentCollect called on StopTheWorld collector");
   }
 

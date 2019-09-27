@@ -16,8 +16,6 @@ package org.mmtk.utility.alloc;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.RegionSpace;
-import org.mmtk.utility.Atomic;
-import org.mmtk.utility.Constants;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -132,7 +130,6 @@ public class RegionAllocator2 extends Allocator {
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
     int size = bytes > tlabSize ? bytes : tlabSize;
     size = alignTLAB(size);
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(size >= bytes);
     Address tlab = space.allocTLAB(allocationKind, size);
     if (tlab.isZero()) return tlab;
     refills += 1;

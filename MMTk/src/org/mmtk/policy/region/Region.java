@@ -84,7 +84,7 @@ public class Region {
   private static final int METADATA_RELOCATE_OFFSET = METADATA_ALIVE_SIZE_OFFSET + BYTES_IN_INT;
   private static final int METADATA_ALLOCATED_OFFSET = METADATA_RELOCATE_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
   public static final int METADATA_PREV_CURSOR_OFFSET = METADATA_ALLOCATED_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
-  public static final int METADATA_NEXT_CURSOR_OFFSET = METADATA_PREV_CURSOR_OFFSET + BYTES_IN_SHORT;//BYTES_IN_BYTE;
+  public static final int METADATA_NEXT_CURSOR_OFFSET = METADATA_PREV_CURSOR_OFFSET + BYTES_IN_ADDRESS;//BYTES_IN_BYTE;
   public static final int METADATA_REMSET_LOCK_OFFSET = METADATA_NEXT_CURSOR_OFFSET + BYTES_IN_ADDRESS;
   public static final int METADATA_REMSET_SIZE_OFFSET = METADATA_REMSET_LOCK_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_PAGES_OFFSET = METADATA_REMSET_SIZE_OFFSET + BYTES_IN_INT;
@@ -100,7 +100,6 @@ public class Region {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
       VM.assertions._assert(PER_REGION_METADATA_BYTES == 40);
-//        VM.assertions._assert(REGIONS_IN_CHUNK == 3);
     }
   }
 
@@ -270,6 +269,7 @@ public class Region {
 
   @Inline
   public static Address allocate(Address region, int size, boolean atomic) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isAligned(region));
     Address slot = metaDataOf(region, METADATA_NEXT_CURSOR_OFFSET);
     Address regionEnd = region.plus(BYTES_IN_REGION);
     if (atomic) {

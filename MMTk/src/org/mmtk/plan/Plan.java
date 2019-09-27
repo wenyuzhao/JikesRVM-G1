@@ -405,7 +405,7 @@ public abstract class Plan {
    */
   public byte setBuildTimeGCByte(Address object, ObjectReference typeRef, int size) {
     if (HeaderByte.NEEDS_UNLOGGED_BIT) {
-      return (byte) (0);
+      return HeaderByte.UNLOGGED_BIT;
     } else {
       return 0;
     }

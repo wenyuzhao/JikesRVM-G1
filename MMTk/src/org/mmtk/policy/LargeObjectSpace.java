@@ -15,9 +15,6 @@ package org.mmtk.policy;
 import static org.mmtk.utility.Constants.LOG_BYTES_IN_PAGE;
 
 import org.mmtk.plan.TransitiveClosure;
-import org.mmtk.utility.Constants;
-import org.mmtk.utility.ForwardingWord;
-import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.utility.heap.FreeListPageResource;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.HeaderByte;
@@ -208,18 +205,6 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
     treadmill.copy(node, nurseryObject);
   }
 
-  @Inline
-  public boolean isInNurseryOrFromSpace(Address address) {
-    Word node = address.toWord().and(Word.fromIntZeroExtend(Constants.BYTES_IN_PAGE - 1).not());
-    return treadmill.isInNurseryOrFromSpace(node.toAddress());
-  }
-
-  @Inline
-  public boolean isInToSpace(Address address) {
-    Word node = address.toWord().and(Word.fromIntZeroExtend(Constants.BYTES_IN_PAGE - 1).not());
-    return treadmill.isInToSpace(node.toAddress());
-  }
-
   /****************************************************************************
    *
    * Header manipulation
@@ -237,10 +222,8 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
     byte oldValue = VM.objectModel.readAvailableByte(object);
     byte newValue = (byte) ((oldValue & ~LOS_BIT_MASK) | markState);
     if (alloc) newValue |= NURSERY_BIT;
-    if (HeaderByte.NEEDS_UNLOGGED_BIT)
-      newValue = HeaderByte.markByteAsLogged(newValue);
+    if (HeaderByte.NEEDS_UNLOGGED_BIT) newValue |= HeaderByte.UNLOGGED_BIT;
     VM.objectModel.writeAvailableByte(object, newValue);
-//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);// |= HeaderByte.UNLOGGED_BIT;
     Address cell = VM.objectModel.objectStartRef(object);
     treadmill.addToTreadmill(Treadmill.midPayloadToNode(cell), alloc);
   }
@@ -255,17 +238,13 @@ public final class LargeObjectSpace extends BaseLargeObjectSpace {
    */
   @Inline
   private boolean testAndMark(ObjectReference object, byte value) {
-    Word oldValue, newValue;
+    Word oldValue;
     do {
       oldValue = VM.objectModel.prepareAvailableBits(object);
       byte markBit = (byte) (oldValue.toInt() & (inNurseryGC ? LOS_BIT_MASK : MARK_BIT));
       if (markBit == value) return false;
-      newValue = oldValue.and(Word.fromIntZeroExtend(LOS_BIT_MASK).not()).or(Word.fromIntZeroExtend(value));
-      if (HeaderByte.NEEDS_UNLOGGED_BIT)
-        newValue = HeaderByte.markWordAsLogged(newValue);
-    } while (!VM.objectModel.attemptAvailableBits(object, oldValue, newValue));
-
-//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);// |= HeaderByte.UNLOGGED_BIT;
+    } while (!VM.objectModel.attemptAvailableBits(object, oldValue,
+                                                  oldValue.and(Word.fromIntZeroExtend(LOS_BIT_MASK).not()).or(Word.fromIntZeroExtend(value))));
     return true;
   }
 

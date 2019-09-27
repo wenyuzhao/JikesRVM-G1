@@ -487,10 +487,10 @@ public class Region {
               limits[index] = 0xFFFFFFFF;
             }
           } else if (space instanceof LargeObjectSpace) {
-            if (((LargeObjectSpace) space).isInNurseryOrFromSpace(firstCard)) {
-              anchors[index] = 0xFFFFFFFF;
-              limits[index] = 0xFFFFFFFF;
-            }
+//            if (((LargeObjectSpace) space).isInNurseryOrFromSpace(firstCard)) {
+//              anchors[index] = 0xFFFFFFFF;
+//              limits[index] = 0xFFFFFFFF;
+//            }
           } else if (space instanceof RawPageSpace) {
             anchors[index] = 0xFFFFFFFF;
             limits[index] = 0xFFFFFFFF;
@@ -571,16 +571,16 @@ public class Region {
           // Get cell size classes
           byte cellSizeClass = BlockAllocator.getClientSizeClass(VM.objectModel.objectStartRef(ref));
           // Get first cell address
-          Address firstCell = block.plus(space.getBlockHeaderSize(cellSizeClass));//BlockAllocator.getFreeListMeta(block);
+//          Address firstCell = block.plus(space.getBlockHeaderSize(cellSizeClass));//BlockAllocator.getFreeListMeta(block);
           // Get cell extent
           int cellExtent = space.getBaseCellSize(cellSizeClass);
           // Get current cell for `ref`
-          int cellIndex = VM.objectModel.objectStartRef(ref).diff(firstCell).toInt() / cellExtent;
-          Address currentCell = firstCell.plus(cellExtent * cellIndex);
+//          int cellIndex = VM.objectModel.objectStartRef(ref).diff(firstCell).toInt() / cellExtent;
+//          Address currentCell = firstCell.plus(cellExtent * cellIndex);
           // Get next freelist start address
-          Address nextCell = currentCell.plus(cellExtent);
+//          Address nextCell = currentCell.plus(cellExtent);
           //
-          currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
+//          currentObjectEnd = nextCell;//.plus(Constants.BYTES_IN_ADDRESS);
         } else {
             currentObjectEnd = VM.objectModel.getObjectEndAddress(ref);
         }
@@ -590,13 +590,13 @@ public class Region {
 //        }
         scan.scan(ref);
 
-        if (currentObjectEnd.GE(end)) {
-          break;
-        } else {
-          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, end, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
-          if (next.isNull() || VM.objectModel.objectStartRef(next).GE(end)) break;
-          ref = next;
-        }
+//        if (currentObjectEnd.GE(end)) {
+//          break;
+//        } else {
+//          ObjectReference next = inRegionSpace ? getObjectFromStartAddress(currentObjectEnd, end, objectRefOffset) : VM.objectModel.getObjectFromStartAddress(currentObjectEnd);
+//          if (next.isNull() || VM.objectModel.objectStartRef(next).GE(end)) break;
+//          ref = next;
+//        }
       } while (true);
     }
   }

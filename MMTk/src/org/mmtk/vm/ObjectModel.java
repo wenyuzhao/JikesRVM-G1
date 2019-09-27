@@ -12,11 +12,15 @@
  */
 package org.mmtk.vm;
 
+import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
 @Uninterruptible
 public abstract class ObjectModel {
+
+  @Interruptible
+  public abstract Offset getFieldOffset(Class<?> klass, String member, Class<?> type);
 
   public abstract int getObjectRefOffset();
 

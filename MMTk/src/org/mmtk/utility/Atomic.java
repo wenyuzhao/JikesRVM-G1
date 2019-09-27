@@ -1,6 +1,7 @@
 package org.mmtk.utility;
 
 import org.mmtk.vm.VM;
+import org.vmmagic.pragma.Entrypoint;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -11,31 +12,35 @@ import org.vmmagic.unboxed.Offset;
 public class Atomic {
   @Uninterruptible
   public static class Int {
-    private int value;
+    @Entrypoint private volatile int value = 0;
+
+    private static final Offset VALUE_OFFSET = VM.objectModel.getFieldOffset(Int.class, "value", int.class);
 
     @Inline
     public final void set(int v) {
-      ObjectReference.fromObject(this).toAddress().store(v);
+      value = v;
+//      ObjectReference.fromObject(this).toAddress().store(v);
     }
 
     @Inline
     public final int get() {
-      return ObjectReference.fromObject(this).toAddress().prepareInt();
+      return value;
+//      return ObjectReference.fromObject(this).toAddress().prepareInt();
     }
 
     @Inline
     public final boolean attempt(int oldValue, int newValue) {
-      Address pointer = ObjectReference.fromObject(this).toAddress();
+      Address pointer = ObjectReference.fromObject(this).toAddress().plus(VALUE_OFFSET);
       return pointer.attempt(oldValue, newValue);
     }
 
     @Inline
-    public final int add(int value) {
-      Address pointer = ObjectReference.fromObject(this).toAddress();
+    public final int add(int inc) {
+      Address pointer = ObjectReference.fromObject(this).toAddress().plus(VALUE_OFFSET);
       int oldValue, newValue;
       do {
         oldValue = pointer.prepareInt();
-        newValue = oldValue + value;
+        newValue = oldValue + inc;
       } while (!pointer.attempt(oldValue, newValue));
       return oldValue;
     }

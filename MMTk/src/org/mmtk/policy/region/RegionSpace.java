@@ -46,7 +46,7 @@ public final class RegionSpace extends Space {
   private static final int AVAILABLE_LOCAL_BITS = 8 - HeaderByte.USED_GLOBAL_BITS;
 
   /* local status bits */
-  public static final int LOCAL_GC_BITS_REQUIRED = AVAILABLE_LOCAL_BITS;
+  public static final int LOCAL_GC_BITS_REQUIRED = 2;
   public static final int GLOBAL_GC_BITS_REQUIRED = 0;
   public static final int GC_HEADER_WORDS_REQUIRED = 0;
   private static boolean allocAsMarked = true;
@@ -175,7 +175,12 @@ public final class RegionSpace extends Space {
    */
   @Inline
   public int getCollectionReserve() {
-    return reservedPages() / 10;
+    return 0;
+  }
+
+  @Inline
+  public int getPagesUsed() {
+    return pr.reservedPages() - getCollectionReserve();
   }
 
 //  Lock tlabLock = VM.newLock("tlab-lock-m");
@@ -233,6 +238,7 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
+  @LogicallyUninterruptible
   public Address allocTLAB(int allocationKind, int tlabSize) {
     Address tlab = allocTLABFastOnce(allocationKind, tlabSize);
     if (!tlab.isZero()) {

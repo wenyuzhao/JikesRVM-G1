@@ -30,6 +30,7 @@ import org.mmtk.plan.MutatorContext;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
@@ -37,6 +38,11 @@ import org.vmmagic.unboxed.Offset;
 import org.vmmagic.unboxed.Word;
 
 @Uninterruptible public final class ObjectModel extends org.mmtk.vm.ObjectModel {
+  @Override
+  @Interruptible
+  public Offset getFieldOffset(Class<?> klass, String member, Class<?> type) {
+      return org.jikesrvm.runtime.EntrypointHelper.getField(klass, member, type).getOffset();
+  }
 
   @Override
   protected Offset getArrayBaseOffset() {

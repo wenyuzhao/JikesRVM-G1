@@ -12,6 +12,42 @@ import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class MarkTable {
+//  static final Word CHUNK_MASK = Word.fromIntZeroExtend(EmbeddedMetaData.BYTES_IN_REGION - 1);
+//
+//  @Inline
+//  public static boolean isMarked(ObjectReference object) {
+//    Address addr = VM.objectModel.refToAddress(object);
+//    int bitIndex = addr.toWord().and(CHUNK_MASK).rshl(LOG_BYTES_IN_WORD).toInt();
+//    Address markWord = EmbeddedMetaData.getMetaDataBase(addr).plus(bitIndex >>> LOG_BITS_IN_WORD);
+//    if (VM.VERIFY_ASSERTIONS) {
+//      Address chunk = EmbeddedMetaData.getMetaDataBase(addr);
+//      VM.assertions._assert(markWord.GE(chunk));
+//      VM.assertions._assert(markWord.LT(chunk.plus(Region.BYTES_IN_MARKTABLE)));
+//    }
+//    Word mask = Word.one().lsh(bitIndex & (BITS_IN_WORD - 1));
+//    return !markWord.loadWord().and(mask).isZero();
+//  }
+//
+//  @Inline
+//  public static boolean testAndMark(ObjectReference object) {
+//    Address addr = VM.objectModel.refToAddress(object);
+//    int bitIndex = addr.toWord().and(CHUNK_MASK).rshl(LOG_BYTES_IN_WORD).toInt();
+//    Address markWord = EmbeddedMetaData.getMetaDataBase(addr).plus(bitIndex >>> LOG_BITS_IN_WORD);
+//    if (VM.VERIFY_ASSERTIONS) {
+//      Address chunk = EmbeddedMetaData.getMetaDataBase(addr);
+//      VM.assertions._assert(markWord.GE(chunk));
+//      VM.assertions._assert(markWord.LT(chunk.plus(Region.BYTES_IN_MARKTABLE)));
+//    }
+//    Word mask = Word.one().lsh(bitIndex & (BITS_IN_WORD - 1));
+//    Word oldValue, newValue;
+//    do {
+//      oldValue = markWord.prepareWord();
+//      if (!oldValue.and(mask).isZero()) return false;
+//      newValue = oldValue.or(mask);
+//    } while (!markWord.attempt(oldValue, newValue));
+//    return true;
+//  }
+//
   @Inline
   public static boolean isMarked(ObjectReference object) {
     return liveBitSet(VM.objectModel.refToAddress(object));

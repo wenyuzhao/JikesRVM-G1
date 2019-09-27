@@ -16,4 +16,18 @@ import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
 public class G1Constraints extends org.mmtk.plan.g1.baseline.G1Constraints {
+//  @Override
+//  public boolean needsConcurrentWorkers() {
+//    return true;
+//  }
+//
+//  @Override
+//  public boolean needsObjectReferenceWriteBarrier() {
+//    return true;
+//  }
+//
+//  @Override
+//  public boolean needsJavaLangReferenceReadBarrier() {
+//    return true;
+//  }
 }
