@@ -13,8 +13,8 @@
 package org.mmtk.plan.g1.baseline;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.Region;
-import org.mmtk.policy.RegionSpace;
+import org.mmtk.policy.region.Region;
+import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
@@ -33,6 +33,8 @@ import org.vmmagic.unboxed.ObjectReference;
  */
 @Uninterruptible
 public class G1 extends StopTheWorld {
+
+  public static final boolean VERBOSE = false;
 
   public static final RegionSpace regionSpace = new RegionSpace("region", VMRequest.discontiguous());
   public static final int REGION_SPACE = regionSpace.getDescriptor();
@@ -128,7 +130,7 @@ public class G1 extends StopTheWorld {
    */
   @Override
   public void collectionPhase(short phaseId) {
-    if (Region.verbose()) {
+    if (VERBOSE) {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
     }

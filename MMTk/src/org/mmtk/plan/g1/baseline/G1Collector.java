@@ -16,10 +16,10 @@ import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
-import org.mmtk.policy.Region;
+import org.mmtk.policy.region.Region;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.alloc.RegionAllocator2;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -48,7 +48,7 @@ public class G1Collector extends StopTheWorldCollector {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator copy = new RegionAllocator(G1.regionSpace, Region.OLD);
+  protected final RegionAllocator2 copy = new RegionAllocator2(G1.regionSpace, Region.OLD);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
   protected final G1EvacuateTraceLocal evacuateTrace = new G1EvacuateTraceLocal(global().evacuateTrace);
   protected TraceLocal currentTrace;
@@ -95,7 +95,7 @@ public class G1Collector extends StopTheWorldCollector {
   @Override
 //  @Inline
   public void collectionPhase(short phaseId, boolean primary) {
-    if (Region.verbose()) Log.writeln(Phase.getName(phaseId));
+    if (G1.VERBOSE) Log.writeln(Phase.getName(phaseId));
     if (phaseId == G1.PREPARE) {
       currentTrace = markTrace;
       markTrace.prepare();
@@ -146,7 +146,7 @@ public class G1Collector extends StopTheWorldCollector {
       evacuateTrace.release();
       copy.reset();
       super.collectionPhase(G1.RELEASE, primary);
-      if (primary) RegionAllocator.adjustTLABSize();
+      if (primary) RegionAllocator2.adjustTLABSize();
       return;
     }
 

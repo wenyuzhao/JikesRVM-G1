@@ -166,4 +166,12 @@ public class ForwardingWord {
   public static ObjectReference extractForwardingPointer(Word forwardingWord) {
     return forwardingWord.and(Word.fromIntZeroExtend(FORWARDING_MASK).not()).toAddress().toObjectReference();
   }
+
+  @Inline
+  public static ObjectReference getForwardedObject(ObjectReference object) {
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(isForwarded(object));
+//    }
+    return extractForwardingPointer(VM.objectModel.readAvailableBitsWord(object));
+  }
 }

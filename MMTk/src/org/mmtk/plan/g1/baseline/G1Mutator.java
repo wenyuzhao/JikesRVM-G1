@@ -15,11 +15,11 @@ package org.mmtk.plan.g1.baseline;
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldMutator;
-import org.mmtk.policy.Region;
+import org.mmtk.policy.region.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
-import org.mmtk.utility.alloc.RegionAllocator;
+import org.mmtk.utility.alloc.RegionAllocator2;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -48,7 +48,7 @@ public class G1Mutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator ra;
+  protected final RegionAllocator2 ra;
 
   /****************************************************************************
    *
@@ -59,7 +59,7 @@ public class G1Mutator extends StopTheWorldMutator {
    * Constructor
    */
   public G1Mutator() {
-    ra = new RegionAllocator(G1.regionSpace, Region.NORMAL);
+    ra = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
   }
 
   /****************************************************************************
@@ -107,7 +107,7 @@ public class G1Mutator extends StopTheWorldMutator {
    */
   @Override
   public void collectionPhase(short phaseId, boolean primary) {
-    if (Region.verbose()) {
+    if (G1.VERBOSE) {
       Log.write("Mutator ");
       Log.writeln(Phase.getName(phaseId));
     }

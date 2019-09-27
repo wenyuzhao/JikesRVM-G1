@@ -13,8 +13,8 @@
 package org.mmtk.plan.g1.baseline;
 
 import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.Region;
-import org.mmtk.policy.RegionSpace;
+import org.mmtk.policy.region.Region;
+import org.mmtk.policy.region.RegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
 /**
