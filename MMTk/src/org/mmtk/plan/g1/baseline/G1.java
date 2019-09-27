@@ -135,7 +135,9 @@ public class G1 extends StopTheWorld {
       Log.writeln(Phase.getName(phaseId));
     }
     if (phaseId == PREPARE) {
-      super.collectionPhase(PREPARE);
+      loSpace.prepare(true);
+      immortalSpace.prepare();
+      VM.memory.globalPrepareVMSpace();
       regionSpace.prepare();
       markTrace.prepareNonBlocking();
       return;
@@ -147,7 +149,9 @@ public class G1 extends StopTheWorld {
 
     if (phaseId == RELEASE) {
       markTrace.release();
-      super.collectionPhase(RELEASE);
+      loSpace.release(true);
+      immortalSpace.release();
+      VM.memory.globalReleaseVMSpace();
       return;
     }
 
@@ -159,7 +163,9 @@ public class G1 extends StopTheWorld {
     }
 
     if (phaseId == EVACUATE_PREPARE) {
-      super.collectionPhase(PREPARE);
+      loSpace.prepare(true);
+      immortalSpace.prepare();
+      VM.memory.globalPrepareVMSpace();
       regionSpace.prepare();
       evacuateTrace.prepare();
       return;
@@ -172,7 +178,9 @@ public class G1 extends StopTheWorld {
     if (phaseId == EVACUATE_RELEASE) {
       evacuateTrace.release();
       regionSpace.release();
-      super.collectionPhase(RELEASE);
+      loSpace.release(true);
+      immortalSpace.release();
+      VM.memory.globalReleaseVMSpace();
       return;
     }
 

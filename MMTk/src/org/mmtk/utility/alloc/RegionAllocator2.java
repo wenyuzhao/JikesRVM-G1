@@ -32,7 +32,7 @@ public class RegionAllocator2 extends Allocator {
   static final int LOG_UNIT_SIZE = 9;
   static final int UNIT_SIZE = 1 << LOG_UNIT_SIZE;
   static final int MIN_TLAB_SIZE = 2 * 1024;
-  static final int MAX_TLAB_SIZE = VM.activePlan.constraints().maxNonLOSCopyBytes();
+  static final int MAX_TLAB_SIZE = VM.activePlan.constraints().maxNonLOSDefaultAllocBytes();
 
   protected final RegionSpace space;
   protected final int spaceDescriptor;

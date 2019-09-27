@@ -48,7 +48,7 @@ public class G1Collector extends StopTheWorldCollector {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator2 copy = new RegionAllocator2(G1.regionSpace, Region.OLD);
+  protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.OLD);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
   protected final G1EvacuateTraceLocal evacuateTrace = new G1EvacuateTraceLocal(global().evacuateTrace);
   protected TraceLocal currentTrace;
@@ -75,7 +75,7 @@ public class G1Collector extends StopTheWorldCollector {
   @Override
   @Inline
   public Address allocCopy(ObjectReference original, int bytes, int align, int offset, int allocator) {
-    return copy.alloc(bytes, align, offset);
+    return g1.alloc(bytes, align, offset);
   }
 
   @Override
@@ -114,25 +114,10 @@ public class G1Collector extends StopTheWorldCollector {
       return;
     }
 
-//    if (phaseId == G1.EAGER_CLEANUP) {
-//      atomicCounter.set(0);
-//      rendezvous();
-//      int index;
-//      while ((index = atomicCounter.add(1)) < G1.relocationSet.length()) {
-//        Address region = G1.relocationSet.get(index);
-//        if (!region.isZero() && Region.usedSize(region) == 0) {
-//          G1.relocationSet.set(index, Address.zero());
-//          G1.regionSpace.release(region);
-//        }
-//      }
-//      rendezvous();
-//      return;
-//    }
-
     if (phaseId == G1.EVACUATE_PREPARE) {
       currentTrace = evacuateTrace;
       evacuateTrace.prepare();
-      copy.reset();
+      g1.reset();
       super.collectionPhase(G1.PREPARE, primary);
       return;
     }
@@ -144,7 +129,7 @@ public class G1Collector extends StopTheWorldCollector {
 
     if (phaseId == G1.EVACUATE_RELEASE) {
       evacuateTrace.release();
-      copy.reset();
+      g1.reset();
       super.collectionPhase(G1.RELEASE, primary);
       return;
     }

@@ -48,7 +48,7 @@ public class G1Mutator extends StopTheWorldMutator {
   /****************************************************************************
    * Instance fields
    */
-  protected final RegionAllocator2 ra;
+  protected final RegionAllocator2 g1;
 
   /****************************************************************************
    *
@@ -59,7 +59,7 @@ public class G1Mutator extends StopTheWorldMutator {
    * Constructor
    */
   public G1Mutator() {
-    ra = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
+    g1 = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
   }
 
   /****************************************************************************
@@ -73,27 +73,26 @@ public class G1Mutator extends StopTheWorldMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
-    if (allocator == G1.ALLOC_G1) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(bytes <= Region.BYTES_IN_REGION);
-      return ra.alloc(bytes, align, offset);
-    } else {
-      return super.alloc(bytes, align, offset, allocator, site);
+    switch (allocator) {
+      case G1.ALLOC_G1:  return g1.alloc(bytes, align, offset);
+      case G1.ALLOC_LOS: return los.alloc(bytes, align, offset);
+      default:           return immortal.alloc(bytes, align, offset);
     }
   }
 
   @Override
   @Inline
-  public void postAlloc(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    if (allocator == G1.ALLOC_G1) {
-//      Regional.regionSpace.initializeHeader(object, bytes);
-    } else {
-      super.postAlloc(object, typeRef, bytes, allocator);
+  public void postAlloc(ObjectReference ref, ObjectReference typeRef, int bytes, int allocator) {
+    switch (allocator) {
+      case G1.ALLOC_G1:  return;
+      case G1.ALLOC_LOS: G1.loSpace.initializeHeader(ref, true); return;
+      default:           G1.immortalSpace.initializeHeader(ref);  return;
     }
   }
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
-    if (space == G1.regionSpace) return ra;
+    if (space == G1.regionSpace) return g1;
     return super.getAllocatorFromSpace(space);
   }
 
@@ -112,27 +111,31 @@ public class G1Mutator extends StopTheWorldMutator {
       Log.writeln(Phase.getName(phaseId));
     }
     if (phaseId == G1.PREPARE) {
-      ra.adjustTLABSize();
-      ra.reset();
-      super.collectionPhase(phaseId, primary);
+      g1.adjustTLABSize();
+      g1.reset();
+      los.prepare(true);
+      VM.memory.collectorPrepareVMSpace();
       return;
     }
 
     if (phaseId == G1.RELEASE) {
-      ra.reset();
-      super.collectionPhase(phaseId, primary);
+      g1.reset();
+      los.release(true);
+      VM.memory.collectorReleaseVMSpace();
       return;
     }
 
     if (phaseId == G1.EVACUATE_PREPARE) {
-      ra.reset();
-      super.collectionPhase(G1.PREPARE, primary);
+      g1.reset();
+      los.prepare(true);
+      VM.memory.collectorPrepareVMSpace();
       return;
     }
 
     if (phaseId == G1.EVACUATE_RELEASE) {
-      ra.reset();
-      super.collectionPhase(G1.RELEASE, primary);
+      g1.reset();
+      los.release(true);
+      VM.memory.collectorReleaseVMSpace();
       return;
     }
 
@@ -141,7 +144,7 @@ public class G1Mutator extends StopTheWorldMutator {
 
   @Override
   public void flushRememberedSets() {
-    ra.reset();
+    g1.reset();
     assertRemsetsFlushed();
   }
 
