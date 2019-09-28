@@ -128,6 +128,7 @@ public final class RegionSpace extends Space {
     while (!(r = regionIterator.next()).isZero()) {
       Region.clearMarkBitMapForRegion(r);
       Region.setUsedSize(r, 0);
+      Region.updatePrevCursor(r);
       // Set TAMS
       if (!nursery) {
 //        Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
@@ -316,11 +317,12 @@ public final class RegionSpace extends Space {
   @Inline
   public void postCopy(ObjectReference object, int size) {
     ForwardingWord.clearForwardingBits(object);
+//    MarkTable.writeMarkState(object);
 //    testAndMark(object);
 //    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
 //    object.toAddress().store(Word.zero(), VM.objectModel.GC_HEADER_OFFSET());
 //    ForwardingWord.clearForwardingBits(object);
-    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
+//    if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
   }
 
   /**
@@ -506,19 +508,19 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public boolean isLive(ObjectReference object) {
-    if (ForwardingWord.isForwarded(object)) return true;
+    if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
     Address region = Region.of(object);
-    Address TAMS = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
-    if (VM.VERIFY_ASSERTIONS) {
-      if (TAMS.LT(region)) {
-        Log.write("Invalid tams ", TAMS);
-        Log.writeln(" region ", region);
-        VM.objectModel.dumpObject(object);
-      }
-      VM.assertions._assert(TAMS.GE(region));
-      VM.assertions._assert(TAMS.LE(region.plus(Region.BYTES_IN_REGION)));
-    }
-    if (VM.objectModel.objectStartRef(object).GE(TAMS)) return true;
+    Address prevCursor = Region.metaDataOf(region, Region.METADATA_PREV_CURSOR_OFFSET).loadAddress();
+//    if (VM.VERIFY_ASSERTIONS) {
+//      if (TAMS.LT(region)) {
+//        Log.write("Invalid tams ", TAMS);
+//        Log.writeln(" region ", region);
+//        VM.objectModel.dumpObject(object);
+//      }
+//      VM.assertions._assert(TAMS.GE(region));
+//      VM.assertions._assert(TAMS.LE(region.plus(Region.BYTES_IN_REGION)));
+//    }
+    if (VM.objectModel.objectStartRef(object).GE(prevCursor)) return true;
 //    Address tams = Region.metaDataOf(Region.of(object), Region.METADATA_TAMS_OFFSET).loadAddress();
 //    if (VM.objectModel.refToAddress(object).GE(tams)) {
 //      return true;
@@ -526,12 +528,12 @@ public final class RegionSpace extends Space {
     return MarkTable.isMarked(object);
   }
 
-  @Inline
-  public boolean isAfterTAMS(ObjectReference object) {
-    Address region = Region.of(object);
-    Address TAMS = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
-    return VM.objectModel.objectStartRef(object).GE(TAMS);
-  }
+//  @Inline
+//  public boolean isAfterTAMS(ObjectReference object) {
+//    Address region = Region.of(object);
+//    Address TAMS = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
+//    return VM.objectModel.objectStartRef(object).GE(TAMS);
+//  }
 
 //  @Inline
 //  public float heapWastePercent(boolean oldGenerationOnly) {

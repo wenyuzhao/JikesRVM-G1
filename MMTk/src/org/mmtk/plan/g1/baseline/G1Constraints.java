@@ -46,4 +46,12 @@ public class G1Constraints extends StopTheWorldConstraints {
   public int maxNonLOSDefaultAllocBytes() {
     return Region.MAX_ALLOC_SIZE;
   }
+
+  // G1 Specific features
+  public boolean g1ConcurrentMarking() { return true; }
+
+  // Derived
+  @Override public boolean needsConcurrentWorkers() { return g1ConcurrentMarking(); }
+  @Override public boolean needsObjectReferenceWriteBarrier() { return g1ConcurrentMarking(); }
+  @Override public boolean needsJavaLangReferenceReadBarrier() { return g1ConcurrentMarking(); }
 }

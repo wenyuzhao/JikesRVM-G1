@@ -90,17 +90,17 @@ public class Region {
   public static final int METADATA_REMSET_PAGES_OFFSET = METADATA_REMSET_SIZE_OFFSET + BYTES_IN_INT;
   public static final int METADATA_REMSET_POINTER_OFFSET = METADATA_REMSET_PAGES_OFFSET + BYTES_IN_INT;
   public static final int METADATA_GENERATION_OFFSET = METADATA_REMSET_POINTER_OFFSET + BYTES_IN_ADDRESS;
-  public static final int METADATA_TAMS_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
-  private static final int PER_REGION_METADATA_BYTES = METADATA_TAMS_OFFSET + BYTES_IN_ADDRESS;
+//  public static final int METADATA_TAMS_OFFSET = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
+  private static final int PER_REGION_METADATA_BYTES = METADATA_GENERATION_OFFSET + BYTES_IN_ADDRESS;
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE;
 
   public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE)  + 1;
 
   static {
-    if (VM.VERIFY_ASSERTIONS) {
-      VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
-      VM.assertions._assert(PER_REGION_METADATA_BYTES == 40);
-    }
+//    if (VM.VERIFY_ASSERTIONS) {
+//      VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
+//      VM.assertions._assert(PER_REGION_METADATA_BYTES == 40);
+//    }
   }
 
   @Inline
@@ -156,6 +156,12 @@ public class Region {
   @Inline
   public static int usedSize(Address region) {
     int size = metaDataOf(region, METADATA_ALIVE_SIZE_OFFSET).loadInt();
+    Address prevCursor = metaDataOf(region, METADATA_PREV_CURSOR_OFFSET).loadAddress();
+    Address nextCursor = metaDataOf(region, METADATA_NEXT_CURSOR_OFFSET).loadAddress();
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(nextCursor.GE(prevCursor));
+    int b = nextCursor.diff(prevCursor).toInt();
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(b >= 0);
+    return size + b;
 //    Address cursor = Region.metaDataOf(region, Region.METADATA_CURSOR_OFFSET).loadAddress();
 //    Address tams = Region.metaDataOf(region, Region.METADATA_TAMS_OFFSET).loadAddress();
 //    if (VM.VERIFY_ASSERTIONS) {
@@ -167,7 +173,7 @@ public class Region {
 //    }
 //    int delta = cursor.diff(tams).toInt();
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(delta >= 0);
-    return size;// + delta;
+//    return size;// + delta;
   }
 
   @Inline
@@ -181,7 +187,7 @@ public class Region {
     metaDataOf(region, METADATA_ALLOCATED_OFFSET).store((byte) 1);
     metaDataOf(region, METADATA_PREV_CURSOR_OFFSET).store(region);
     metaDataOf(region, METADATA_NEXT_CURSOR_OFFSET).store(region);
-    metaDataOf(region, METADATA_TAMS_OFFSET).store(region);
+//    metaDataOf(region, METADATA_TAMS_OFFSET).store(region);
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
@@ -196,6 +202,21 @@ public class Region {
   @Inline
   public static boolean allocated(Address region) {
     return metaDataOf(region, METADATA_ALLOCATED_OFFSET).loadByte() != ((byte) 0);
+  }
+
+  @Inline
+  public static void updatePrevCursor(Address region) {
+    Address nextCursor = metaDataOf(region, METADATA_NEXT_CURSOR_OFFSET).loadAddress();
+    metaDataOf(region, METADATA_PREV_CURSOR_OFFSET).store(nextCursor);
+  }
+
+  @Inline
+  public static boolean allocatedWithinConurrentMarking(ObjectReference o) {
+    Address a = VM.objectModel.refToAddress(o);
+    Address region = Region.of(a);
+    Address prevCursor = metaDataOf(region, METADATA_PREV_CURSOR_OFFSET).loadAddress();
+    Address nextCursor = metaDataOf(region, METADATA_NEXT_CURSOR_OFFSET).loadAddress();
+    return prevCursor.LE(a) && a.LE(nextCursor);
   }
 
   @Inline

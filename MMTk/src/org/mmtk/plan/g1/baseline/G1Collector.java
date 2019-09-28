@@ -12,17 +12,16 @@
  */
 package org.mmtk.plan.g1.baseline;
 
-import org.mmtk.plan.CollectorContext;
-import org.mmtk.plan.Phase;
-import org.mmtk.plan.StopTheWorldCollector;
-import org.mmtk.plan.TraceLocal;
+import org.mmtk.plan.*;
 import org.mmtk.policy.region.Region;
 import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator2;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
@@ -43,16 +42,16 @@ import org.vmmagic.unboxed.ObjectReference;
  * @see CollectorContext
  */
 @Uninterruptible
-public class G1Collector extends StopTheWorldCollector {
+public class G1Collector extends G1CollectorBase {
 
-  /****************************************************************************
-   * Instance fields
-   */
+  protected static final byte MARK_TRACE = 0;
+  protected static final byte EVACUATE_TRACE = 1;
+
+  protected final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
   protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.OLD);
-  protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace);
+  protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace, modbuf);
   protected final G1EvacuateTraceLocal evacuateTrace = new G1EvacuateTraceLocal(global().evacuateTrace);
-  protected TraceLocal currentTrace;
-  private static final Atomic.Int atomicCounter = new Atomic.Int();
+  protected byte currentTrace = MARK_TRACE;
 
   /****************************************************************************
    *
@@ -62,12 +61,9 @@ public class G1Collector extends StopTheWorldCollector {
   /**
    * Constructor
    */
-  public G1Collector() {}
-
-  /****************************************************************************
-   *
-   * Collection-time allocation
-   */
+  public G1Collector() {
+    super();
+  }
 
   /**
    * {@inheritDoc}
@@ -96,8 +92,23 @@ public class G1Collector extends StopTheWorldCollector {
 //  @Inline
   public void collectionPhase(short phaseId, boolean primary) {
     if (G1.VERBOSE) Log.writeln(Phase.getName(phaseId));
+
+    if (phaseId == G1.FLUSH_COLLECTOR) {
+      if (G1.VERBOSE) Log.writeln(Phase.getName(phaseId));
+      getCurrentTrace().processRoots();
+      getCurrentTrace().flush();
+      if (G1.VERBOSE) Log.writeln("flush-collector end");
+      return;
+    }
+
+    if (phaseId == G1.FINAL_MARK) {
+      if (G1.VERBOSE) Log.writeln(Phase.getName(phaseId));
+      getCurrentTrace().completeTrace();
+      return;
+    }
+
     if (phaseId == G1.PREPARE) {
-      currentTrace = markTrace;
+      currentTrace = MARK_TRACE;
       markTrace.prepare();
       super.collectionPhase(phaseId, primary);
       return;
@@ -109,13 +120,14 @@ public class G1Collector extends StopTheWorldCollector {
     }
 
     if (phaseId == G1.RELEASE) {
+      markTrace.completeTrace();
       markTrace.release();
       super.collectionPhase(phaseId, primary);
       return;
     }
 
     if (phaseId == G1.EVACUATE_PREPARE) {
-      currentTrace = evacuateTrace;
+      currentTrace = EVACUATE_TRACE;
       evacuateTrace.prepare();
       g1.reset();
       super.collectionPhase(G1.PREPARE, primary);
@@ -147,14 +159,8 @@ public class G1Collector extends StopTheWorldCollector {
    * Miscellaneous
    */
 
-  /** @return The active global plan as an <code>RegionalCopy</code> instance. */
-  @Inline
-  private static G1 global() {
-    return (G1) VM.activePlan.global();
-  }
-
   @Override
   public TraceLocal getCurrentTrace() {
-    return currentTrace;
+    return currentTrace == MARK_TRACE ? markTrace : evacuateTrace;
   }
 }

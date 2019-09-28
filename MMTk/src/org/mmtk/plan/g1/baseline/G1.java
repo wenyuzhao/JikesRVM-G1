@@ -13,11 +13,11 @@
 package org.mmtk.plan.g1.baseline;
 
 import org.mmtk.plan.*;
-import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
+import org.mmtk.utility.deque.SharedDeque;
 import org.mmtk.utility.heap.VMRequest;
 import org.mmtk.utility.options.*;
 import org.mmtk.utility.sanitychecker.SanityChecker;
@@ -27,20 +27,28 @@ import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Word;
 
 /**
  * This class implements a simple region-based collector.
  */
 @Uninterruptible
-public class G1 extends StopTheWorld {
+public class G1 extends G1Base {
 
   public static final boolean VERBOSE = false;
 
   public static final RegionSpace regionSpace = new RegionSpace("region", VMRequest.discontiguous());
   public static final int REGION_SPACE = regionSpace.getDescriptor();
+  public static final int ALLOC_G1 = Plan.ALLOC_DEFAULT;
+  public static final int SCAN_MARK = 0;
+  public static final int SCAN_EVACUATE = 1;
+
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace evacuateTrace = new Trace(metaDataSpace);
   public static AddressArray blocksSnapshot, relocationSet;
+  public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
+  protected boolean inConcurrentCollection = false;
+
   //public static boolean concurrentMarkingInProgress = false;
 
   static {
@@ -55,74 +63,21 @@ public class G1 extends StopTheWorld {
     nonMovingSpace.makeAllocAsMarked();
   }
 
-  public static final int ALLOC_G1 = Plan.ALLOC_DEFAULT;
-  public static final int SCAN_MARK = 0;
-  public static final int SCAN_EVACUATE = 1;
-
-  /* Phases */
-//  public static final short EAGER_CLEANUP = Phase.createSimple("eager-cleanup");
-  public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
-  public static final short EVACUATE_CLOSURE = Phase.createSimple("evacuate-closure");
-  public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
-  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
-
-  public static final short evacuatePhase = Phase.createComplex("evacuate", null,
-    Phase.scheduleMutator  (EVACUATE_PREPARE),
-    Phase.scheduleGlobal   (EVACUATE_PREPARE),
-    Phase.scheduleCollector(EVACUATE_PREPARE),
-    // Roots
-    Phase.scheduleMutator  (PREPARE_STACKS),
-    Phase.scheduleGlobal   (PREPARE_STACKS),
-    Phase.scheduleCollector(STACK_ROOTS),
-    Phase.scheduleGlobal   (STACK_ROOTS),
-    Phase.scheduleCollector(ROOTS),
-    Phase.scheduleGlobal   (ROOTS),
-    Phase.scheduleGlobal   (EVACUATE_CLOSURE),
-    Phase.scheduleCollector(EVACUATE_CLOSURE),
-    // Refs
-    Phase.scheduleCollector(SOFT_REFS),
-    Phase.scheduleGlobal   (EVACUATE_CLOSURE),
-    Phase.scheduleCollector(EVACUATE_CLOSURE),
-    Phase.scheduleCollector(WEAK_REFS),
-    Phase.scheduleCollector(FINALIZABLE),
-    Phase.scheduleGlobal   (EVACUATE_CLOSURE),
-    Phase.scheduleCollector(EVACUATE_CLOSURE),
-    Phase.scheduleCollector(PHANTOM_REFS),
-
-    Phase.scheduleMutator  (EVACUATE_RELEASE),
-    Phase.scheduleCollector(EVACUATE_RELEASE),
-    Phase.scheduleGlobal   (EVACUATE_RELEASE)
-  );
-
-
-
-
-  public short _collection = Phase.createComplex("_collection", null,
-    Phase.scheduleComplex  (initPhase),
-    // Mark
-    Phase.scheduleComplex  (rootClosurePhase),
-    Phase.scheduleComplex  (refTypeClosurePhase),
-    Phase.scheduleComplex  (completeClosurePhase),
-
-    // Select relocation sets
-    Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
-//    Phase.scheduleCollector(EAGER_CLEANUP),
-
-    // Evacuate
-    Phase.scheduleComplex  (evacuatePhase),
-
-    // Cleanup
-    Phase.scheduleCollector(CLEANUP_BLOCKS),
-
-    Phase.scheduleComplex  (finishPhase)
-  );
 
   /**
    * Constructor
    */
   public G1() {
     collection = _collection;
+  }
+
+  @Override
+  @Interruptible
+  public void processOptions() {
+    super.processOptions();
+    if (ENABLE_CONCURRENT_MARKING) {
+      replacePhase(Phase.scheduleCollector(CLOSURE), Phase.scheduleComplex(concurrentClosure));
+    }
   }
 
   /**
@@ -133,8 +88,25 @@ public class G1 extends StopTheWorld {
     if (VERBOSE) {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
+      Log.writeln( ENABLE_CONCURRENT_MARKING ? "ENABLE_CONCURRENT_MARKING=1" : "ENABLE_CONCURRENT_MARKING=0");
     }
+//
+    if (phaseId == SET_BARRIER_ACTIVE) {
+      G1Mutator.newMutatorBarrierActive = true;
+      return;
+    }
+
+    if (phaseId == CLEAR_BARRIER_ACTIVE) {
+      G1Mutator.newMutatorBarrierActive = false;
+      return;
+    }
+
     if (phaseId == PREPARE) {
+      if (ENABLE_CONCURRENT_MARKING) {
+        inConcurrentCollection = true;
+        modbufPool.reset();
+        modbufPool.prepareNonBlocking();
+      }
       loSpace.prepare(true);
       immortalSpace.prepare();
       VM.memory.globalPrepareVMSpace();
@@ -148,6 +120,10 @@ public class G1 extends StopTheWorld {
     }
 
     if (phaseId == RELEASE) {
+      if (ENABLE_CONCURRENT_MARKING) {
+        inConcurrentCollection = false;
+        modbufPool.reset();//(1);
+      }
       markTrace.release();
       loSpace.release(true);
       immortalSpace.release();
@@ -208,6 +184,17 @@ public class G1 extends StopTheWorld {
 //  }
 
   @Override
+  protected boolean concurrentCollectionRequired() {
+    if (!ENABLE_CONCURRENT_MARKING) return false;
+    boolean x = !Phase.concurrentPhaseActive() &&
+        ((getPagesReserved() * 100) / getTotalPages()) > 45;
+    if (x) {
+//      Log.writeln("[CONC MARK]");
+    }
+    return x;
+  }
+
+  @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
     final int totalPages = getTotalPages();
     final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
@@ -256,5 +243,29 @@ public class G1 extends StopTheWorld {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, G1MarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_EVACUATE, G1EvacuateTraceLocal.class);
     super.registerSpecializedMethods();
+  }
+
+  final static Word LOG_MASK = Word.one().lsh(2);
+
+  @Inline
+  public static boolean attemptLog(ObjectReference o) {
+    Word oldValue, newValue;
+    do {
+      oldValue = VM.objectModel.prepareAvailableBits(o);
+      if (!oldValue.and(LOG_MASK).isZero()) return false;
+      newValue = oldValue.or(LOG_MASK);
+    } while (!VM.objectModel.attemptAvailableBits(o, oldValue, newValue));
+    return true;
+  }
+
+  @Inline
+  public static boolean attemptUnlog(ObjectReference o) {
+    Word oldValue, newValue;
+    do {
+      oldValue = VM.objectModel.prepareAvailableBits(o);
+      if (oldValue.and(LOG_MASK).isZero()) return false;
+      newValue = oldValue.and(LOG_MASK.not());
+    } while (!VM.objectModel.attemptAvailableBits(o, oldValue, newValue));
+    return true;
   }
 }

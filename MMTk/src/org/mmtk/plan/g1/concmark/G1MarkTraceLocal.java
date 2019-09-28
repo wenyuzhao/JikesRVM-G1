@@ -13,11 +13,13 @@
 package org.mmtk.plan.g1.concmark;
 
 import org.mmtk.plan.Trace;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
 public class G1MarkTraceLocal extends org.mmtk.plan.g1.baseline.G1MarkTraceLocal {
-  public G1MarkTraceLocal(Trace trace) {
-    super(trace);
+  public G1MarkTraceLocal(Trace trace, ObjectReferenceDeque modbuf) {
+    super(trace, modbuf);
   }
 }

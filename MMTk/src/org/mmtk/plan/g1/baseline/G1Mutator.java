@@ -15,16 +15,22 @@ package org.mmtk.plan.g1.baseline;
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.policy.region.MarkTable;
 import org.mmtk.policy.region.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.RegionAllocator2;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
+import org.vmmagic.unboxed.Offset;
+import org.vmmagic.unboxed.Word;
+
+import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
 
 /**
  * This class implements <i>per-mutator thread</i> behavior
@@ -45,22 +51,10 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class G1Mutator extends StopTheWorldMutator {
 
-  /****************************************************************************
-   * Instance fields
-   */
-  protected final RegionAllocator2 g1;
-
-  /****************************************************************************
-   *
-   * Initialization
-   */
-
-  /**
-   * Constructor
-   */
-  public G1Mutator() {
-    g1 = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
-  }
+  public static boolean newMutatorBarrierActive = false;
+  protected volatile boolean barrierActive = newMutatorBarrierActive;
+  private final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+  protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
 
   /****************************************************************************
    *
@@ -115,6 +109,7 @@ public class G1Mutator extends StopTheWorldMutator {
       g1.reset();
       los.prepare(true);
       VM.memory.collectorPrepareVMSpace();
+      modbuf.reset();
       return;
     }
 
@@ -122,6 +117,7 @@ public class G1Mutator extends StopTheWorldMutator {
       g1.reset();
       los.release(true);
       VM.memory.collectorReleaseVMSpace();
+      modbuf.flushLocal();
       return;
     }
 
@@ -139,13 +135,58 @@ public class G1Mutator extends StopTheWorldMutator {
       return;
     }
 
+    if (phaseId == G1.SET_BARRIER_ACTIVE) {
+      barrierActive = true;
+      return;
+    }
+
+    if (phaseId == G1.CLEAR_BARRIER_ACTIVE) {
+      barrierActive = false;
+      return;
+    }
+
+    if (phaseId == G1.FLUSH_MUTATOR) {
+      flush();
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
 
   @Override
   public void flushRememberedSets() {
     g1.reset();
+    if (G1.ENABLE_CONCURRENT_MARKING) modbuf.flushLocal();
     assertRemsetsFlushed();
+  }
+
+  @Inline
+  protected void checkAndEnqueueReference(ObjectReference ref) {
+    if (!ref.isNull() && G1.attemptLog(ref)) {
+      modbuf.insertOutOfLine(ref);
+    }
+  }
+
+  @Inline
+  @Override
+  public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
+    if (barrierActive) checkAndEnqueueReference(slot.loadObjectReference());
+    VM.barriers.objectReferenceWrite(src, tgt, metaDataA, metaDataB, mode);
+  }
+
+  @Inline
+  @Override
+  public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
+    boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, tgt, metaDataA, metaDataB, mode);
+    if (barrierActive) checkAndEnqueueReference(old);
+    return result;
+  }
+
+  @Inline
+  @Override
+  public ObjectReference javaLangReferenceReadBarrier(ObjectReference ref) {
+    if (barrierActive) checkAndEnqueueReference(ref);
+    return ref;
   }
 
   @Inline

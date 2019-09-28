@@ -15,6 +15,7 @@ package org.mmtk.plan.g1.baseline;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.ObjectReference;
@@ -25,11 +26,24 @@ import org.vmmagic.unboxed.ObjectReference;
  */
 @Uninterruptible
 public class G1MarkTraceLocal extends TraceLocal {
+  private final ObjectReferenceDeque modbuf;
 
-  public G1MarkTraceLocal(Trace trace) {
+  public G1MarkTraceLocal(Trace trace, ObjectReferenceDeque modbuf) {
     super(G1.SCAN_MARK, trace);
+    this.modbuf = modbuf;
   }
 
+  @Override
+  public void prepare() {
+    super.release();
+    modbuf.reset();
+  }
+
+  @Override
+  public void release() {
+    super.release();
+    modbuf.reset();
+  }
 
   @Override
   protected boolean overwriteReferenceDuringTrace() {
@@ -70,6 +84,16 @@ public class G1MarkTraceLocal extends TraceLocal {
       return true;
     } else {
       return super.willNotMoveInCurrentCollection(object);
+    }
+  }
+
+  @Override
+  protected void processRememberedSets() {
+    if (!G1.ENABLE_CONCURRENT_MARKING) return;
+    ObjectReference obj;
+    while (!(obj = modbuf.pop()).isNull()) {
+      if (G1.attemptUnlog(obj))
+        traceObject(obj);
     }
   }
 }
