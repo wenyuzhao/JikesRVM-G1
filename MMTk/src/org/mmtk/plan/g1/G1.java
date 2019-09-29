@@ -110,6 +110,7 @@ public class G1 extends G1Base {
       loSpace.prepare(true);
       immortalSpace.prepare();
       VM.memory.globalPrepareVMSpace();
+      regionSpace.clearNextMarkTables();
       regionSpace.prepare();
       markTrace.prepareNonBlocking();
       return;
@@ -142,6 +143,7 @@ public class G1 extends G1Base {
       loSpace.prepare(true);
       immortalSpace.prepare();
       VM.memory.globalPrepareVMSpace();
+      regionSpace.shiftMarkTables();
       regionSpace.prepare();
       evacuateTrace.prepare();
       return;

@@ -107,14 +107,30 @@ public final class RegionSpace extends Space {
     prepare(false);
   }
 
-  public void clearCSetMarkMap() {
+  public void clearNextMarkTables() {
     Address r;
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
-      if (Region.getBool(r, Region.MD_RELOCATE))
-        Region.clearMarkBitMapForRegion(r);
+      MarkTable.clearNextTable(r);
     }
   }
+
+  public void shiftMarkTables() {
+    Address r;
+    regionIterator.reset();
+    while (!(r = regionIterator.next()).isZero()) {
+      MarkTable.shiftTables(r);
+    }
+  }
+
+//  public void clearCSetMarkMap() {
+//    Address r;
+//    regionIterator.reset();
+//    while (!(r = regionIterator.next()).isZero()) {
+//      if (Region.getBool(r, Region.MD_RELOCATE))
+//        Region.clearMarkBitMapForRegion(r);
+//    }
+//  }
 
   @NoInline
   public void prepare(boolean nursery) {
@@ -124,7 +140,7 @@ public final class RegionSpace extends Space {
     Address r;
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
-      Region.clearMarkBitMapForRegion(r);
+//      Region.clearMarkBitMapForRegion(r);
       Region.set(r, Region.MD_LIVE_SIZE, 0);
       Region.updatePrevCursor(r);
       // Set TAMS
@@ -361,7 +377,7 @@ public final class RegionSpace extends Space {
 //      VM.assertions._assert(!ForwardingWord.isForwardedOrBeingForwarded(object));
 //    }
 
-    if (MarkTable.testAndMark(object)) {
+    if (MarkTable.testAndMarkNext(object)) {
       if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.attemptLog(object);
 //      Log.writeln("Mark ", object);
       Address region = Region.of(object);
@@ -412,26 +428,26 @@ public final class RegionSpace extends Space {
     }
   }
 
-  @Inline
-  public ObjectReference traceForwardCSetObject(TransitiveClosure trace, ObjectReference object) {
-//    if (Region.relocationRequired(Region.of(object)))
-    if (!ForwardingWord.isForwarded(object)) {
-//      if (VM.VERIFY_ASSERTIONS)
-//        VM.assertions._assert(!Region.relocationRequired(Region.of(object)));
-      return object;
-    }
-    if (VM.VERIFY_ASSERTIONS)
-      VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_RELOCATE));
-//    Word status = VM.objectModel.readAvailableBitsWord(object);
-    ObjectReference ref = ForwardingWord.getForwardedObject(object);
-
-    if (MarkTable.testAndMark(ref)) trace.processNode(ref);
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
-    return ref;
-//    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
-//    object = newObject.isNull() ? object : newObject;
-//    return object;
-  }
+//  @Inline
+//  public ObjectReference traceForwardCSetObject(TransitiveClosure trace, ObjectReference object) {
+////    if (Region.relocationRequired(Region.of(object)))
+//    if (!ForwardingWord.isForwarded(object)) {
+////      if (VM.VERIFY_ASSERTIONS)
+////        VM.assertions._assert(!Region.relocationRequired(Region.of(object)));
+//      return object;
+//    }
+//    if (VM.VERIFY_ASSERTIONS)
+//      VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_RELOCATE));
+////    Word status = VM.objectModel.readAvailableBitsWord(object);
+//    ObjectReference ref = ForwardingWord.getForwardedObject(object);
+//
+//    if (MarkTable.testAndMark(ref)) trace.processNode(ref);
+////    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(ref));
+//    return ref;
+////    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
+////    object = newObject.isNull() ? object : newObject;
+////    return object;
+//  }
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationAccumulator evacuationTimer) {
@@ -456,7 +472,7 @@ public final class RegionSpace extends Space {
         return newObject;
       }
     } else {
-      if (MarkTable.testAndMark(object)) {
+      if (MarkTable.testAndMarkNext(object)) {
 //        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         trace.processNode(object);
       }
@@ -464,38 +480,38 @@ public final class RegionSpace extends Space {
     }
   }
 
-  @Inline
-  public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
-    if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
-//      Word status = VM.objectModel.readAvailableBitsWord(object);
-      object = ForwardingWord.getForwardedObject(object);
+//  @Inline
+//  public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
+//    if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
+////      Word status = VM.objectModel.readAvailableBitsWord(object);
+//      object = ForwardingWord.getForwardedObject(object);
+////
+////      if (VM.VERIFY_ASSERTIONS) {
+////        VM.assertions._assert(!object.isNull());
+////      }
+//    }
 //
-//      if (VM.VERIFY_ASSERTIONS) {
-//        VM.assertions._assert(!object.isNull());
-//      }
-    }
-
-//    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
-//    if (VM.VERIFY_ASSERTIONS) {
-//      if (Region.relocationRequired(Region.of(object))) {
-//        if (newObject.isNull())
-//          Log.writeln("Unforwarded object ", object);
-//        VM.assertions._assert(!newObject.isNull());
-//        VM.assertions._assert(newObject.toAddress().NE(object.toAddress()));
-//      }
+////    ObjectReference newObject = ForwardingWord.getForwardedObject(object);
+////    if (VM.VERIFY_ASSERTIONS) {
+////      if (Region.relocationRequired(Region.of(object))) {
+////        if (newObject.isNull())
+////          Log.writeln("Unforwarded object ", object);
+////        VM.assertions._assert(!newObject.isNull());
+////        VM.assertions._assert(newObject.toAddress().NE(object.toAddress()));
+////      }
+////    }
+////    object = newObject.isNull() ? object : newObject;
+////    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//    if (MarkTable.testAndMark(object)) {
+////      HeaderByte.markAsLogged(object);
+//      trace.processNode(object);
 //    }
-//    object = newObject.isNull() ? object : newObject;
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-    if (MarkTable.testAndMark(object)) {
-//      HeaderByte.markAsLogged(object);
-      trace.processNode(object);
-    }
-//    if (HeaderByte.isUnlogged(object)) {
-//      VM.assertions.fail("Redirected object set is unlogged");
-//    }
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-    return object;
-  }
+////    if (HeaderByte.isUnlogged(object)) {
+////      VM.assertions.fail("Redirected object set is unlogged");
+////    }
+////    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
+//    return object;
+//  }
 
   /**
    * Generic test of the liveness of an object
@@ -506,24 +522,21 @@ public final class RegionSpace extends Space {
   @Override
   @Inline
   public boolean isLive(ObjectReference object) {
+    VM.assertions.fail("Unreachable");
+    return false;
+  }
+
+  @Inline
+  public boolean isLivePrev(ObjectReference object) {
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
-    Address region = Region.of(object);
-    Address prevCursor = Region.getAddress(region, Region.MD_PREV_CURSOR);
-//    if (VM.VERIFY_ASSERTIONS) {
-//      if (TAMS.LT(region)) {
-//        Log.write("Invalid tams ", TAMS);
-//        Log.writeln(" region ", region);
-//        VM.objectModel.dumpObject(object);
-//      }
-//      VM.assertions._assert(TAMS.GE(region));
-//      VM.assertions._assert(TAMS.LE(region.plus(Region.BYTES_IN_REGION)));
-//    }
-    if (VM.objectModel.objectStartRef(object).GE(prevCursor)) return true;
-//    Address tams = Region.metaDataOf(Region.of(object), Region.METADATA_TAMS_OFFSET).loadAddress();
-//    if (VM.objectModel.refToAddress(object).GE(tams)) {
-//      return true;
-//    }
-    return MarkTable.isMarked(object);
+    if (Region.allocatedWithinConurrentMarking(object)) return true;
+    return MarkTable.isMarkedPrev(object);
+  }
+  @Inline
+  public boolean isLiveNext(ObjectReference object) {
+    if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
+    if (Region.allocatedWithinConurrentMarking(object)) return true;
+    return MarkTable.isMarkedNext(object);
   }
 
 //  @Inline

@@ -76,12 +76,15 @@ public class Region {
   // Mark table
   private static final int LOG_PAGES_IN_MARKTABLE = 5;
   public static final int BYTES_IN_MARKTABLE = 1 << (LOG_PAGES_IN_MARKTABLE + LOG_BYTES_IN_PAGE);
+  public static final int MARKTABLE0_OFFSET = 0;
+  public static final int MARKTABLE1_OFFSET = BYTES_IN_MARKTABLE;
   public static final int MARK_BYTES_PER_REGION = BYTES_IN_MARKTABLE / (REGIONS_IN_CHUNK + 1);
   // Per region metadata (offsets)
   public static final int MD_LIVE_SIZE = 0;
   public static final int MD_RELOCATE = MD_LIVE_SIZE + BYTES_IN_INT;
   public static final int MD_ALLOCATED = MD_RELOCATE + BYTES_IN_SHORT;//BYTES_IN_BYTE;
-  public static final int MD_PREV_CURSOR = MD_ALLOCATED + BYTES_IN_SHORT;//BYTES_IN_BYTE;
+  public static final int MD_ACTIVE_MARKTABLE = MD_ALLOCATED + BYTES_IN_SHORT;
+  public static final int MD_PREV_CURSOR = MD_ACTIVE_MARKTABLE + BYTES_IN_INT;//BYTES_IN_BYTE;
   public static final int MD_NEXT_CURSOR = MD_PREV_CURSOR + BYTES_IN_ADDRESS;//BYTES_IN_BYTE;
   public static final int MD_REMSET_LOCK = MD_NEXT_CURSOR + BYTES_IN_ADDRESS;
   public static final int MD_REMSET_SIZE = MD_REMSET_LOCK + BYTES_IN_INT;
@@ -148,20 +151,6 @@ public class Region {
   }
 
   @Inline
-  public static void clearMarkBitMapForRegion(Address region) {
-    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
-    int index = indexOf(region) + 1;
-    Address start = chunk.plus(index * MARK_BYTES_PER_REGION);
-    if (VM.VERIFY_ASSERTIONS) {
-//      Log.writeln("start ", start);
-      VM.assertions._assert(MARK_BYTES_PER_REGION * (REGIONS_IN_CHUNK + 1) == BYTES_IN_MARKTABLE);
-      Address end = start.plus(MARK_BYTES_PER_REGION);
-      VM.assertions._assert(end.LE(chunk.plus(BYTES_IN_MARKTABLE)));
-    }
-    VM.memory.zero(false, start, Extent.fromIntZeroExtend(MARK_BYTES_PER_REGION));
-  }
-
-  @Inline
   public static int usedSize(Address region) {
     int a = metaDataOf(region, MD_LIVE_SIZE).loadInt();
     Address prevCursor = metaDataOf(region, MD_PREV_CURSOR).loadAddress();
@@ -179,6 +168,7 @@ public class Region {
 
   @Inline
   public static void register(Address region, int allocationKind) {
+    MarkTable.clearAllTables(region);
     clearState(region);
     metaDataOf(region, MD_ALLOCATED).store((byte) 1);
     metaDataOf(region, MD_PREV_CURSOR).store(region);
@@ -203,11 +193,9 @@ public class Region {
 
   @Inline
   public static boolean allocatedWithinConurrentMarking(ObjectReference o) {
-    Address a = VM.objectModel.refToAddress(o);
-    Address region = Region.of(a);
-    Address prevCursor = metaDataOf(region, MD_PREV_CURSOR).loadAddress();
-    Address nextCursor = metaDataOf(region, MD_NEXT_CURSOR).loadAddress();
-    return prevCursor.LE(a) && a.LE(nextCursor);
+    Address a = VM.objectModel.objectStartRef(o);
+    Address prevCursor = getAddress(Region.of(a), MD_PREV_CURSOR);
+    return a.GE(prevCursor);
   }
 
   @Inline
@@ -227,10 +215,6 @@ public class Region {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
     Address metaData = chunk.plus(PER_REGION_META_START_OFFSET);
     Address perRegionMeta = metaData.plus(PER_REGION_METADATA_BYTES * indexOf(region));
-    if (VM.VERIFY_ASSERTIONS) {
-//      VM.assertions._assert(perRegionMeta.GE(chunk.plus(BYTES_IN_PAGE * 16)));
-//      VM.assertions._assert(perRegionMeta.LT(chunk.plus(BYTES_IN_PAGE * 17)));
-    }
     VM.memory.zero(false, perRegionMeta, Extent.fromIntZeroExtend(PER_REGION_METADATA_BYTES));
   }
 
@@ -242,6 +226,31 @@ public class Region {
   @Inline
   public static boolean isAligned(Address region) {
     return region.toWord().and(REGION_MASK).isZero();
+  }
+
+  /// Returns the region's logical index within the 4MB chunk
+  /// Guarantee 1 <= index <= 2 (for 1MB region)
+  @Inline
+  static int indexOf2(Address region) {
+    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
+    if (VM.VERIFY_ASSERTIONS) {
+      if (region.EQ(chunk)) {
+        Log.write("Invalid region ", region);
+        Log.writeln(" chunk ", chunk);
+      }
+      VM.assertions._assert(region.NE(chunk));
+    }
+    int index = region.diff(chunk).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!(index >= 1 && index <= REGIONS_IN_CHUNK)) {
+        Log.write("Invalid region ", region);
+        Log.write(" chunk=", chunk);
+        Log.write(" index=", index);
+        Log.writeln(" region=", region);
+      }
+      VM.assertions._assert(index >= 1 && index <= REGIONS_IN_CHUNK);
+    }
+    return index;
   }
 
   @Inline

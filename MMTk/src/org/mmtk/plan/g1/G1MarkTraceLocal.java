@@ -57,7 +57,7 @@ public class G1MarkTraceLocal extends TraceLocal {
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(G1.REGION_SPACE, object)) {
-      return G1.regionSpace.isLive(object);
+      return G1.regionSpace.isLiveNext(object);
     }
     return super.isLive(object);
   }
