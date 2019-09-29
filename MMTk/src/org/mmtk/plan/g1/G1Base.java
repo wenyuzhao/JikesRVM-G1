@@ -1,4 +1,4 @@
-package org.mmtk.plan.g1.baseline;
+package org.mmtk.plan.g1;
 
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorld;
@@ -14,6 +14,7 @@ class G1Base extends StopTheWorld {
   }
   // G1 Features
   public static final boolean ENABLE_CONCURRENT_MARKING = constraints().g1ConcurrentMarking();
+  public static final boolean ENABLE_REMEMBERED_SETS = constraints().g1RememberedSets();
 
   // Collection phases
   public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");

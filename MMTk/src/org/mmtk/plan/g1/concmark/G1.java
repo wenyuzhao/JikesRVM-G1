@@ -15,4 +15,4 @@ package org.mmtk.plan.g1.concmark;
 import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
-public class G1 extends org.mmtk.plan.g1.baseline.G1 {}
+public class G1 extends org.mmtk.plan.g1.G1 {}

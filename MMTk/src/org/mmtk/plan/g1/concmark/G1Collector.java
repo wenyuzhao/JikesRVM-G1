@@ -12,16 +12,7 @@
  */
 package org.mmtk.plan.g1.concmark;
 
-import org.mmtk.plan.Phase;
-import org.mmtk.plan.Plan;
-import org.mmtk.plan.TraceLocal;
-import org.mmtk.utility.Log;
-import org.mmtk.utility.deque.ObjectReferenceDeque;
-import org.mmtk.utility.options.Options;
-import org.mmtk.vm.VM;
-import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.pragma.Unpreemptible;
 
 @Uninterruptible
-public class G1Collector extends org.mmtk.plan.g1.baseline.G1Collector {}
+public class G1Collector extends org.mmtk.plan.g1.G1Collector {}

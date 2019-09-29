@@ -15,5 +15,5 @@ package org.mmtk.plan.g1.concmark;
 import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
-public class G1Constraints extends org.mmtk.plan.g1.baseline.G1Constraints {
+public class G1Constraints extends org.mmtk.plan.g1.G1Constraints {
 }

@@ -1,4 +1,4 @@
-package org.mmtk.plan.g1.baseline;
+package org.mmtk.plan.g1;
 
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;

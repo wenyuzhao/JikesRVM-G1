@@ -12,16 +12,7 @@
  */
 package org.mmtk.plan.g1.concmark;
 
-import org.mmtk.utility.deque.ObjectReferenceDeque;
-import org.mmtk.vm.VM;
-import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
-import org.vmmagic.unboxed.Address;
-import org.vmmagic.unboxed.ObjectReference;
-import org.vmmagic.unboxed.Offset;
-import org.vmmagic.unboxed.Word;
-
-import static org.mmtk.utility.Constants.BYTES_IN_ADDRESS;
 
 @Uninterruptible
-public class G1Mutator extends org.mmtk.plan.g1.baseline.G1Mutator {}
+public class G1Mutator extends org.mmtk.plan.g1.G1Mutator {}

@@ -19,10 +19,8 @@ import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
-import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.*;
 import org.mmtk.utility.heap.layout.HeapLayout;
-import org.mmtk.vm.Assert;
 import org.mmtk.vm.Lock;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.*;
@@ -113,7 +111,7 @@ public final class RegionSpace extends Space {
     Address r;
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
-      if (Region.relocationRequired(r))
+      if (Region.getBool(r, Region.MD_RELOCATE))
         Region.clearMarkBitMapForRegion(r);
     }
   }
@@ -127,7 +125,7 @@ public final class RegionSpace extends Space {
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
       Region.clearMarkBitMapForRegion(r);
-      Region.setUsedSize(r, 0);
+      Region.set(r, Region.MD_LIVE_SIZE, 0);
       Region.updatePrevCursor(r);
       // Set TAMS
       if (!nursery) {
@@ -288,7 +286,7 @@ public final class RegionSpace extends Space {
     committedRegions.add(-1);
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(committedRegions.get() >= 0);
 
-    if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
+    if (Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
       youngRegions.add(-1);
 //      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(youngRegions.get() >= 0);
     }
@@ -392,7 +390,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateCSetObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationAccumulator evacuationTimer) {
-    if (Region.relocationRequired(Region.of(object))) {
+    if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
 
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
@@ -423,7 +421,7 @@ public final class RegionSpace extends Space {
       return object;
     }
     if (VM.VERIFY_ASSERTIONS)
-      VM.assertions._assert(Region.relocationRequired(Region.of(object)));
+      VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_RELOCATE));
 //    Word status = VM.objectModel.readAvailableBitsWord(object);
     ObjectReference ref = ForwardingWord.getForwardedObject(object);
 
@@ -440,7 +438,7 @@ public final class RegionSpace extends Space {
 //    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
 //    final Address region = Region.of(object);
 //    if (!Region.relocationRequired(region)) return
-    if (Region.relocationRequired(Region.of(object))) {
+    if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
 
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
@@ -468,7 +466,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
-    if (Region.relocationRequired(Region.of(object))) {
+    if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
 //      Word status = VM.objectModel.readAvailableBitsWord(object);
       object = ForwardingWord.getForwardedObject(object);
 //
@@ -510,7 +508,7 @@ public final class RegionSpace extends Space {
   public boolean isLive(ObjectReference object) {
     if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
     Address region = Region.of(object);
-    Address prevCursor = Region.metaDataOf(region, Region.METADATA_PREV_CURSOR_OFFSET).loadAddress();
+    Address prevCursor = Region.getAddress(region, Region.MD_PREV_CURSOR);
 //    if (VM.VERIFY_ASSERTIONS) {
 //      if (TAMS.LT(region)) {
 //        Log.write("Invalid tams ", TAMS);
@@ -715,17 +713,17 @@ public final class RegionSpace extends Space {
 //      return (remsetPages / 16) + fixedPages;
 //  }
 
-  @NoInline
-  public int calculateRemSetCards() {
-    int remsetCards = 0;
-    regionIterator.reset();
-    Address region;
-    while (!(region = regionIterator.next()).isZero()) {
-      if (Region.allocated(region))
-        remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
-    }
-    return remsetCards;
-  }
+//  @NoInline
+//  public int calculateRemSetCards() {
+//    int remsetCards = 0;
+//    regionIterator.reset();
+//    Address region;
+//    while (!(region = regionIterator.next()).isZero()) {
+//      if (Region.allocated(region))
+//        remsetCards += Region.metaDataOf(region, Region.METADATA_REMSET_SIZE_OFFSET).loadInt();
+//    }
+//    return remsetCards;
+//  }
 
 //  @Inline
   public AddressArray snapshotRegions(boolean nurseryOnly) {
@@ -739,7 +737,7 @@ public final class RegionSpace extends Space {
     regionIterator.reset();
     Address region = regionIterator.next();
     while (!region.isZero()) {
-      if (!nurseryOnly || Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
+      if (!nurseryOnly || Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
         regions.set(index, region);
         index++;
       }
@@ -786,7 +784,7 @@ public final class RegionSpace extends Space {
       for (int i = 0; i < regions.length(); i++) {
         int size = regionsSizes.get(i).toInt();
         Address region = regions.get(i);
-        if (Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
+        if (Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
           // This is a nursery region
           if (currentSize + size >= usableBytesForCopying) {
             regions.set(i, Address.zero());
@@ -802,7 +800,7 @@ public final class RegionSpace extends Space {
       int size = regionsSizes.get(i).toInt();
       Address region = regions.get(i);
       if (region.isZero()) continue;
-      if (includeAllNursery && Region.metaDataOf(region, Region.METADATA_GENERATION_OFFSET).loadInt() != Region.OLD) {
+      if (includeAllNursery && Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
         // This region is already included
         continue;
       } else if (currentSize + size >= usableBytesForCopying || size > Region.BYTES_IN_REGION * 0.65) {
@@ -833,14 +831,14 @@ public final class RegionSpace extends Space {
     for (int i = 0; i < regions.length(); i++) {
       Address region = regions.get(i);
       if (!region.isZero()) {
-        Region.setRelocationState(region, true);
+        Region.set(region, Region.MD_RELOCATE, true);
       }
     }
   }
 
   @Inline
   public boolean contains(Address address) {
-    return !address.isZero() && Space.isInSpace(descriptor, address) && Region.allocated(Region.of(address));
+    return !address.isZero() && Space.isInSpace(descriptor, address) && Region.getBool(Region.of(address), Region.MD_ALLOCATED);
   }
 
   @Inline

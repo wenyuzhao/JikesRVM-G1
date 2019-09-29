@@ -12,46 +12,8 @@
  */
 package org.mmtk.plan.g1.baseline;
 
-import org.mmtk.plan.StopTheWorldConstraints;
-import org.mmtk.policy.region.Region;
-import org.mmtk.policy.region.RegionSpace;
 import org.vmmagic.pragma.Uninterruptible;
 
-/**
- * SemiSpace common constants.
- */
 @Uninterruptible
-public class G1Constraints extends StopTheWorldConstraints {
-  @Override
-  public boolean movesObjects() {
-    return true;
-  }
-  @Override
-  public boolean needsForwardAfterLiveness() {
-    return true;
-  }
-  @Override
-  public int gcHeaderBits() {
-    return RegionSpace.LOCAL_GC_BITS_REQUIRED;
-  }
-  @Override
-  public int gcHeaderWords() {
-    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
-  }
-  @Override
-  public int numSpecializedScans() {
-    return 2;
-  }
-  @Override
-  public int maxNonLOSDefaultAllocBytes() {
-    return Region.MAX_ALLOC_SIZE;
-  }
-
-  // G1 Specific features
-  public boolean g1ConcurrentMarking() { return true; }
-
-  // Derived
-  @Override public boolean needsConcurrentWorkers() { return g1ConcurrentMarking(); }
-  @Override public boolean needsObjectReferenceWriteBarrier() { return g1ConcurrentMarking(); }
-  @Override public boolean needsJavaLangReferenceReadBarrier() { return g1ConcurrentMarking(); }
+public class G1Constraints extends org.mmtk.plan.g1.G1Constraints {
 }

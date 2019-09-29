@@ -1,11 +1,10 @@
-package org.mmtk.plan.g1.baseline;
+package org.mmtk.plan.g1;
 
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldCollector;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.utility.options.Options;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
