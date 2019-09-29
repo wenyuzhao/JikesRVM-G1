@@ -27,6 +27,8 @@ class G1Base extends StopTheWorld {
   public static final short FLUSH_COLLECTOR             = Phase.createSimple("flush-collector", null);
   public static final short CLEAR_BARRIER_ACTIVE        = Phase.createSimple("clear-barrier", null);
   public static final short FINAL_MARK                  = Phase.createSimple("final-mark", null);
+  public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
+  public static final short REMSET_ROOTS = Phase.createSimple("refine-cards");
 
   protected static final short preemptConcurrentClosure = Phase.createComplex("preeempt-concurrent-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
@@ -47,7 +49,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleCollector (FINAL_MARK)
   );
 
-  public static final short evacuatePhase = Phase.createComplex("evacuate", null,
+  public static final short fullTraceEvacuatePhase = Phase.createComplex("evacuate", null,
       Phase.scheduleMutator  (EVACUATE_PREPARE),
       Phase.scheduleGlobal   (EVACUATE_PREPARE),
       Phase.scheduleCollector(EVACUATE_PREPARE),
@@ -75,6 +77,45 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (EVACUATE_RELEASE)
   );
 
+  public static final short remsetEvacuatePhase = Phase.createComplex("evacuate", null,
+      Phase.scheduleMutator  (EVACUATE_PREPARE),
+      Phase.scheduleGlobal   (EVACUATE_PREPARE),
+      Phase.scheduleCollector(EVACUATE_PREPARE),
+      // Roots
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleCollector(REMSET_ROOTS),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+      // Refs
+      Phase.scheduleCollector(SOFT_REFS),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector(FINALIZABLE),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS),
+
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleCollector(REMSET_ROOTS),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+
+      Phase.scheduleMutator  (EVACUATE_RELEASE),
+      Phase.scheduleCollector(EVACUATE_RELEASE),
+      Phase.scheduleGlobal   (EVACUATE_RELEASE)
+  );
+
   public static short _collection = Phase.createComplex("_collection", null,
       Phase.scheduleComplex  (initPhase),
       // Mark
@@ -84,7 +125,7 @@ class G1Base extends StopTheWorld {
       // Select relocation sets
       Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
       // Evacuate
-      Phase.scheduleComplex  (evacuatePhase),
+      Phase.scheduleComplex  (ENABLE_REMEMBERED_SETS ? remsetEvacuatePhase : fullTraceEvacuatePhase),
       // Cleanup
       Phase.scheduleCollector(CLEANUP_BLOCKS),
 

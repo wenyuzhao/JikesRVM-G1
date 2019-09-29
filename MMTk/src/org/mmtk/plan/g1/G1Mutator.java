@@ -15,6 +15,8 @@ package org.mmtk.plan.g1;
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.StopTheWorldMutator;
+import org.mmtk.policy.region.Card;
+import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
@@ -164,17 +166,32 @@ public class G1Mutator extends StopTheWorldMutator {
   }
 
   @Inline
+  void cardMarkingBarrier(ObjectReference src) {
+    if (!G1.ENABLE_REMEMBERED_SETS) return;
+    Address card = Card.of(src);
+
+    if (CardTable.get(card) == Card.NOT_DIRTY) {
+      CardTable.set(card, Card.NOT_DIRTY);
+//      if super::ENABLE_CONCURRENT_REFINEMENT {
+//        self.rs_enquene(card);
+//      }
+    }
+  }
+
+  @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
     if (barrierActive) checkAndEnqueueReference(slot.loadObjectReference());
     VM.barriers.objectReferenceWrite(src, tgt, metaDataA, metaDataB, mode);
+    cardMarkingBarrier(src);
   }
 
   @Inline
   @Override
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
-    boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, tgt, metaDataA, metaDataB, mode);
     if (barrierActive) checkAndEnqueueReference(old);
+    boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, tgt, metaDataA, metaDataB, mode);
+    cardMarkingBarrier(src);
     return result;
   }
 
