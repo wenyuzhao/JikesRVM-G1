@@ -14,6 +14,8 @@
 package org.mmtk.utility.alloc;
 
 import org.mmtk.policy.Space;
+import org.mmtk.policy.region.Card;
+import org.mmtk.policy.region.CardOffsetTable;
 import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.vm.VM;
@@ -76,7 +78,21 @@ public class RegionAllocator2 extends Allocator {
     limit = Address.zero();
   }
 
-  public void retireTLAB() {
+  private static void initOffsets(final Address start, Address limit) {
+    Address region = Region.of(start);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(limit.LE(region.plus(Region.BYTES_IN_REGION)));
+    Address cursor = start;
+    while (cursor.LT(limit)) {
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(cursor.GE(region));
+        VM.assertions._assert(Card.isAligned(cursor));
+      }
+      CardOffsetTable.set(region, cursor, start);
+      cursor = cursor.plus(Card.BYTES_IN_CARD);
+    }
+  }
+
+  private void retireTLAB() {
     if (cursor.isZero() || limit.isZero()) {
       return;
     }
@@ -136,7 +152,7 @@ public class RegionAllocator2 extends Allocator {
     retireTLAB();
     cursor = tlab;
     limit = cursor.plus(size);
-    // self.init_offsets(self.cursor, self.limit);
+    initOffsets(cursor, limit);
     return alloc(bytes, align, offset);
   }
 

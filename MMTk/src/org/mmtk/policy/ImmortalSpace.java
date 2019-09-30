@@ -43,7 +43,7 @@ import org.vmmagic.pragma.*;
    *
    */
   static final byte GC_MARK_BIT_MASK = 1;
-  private static final int META_DATA_PAGES_PER_REGION = CARD_META_PAGES_PER_REGION;
+  public static final int META_DATA_PAGES_PER_REGION = CARD_META_PAGES_PER_REGION;
 
   /****************************************************************************
    *
@@ -178,6 +178,13 @@ import org.vmmagic.pragma.*;
   @Inline
   public boolean isLive(ObjectReference object) {
     return true;
+  }
+
+  @Inline
+  public boolean isMarked(ObjectReference object) {
+    Word oldValue = VM.objectModel.prepareAvailableBits(object);
+    byte markBit = (byte) (oldValue.toInt() & GC_MARK_BIT_MASK);
+    return markBit == markState;
   }
 
   /**

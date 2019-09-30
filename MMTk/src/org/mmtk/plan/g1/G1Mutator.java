@@ -14,6 +14,7 @@ package org.mmtk.plan.g1;
 
 import org.mmtk.plan.MutatorContext;
 import org.mmtk.plan.Phase;
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.StopTheWorldMutator;
 import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
@@ -21,6 +22,7 @@ import org.mmtk.policy.region.Region;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
+import org.mmtk.utility.alloc.BumpPointer2;
 import org.mmtk.utility.alloc.RegionAllocator2;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
@@ -53,6 +55,7 @@ public class G1Mutator extends StopTheWorldMutator {
   protected volatile boolean barrierActive = newMutatorBarrierActive;
   private final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
   protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
+  protected final BumpPointer2 immortal2 = new BumpPointer2(Plan.immortalSpace);
 
   /****************************************************************************
    *
@@ -68,7 +71,7 @@ public class G1Mutator extends StopTheWorldMutator {
     switch (allocator) {
       case G1.ALLOC_G1:  return g1.alloc(bytes, align, offset);
       case G1.ALLOC_LOS: return los.alloc(bytes, align, offset);
-      default:           return immortal.alloc(bytes, align, offset);
+      default:           return immortal2.alloc(bytes, align, offset);
     }
   }
 
@@ -105,7 +108,7 @@ public class G1Mutator extends StopTheWorldMutator {
     if (phaseId == G1.PREPARE) {
       g1.adjustTLABSize();
       g1.reset();
-      los.prepare(true);
+      immortal2.reset();
       VM.memory.collectorPrepareVMSpace();
       modbuf.reset();
       return;
@@ -113,22 +116,29 @@ public class G1Mutator extends StopTheWorldMutator {
 
     if (phaseId == G1.RELEASE) {
       g1.reset();
-      los.release(true);
+      immortal2.reset();
       VM.memory.collectorReleaseVMSpace();
       modbuf.flushLocal();
       return;
     }
 
+    if (phaseId == G1.REFINE_CARDS) {
+      g1.reset();
+      immortal2.reset();
+      // TODO: Clear dirty card queue
+      return;
+    }
+
     if (phaseId == G1.EVACUATE_PREPARE) {
       g1.reset();
-      los.prepare(true);
+      immortal2.reset();
       VM.memory.collectorPrepareVMSpace();
       return;
     }
 
     if (phaseId == G1.EVACUATE_RELEASE) {
       g1.reset();
-      los.release(true);
+      immortal2.reset();
       VM.memory.collectorReleaseVMSpace();
       return;
     }
@@ -154,6 +164,7 @@ public class G1Mutator extends StopTheWorldMutator {
   @Override
   public void flushRememberedSets() {
     g1.reset();
+    immortal2.reset();
     if (G1.ENABLE_CONCURRENT_MARKING) modbuf.flushLocal();
     assertRemsetsFlushed();
   }
@@ -171,7 +182,7 @@ public class G1Mutator extends StopTheWorldMutator {
     Address card = Card.of(src);
 
     if (CardTable.get(card) == Card.NOT_DIRTY) {
-      CardTable.set(card, Card.NOT_DIRTY);
+      CardTable.set(card, Card.DIRTY);
 //      if super::ENABLE_CONCURRENT_REFINEMENT {
 //        self.rs_enquene(card);
 //      }

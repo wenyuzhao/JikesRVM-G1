@@ -12,10 +12,9 @@
  */
 package org.jikesrvm.objectmodel;
 
-import static org.jikesrvm.objectmodel.JavaHeaderConstants.ADDRESS_BASED_HASHING;
-import static org.jikesrvm.objectmodel.JavaHeaderConstants.ARRAY_LENGTH_OFFSET;
-import static org.jikesrvm.objectmodel.JavaHeaderConstants.HASHCODE_BYTES;
+import static org.jikesrvm.objectmodel.JavaHeaderConstants.*;
 import static org.jikesrvm.runtime.JavaSizeConstants.BYTES_IN_INT;
+import static org.jikesrvm.runtime.JavaSizeConstants.LOG_BYTES_IN_INT;
 
 import org.jikesrvm.VM;
 import org.jikesrvm.classloader.RVMArray;
@@ -24,6 +23,7 @@ import org.jikesrvm.classloader.RVMType;
 import org.jikesrvm.mm.mminterface.AlignmentEncoding;
 import org.jikesrvm.mm.mminterface.MemoryManager;
 import org.jikesrvm.runtime.Magic;
+import org.jikesrvm.runtime.Memory;
 import org.jikesrvm.scheduler.Lock;
 import org.jikesrvm.scheduler.RVMThread;
 import org.vmmagic.pragma.Entrypoint;
@@ -217,8 +217,25 @@ public class ObjectModel {
    */
   public static Address getObjectEndAddress(Object obj) {
     TIB tib = getTIB(obj);
+    boolean isWordArrayTIB = false;
+    {
+      if (tib == RVMType.TIBType.getTypeInformationBlock()) isWordArrayTIB = true;
+      else if (tib == RVMType.IMTType.getTypeInformationBlock()) isWordArrayTIB = true;
+      else if (tib == RVMType.ITableType.getTypeInformationBlock()) isWordArrayTIB = true;
+      else if (tib == RVMType.ITableArrayType.getTypeInformationBlock()) isWordArrayTIB = true;
+    }
     RVMType type = tib.getType();
-    if (type.isClassType()) {
+    if (isWordArrayTIB) {
+      int numElements = Magic.getArrayLength(obj);
+      int size = JavaHeader.ARRAY_HEADER_SIZE + (numElements << LOG_BYTES_IN_INT);
+      if (ADDRESS_BASED_HASHING && DYNAMIC_HASH_OFFSET) {
+        Word hashState = Magic.getWordAtOffset(obj, JavaHeader.STATUS_OFFSET).and(HASH_STATE_MASK);
+        if (hashState.EQ(HASH_STATE_HASHED_AND_MOVED)) {
+          size += HASHCODE_BYTES;
+        }
+      }
+      return Magic.objectAsAddress(obj).plus(Memory.alignUp(size, BYTES_IN_INT) - JavaHeader.OBJECT_REF_OFFSET);
+    } else if (type.isClassType()) {
       return getObjectEndAddress(obj, type.asClass());
     } else {
       int numElements = Magic.getArrayLength(obj);

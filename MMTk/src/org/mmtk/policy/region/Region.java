@@ -2,6 +2,7 @@ package org.mmtk.policy.region;
 
 
 //import org.mmtk.policy.*;
+import org.mmtk.plan.Plan;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.vm.VM;
@@ -89,8 +90,9 @@ public class Region {
   public static final int MD_REMSET_LOCK = MD_NEXT_CURSOR + BYTES_IN_ADDRESS;
   public static final int MD_REMSET_SIZE = MD_REMSET_LOCK + BYTES_IN_INT;
   public static final int MD_REMSET_PAGES = MD_REMSET_SIZE + BYTES_IN_INT;
-  public static final int MD_REMSET_POINTER = MD_REMSET_PAGES + BYTES_IN_INT;
-  public static final int MD_GENERATION = MD_REMSET_POINTER + BYTES_IN_ADDRESS;
+  public static final int MD_REMSET = MD_REMSET_PAGES + BYTES_IN_INT;
+  public static final int MD_CARD_OFFSET_TABLE = MD_REMSET + BYTES_IN_ADDRESS;
+  public static final int MD_GENERATION = MD_CARD_OFFSET_TABLE + BYTES_IN_ADDRESS;
   private static final int PER_REGION_METADATA_BYTES = MD_GENERATION + BYTES_IN_ADDRESS;
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE << 1;
 
@@ -170,10 +172,11 @@ public class Region {
   public static void register(Address region, int allocationKind) {
     MarkTable.clearAllTables(region);
     clearState(region);
-    metaDataOf(region, MD_ALLOCATED).store((byte) 1);
-    metaDataOf(region, MD_PREV_CURSOR).store(region);
-    metaDataOf(region, MD_NEXT_CURSOR).store(region);
-//    metaDataOf(region, METADATA_TAMS_OFFSET).store(region);
+    set(region, MD_ALLOCATED, true);
+    set(region, MD_PREV_CURSOR, region);
+    set(region, MD_NEXT_CURSOR, region);
+    set(region, MD_REMSET, Plan.metaDataSpace.acquire(RemSet.PAGES_IN_REMSET));
+    set(region, MD_CARD_OFFSET_TABLE, Plan.metaDataSpace.acquire(CardOffsetTable.PAGES_IN_CARD_OFFSET_TABLE));
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
@@ -182,6 +185,10 @@ public class Region {
 
   @Inline
   public static void unregister(Address region) {
+    Address remset = getAddress(region, MD_REMSET);
+    RemSet.releasePRTs(remset);
+    Plan.metaDataSpace.release(remset);
+    Plan.metaDataSpace.release(getAddress(region, MD_CARD_OFFSET_TABLE));
     clearState(region);
   }
 
@@ -308,5 +315,11 @@ public class Region {
       slot.store(newValue);
       return oldValue;
     }
+  }
+
+  @Inline
+  public static int heapIndexOf(Address region) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero() && isAligned(region));
+    return region.diff(VM.HEAP_START).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
   }
 }

@@ -13,6 +13,7 @@
 package org.mmtk.plan.g1;
 
 import org.mmtk.plan.*;
+import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
@@ -35,7 +36,7 @@ import org.vmmagic.unboxed.Word;
 @Uninterruptible
 public class G1 extends G1Base {
 
-  public static final boolean VERBOSE = false;
+  public static final boolean VERBOSE = true;
 
   public static final RegionSpace regionSpace = new RegionSpace("region", VMRequest.discontiguous());
   public static final int REGION_SPACE = regionSpace.getDescriptor();
@@ -126,13 +127,16 @@ public class G1 extends G1Base {
         modbufPool.reset();//(1);
       }
       markTrace.release();
-      loSpace.release(true);
-      immortalSpace.release();
-      VM.memory.globalReleaseVMSpace();
+//      if (!ENABLE_REMEMBERED_SETS) {
+        loSpace.release(true);
+        immortalSpace.release();
+        VM.memory.globalReleaseVMSpace();
+//      }
       return;
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
+      Space.printVMMap();
       AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
       relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
       RegionSpace.markRegionsAsRelocate(relocationSet);
@@ -140,11 +144,15 @@ public class G1 extends G1Base {
     }
 
     if (phaseId == EVACUATE_PREPARE) {
-      loSpace.prepare(true);
-      immortalSpace.prepare();
-      VM.memory.globalPrepareVMSpace();
       regionSpace.shiftMarkTables();
-      regionSpace.prepare();
+//      if (!ENABLE_REMEMBERED_SETS) {
+        loSpace.prepare(true);
+        immortalSpace.prepare();
+        VM.memory.globalPrepareVMSpace();
+        regionSpace.prepare();
+//      } else {
+//        regionSpace.resetAllocRegions();
+//      }
       evacuateTrace.prepare();
       return;
     }
@@ -159,6 +167,8 @@ public class G1 extends G1Base {
       loSpace.release(true);
       immortalSpace.release();
       VM.memory.globalReleaseVMSpace();
+      regionSpace.clearRemSetCardsPointingToCollectionSet();
+      CardTable.clear();
       return;
     }
 

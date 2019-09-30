@@ -123,6 +123,16 @@ public class G1Collector extends G1CollectorBase {
       return;
     }
 
+    if (phaseId == G1.REFINE_CARDS) {
+      CardRefinement.collectorRefineAllDirtyCards(parallelWorkerOrdinal(), parallelWorkerCount());
+      return;
+    }
+
+    if (phaseId == G1.REMSET_ROOTS) {
+//      G1.regionSpace.iterateToSpaceRemSetRoots(getCurrentTrace(), parallelWorkerOrdinal(), parallelWorkerCount(), false);
+      return;
+    }
+
     if (phaseId == G1.EVACUATE_PREPARE) {
       currentTrace = EVACUATE_TRACE;
       evacuateTrace.prepare();

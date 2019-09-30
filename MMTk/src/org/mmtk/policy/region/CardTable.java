@@ -12,6 +12,12 @@ public class CardTable {
   private static final byte[] table = new byte[Card.CARDS_IN_HEAP];
 
   @Inline
+  public static void clear() {
+    for (int i = 0; i < Card.CARDS_IN_HEAP; i++)
+      table[i] = 0;
+  }
+
+  @Inline
   private static int getIndex(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     return card.diff(VM.HEAP_START).toWord().rshl(Card.LOG_BYTES_IN_CARD).toInt();

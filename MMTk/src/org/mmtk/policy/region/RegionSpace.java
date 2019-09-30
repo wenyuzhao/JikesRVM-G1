@@ -103,10 +103,12 @@ public final class RegionSpace extends Space {
     }
   }
 
+  @Inline
   public void prepare() {
     prepare(false);
   }
 
+  @NoInline
   public void clearNextMarkTables() {
     Address r;
     regionIterator.reset();
@@ -115,6 +117,7 @@ public final class RegionSpace extends Space {
     }
   }
 
+  @NoInline
   public void shiftMarkTables() {
     Address r;
     regionIterator.reset();
@@ -163,15 +166,28 @@ public final class RegionSpace extends Space {
 //    resetTLABs(1);
   }
 
+  @NoInline
+  public void clearRemSetCardsPointingToCollectionSet() {
+    Address r;
+    regionIterator.reset();
+    while (!(r = regionIterator.next()).isZero()) {
+      Address remset = Region.getAddress(r, Region.MD_REMSET);
+      RemSet.clearCardsInCollectionSet(remset);
+    }
+  }
+
   /**
    * A new collection increment has completed.  Release global resources.
    */
-//  @NoInline
+  @NoInline
   public void release() {
 //    Address r;
 //    regionIterator.reset();
 //    while (!(r = regionIterator.next()).isZero()) {
-//      // Set TAMS
+//      Address remset = Region.getAddress(r, Region.MD_REMSET);
+//      RemSet.clearCardsInCollectionSet(remset);
+//    }
+//       Set TAMS
 //      Address slot = Region.metaDataOf(r, Region.METADATA_TAMS_OFFSET);
 //      if (!nursery) {
 //        Address cursor = Region.metaDataOf(r, Region.METADATA_CURSOR_OFFSET).loadAddress();
@@ -451,15 +467,10 @@ public final class RegionSpace extends Space {
 
   @Inline
   public ObjectReference traceEvacuateObject(TraceLocal trace, ObjectReference object, int allocator, EvacuationAccumulator evacuationTimer) {
-//    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(object));
-//    final Address region = Region.of(object);
-//    if (!Region.relocationRequired(region)) return
     if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
       Word priorStatusWord = ForwardingWord.attemptToForward(object);
-
       if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
         ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
-//        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         return newObject;
       } else {
         long time = VM.statistics.nanoTime();
@@ -468,16 +479,36 @@ public final class RegionSpace extends Space {
           evacuationTimer.updateObjectEvacuationTime(VM.objectModel.getSizeWhenCopied(newObject), VM.statistics.nanoTime() - time);
         }
         trace.processNode(newObject);
-//        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         return newObject;
       }
     } else {
       if (MarkTable.testAndMarkNext(object)) {
-//        if (HeaderByte.NEEDS_UNLOGGED_BIT) HeaderByte.markAsLogged(object);
         trace.processNode(object);
       }
       return object;
     }
+  }
+
+  @Inline
+  public ObjectReference traceEvacuateObjectInCSet(TraceLocal trace, ObjectReference object, int allocator) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_RELOCATE));
+    Word priorStatusWord = ForwardingWord.attemptToForward(object);
+    if (ForwardingWord.stateIsForwardedOrBeingForwarded(priorStatusWord)) {
+      ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
+      return newObject;
+    } else {
+      ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
+      trace.processNode(newObject);
+      return newObject;
+    }
+  }
+
+  @Inline
+  public static boolean isCrossRegionRef(ObjectReference src, Address slot, ObjectReference obj) {
+    if (obj.isNull()) return false;
+    Word x = slot.toWord();
+    Word y = VM.objectModel.refToAddress(obj).toWord();
+    return !x.xor(y).rshl(Region.LOG_BYTES_IN_REGION).isZero();
   }
 
 //  @Inline
