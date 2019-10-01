@@ -49,37 +49,37 @@ public class Card {
   }
 
   @Inline
-  public static void linearScan(Address card, CardRefinement.LinearScan linearScan, boolean markDead) {
+  public static void linearScan(Address card, CardRefinement.LinearScan linearScan, boolean markDead, Object context) {
     if (!Space.isMappedAddress(card)) return;
     if (Space.isInSpace(G1.REGION_SPACE, card)) {
       Address region = Region.of(card);
       if (!Region.getBool(region, Region.MD_ALLOCATED)) return;
       if (Region.getBool(region, Region.MD_RELOCATE)) return;
 //      Log.writeln("Scan g1 card ", card);
-      linearScanG1(card, linearScan);
+      linearScanG1(card, linearScan, context);
     } else if (Space.isInSpace(G1.LOS, card)) {
 //      Log.writeln("Scan los card ", card);
 //      ObjectReference o = getObjectFromStartAddress(card, card.plus(BYTES_IN_CARD));
 //      if (G1.loSpace.isLive(o) && Space.isInSpace(G1.LOS, o)) {
 //        linearScan.scan(card, o);
 //      }
-      losCard(card, linearScan);
+      losCard(card, linearScan, context);
     } else if (Space.isInSpace(G1.IMMORTAL, card)) {
 //      Log.writeln("Scan imm card ", card);
-      BumpPointer2.linearScan(card, linearScan, markDead);
+      BumpPointer2.linearScan(card, linearScan, markDead, context);
     }
   }
 
   @Inline
-  static void losCard(Address card, CardRefinement.LinearScan linearScan) {
+  static void losCard(Address card, CardRefinement.LinearScan linearScan, Object context) {
     ObjectReference o = getObjectFromStartAddress(card, card.plus(BYTES_IN_CARD));
     if (!o.isNull() && Space.isInSpace(G1.LOS, o) && G1.loSpace.isLive(o)) {
-      linearScan.scan(card, o);
+      linearScan.scan(card, o, context);
     }
   }
 
   @Inline
-  public static void linearScanG1(Address card, CardRefinement.LinearScan linearScan) {
+  public static void linearScanG1(Address card, CardRefinement.LinearScan linearScan, Object context) {
     Address region = Region.of(card);
     Address cursor = CardOffsetTable.blockStart(region, card);
     if (cursor.isZero()) return;
@@ -88,7 +88,7 @@ public class Card {
     while (cursor.LT(limit)) {
       ObjectReference object = getObjectFromStartAddress(cursor, limit);
       if (object.isNull()) break;
-      linearScan.scan(card, object);
+      linearScan.scan(card, object, context);
       cursor = VM.objectModel.getObjectEndAddress(object);
     }
   }

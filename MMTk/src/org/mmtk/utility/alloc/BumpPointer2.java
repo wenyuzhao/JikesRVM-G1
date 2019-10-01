@@ -113,7 +113,7 @@ import static org.mmtk.utility.Constants.*;
   }
 
   @Inline
-  public static final void linearScan(Address card, CardRefinement.LinearScan scanner, boolean markDead) {
+  public static final void linearScan(Address card, CardRefinement.LinearScan scanner, boolean markDead, Object context) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     Address cursor = getCardMetaData(card).loadAddress();
     if (cursor.isZero()) return;
@@ -121,24 +121,31 @@ import static org.mmtk.utility.Constants.*;
     boolean shouldUpdateAnchor = cursor.LT(card);
 
     while (cursor.LT(limit)) {
+//      Log.writeln(" - cursor ", cursor);
       if (shouldUpdateAnchor && cursor.GE(card)) {
         shouldUpdateAnchor = false;
         getCardMetaData(card).store(cursor);
       }
       ObjectReference object = VM.objectModel.getObjectFromStartAddress(cursor);
-      if (tibIsZero(object)) return;
+      if (tibIsZero(object)) {
+//        Log.writeln(" - break for zero tib");
+        return;
+      }
       Address startRef = VM.objectModel.objectStartRef(object);
-      if (startRef.GE(limit)) break;
+      if (startRef.GE(limit)) {
+//        Log.writeln(" - break for limit");
+        break;
+      }
       cursor = VM.objectModel.getObjectEndAddress(object);
       if (startRef.GE(card) && startRef.LT(limit)) {
         if (markDead) {
           if (G1.immortalSpace.isMarked(object) && !isDead(object)) {
-            scanner.scan(card, object);
+            scanner.scan(card, object, context);
           } else {
             markAsDead(object);
           }
         } else {
-          if (!isDead(object)) scanner.scan(card, object);
+          if (!isDead(object)) scanner.scan(card, object, context);
         }
       }
     }

@@ -35,7 +35,7 @@ public class G1MarkTraceLocal extends TraceLocal {
 
   @Override
   public void prepare() {
-    super.release();
+    super.prepare();
     modbuf.reset();
   }
 

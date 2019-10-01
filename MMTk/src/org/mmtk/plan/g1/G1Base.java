@@ -78,10 +78,6 @@ class G1Base extends StopTheWorld {
   );
 
   public static final short remsetEvacuatePhase = Phase.createComplex("evacuate", null,
-
-      Phase.scheduleMutator  (REFINE_CARDS),
-      Phase.scheduleCollector(REFINE_CARDS),
-
       Phase.scheduleMutator  (EVACUATE_PREPARE),
       Phase.scheduleGlobal   (EVACUATE_PREPARE),
       Phase.scheduleCollector(EVACUATE_PREPARE),
@@ -92,9 +88,9 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (STACK_ROOTS),
       Phase.scheduleCollector(ROOTS),
       Phase.scheduleGlobal   (ROOTS),
-//      Phase.scheduleMutator  (REFINE_CARDS),
-//      Phase.scheduleCollector(REFINE_CARDS),
-//      Phase.scheduleCollector(REMSET_ROOTS),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleCollector(REMSET_ROOTS),
       Phase.scheduleGlobal   (EVACUATE_CLOSURE),
       Phase.scheduleCollector(EVACUATE_CLOSURE),
       // Refs
@@ -107,9 +103,9 @@ class G1Base extends StopTheWorld {
       Phase.scheduleCollector(EVACUATE_CLOSURE),
       Phase.scheduleCollector(PHANTOM_REFS),
 
-//      Phase.scheduleMutator  (REFINE_CARDS),
-//      Phase.scheduleCollector(REFINE_CARDS),
-//      Phase.scheduleCollector(REMSET_ROOTS),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleCollector(REMSET_ROOTS),
       Phase.scheduleGlobal   (EVACUATE_CLOSURE),
       Phase.scheduleCollector(EVACUATE_CLOSURE),
 
@@ -130,6 +126,8 @@ class G1Base extends StopTheWorld {
       Phase.scheduleComplex  (ENABLE_REMEMBERED_SETS ? remsetEvacuatePhase : fullTraceEvacuatePhase),
       // Cleanup
       Phase.scheduleCollector(CLEANUP_BLOCKS),
+
+      Validation.scheduledPhase(),
 
       Phase.scheduleComplex  (finishPhase)
   );

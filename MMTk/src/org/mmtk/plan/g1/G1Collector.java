@@ -17,6 +17,7 @@ import org.mmtk.policy.region.Region;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator2;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -43,11 +44,13 @@ public class G1Collector extends G1CollectorBase {
 
   protected static final byte MARK_TRACE = 0;
   protected static final byte EVACUATE_TRACE = 1;
+  protected static final byte VALIDATE_TRACE = 2;
 
   protected final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
   protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.OLD);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace, modbuf);
   protected final G1EvacuateTraceLocal evacuateTrace = new G1EvacuateTraceLocal(global().evacuateTrace);
+  protected final Validation.TraceLocal validateTrace = new Validation.TraceLocal();
   protected byte currentTrace = MARK_TRACE;
 
   /****************************************************************************
@@ -129,7 +132,7 @@ public class G1Collector extends G1CollectorBase {
     }
 
     if (phaseId == G1.REMSET_ROOTS) {
-//      G1.regionSpace.iterateToSpaceRemSetRoots(getCurrentTrace(), parallelWorkerOrdinal(), parallelWorkerCount(), false);
+      G1.regionSpace.iterateToSpaceRemSetRoots(getCurrentTrace(), parallelWorkerOrdinal(), parallelWorkerCount(), false);
       return;
     }
 
@@ -158,6 +161,22 @@ public class G1Collector extends G1CollectorBase {
       return;
     }
 
+    if (phaseId == Validation.VALIDATE_PREPARE) {
+      currentTrace = VALIDATE_TRACE;
+      validateTrace.prepare();
+      return;
+    }
+
+    if (phaseId == Validation.VALIDATE_CLOSURE) {
+      validateTrace.completeTrace();
+      return;
+    }
+
+    if (phaseId == Validation.VALIDATE_RELEASE) {
+      validateTrace.release();
+      return;
+    }
+
     super.collectionPhase(phaseId, primary);
   }
 
@@ -168,6 +187,13 @@ public class G1Collector extends G1CollectorBase {
 
   @Override
   public TraceLocal getCurrentTrace() {
-    return currentTrace == MARK_TRACE ? markTrace : evacuateTrace;
+    switch (currentTrace) {
+      case MARK_TRACE: return markTrace;
+      case EVACUATE_TRACE: return evacuateTrace;
+      case VALIDATE_TRACE: return validateTrace;
+      default:
+        VM.assertions.fail("unknown traceLocal");
+        return null;
+    }
   }
 }

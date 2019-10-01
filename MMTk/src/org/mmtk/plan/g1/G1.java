@@ -43,6 +43,7 @@ public class G1 extends G1Base {
   public static final int ALLOC_G1 = Plan.ALLOC_DEFAULT;
   public static final int SCAN_MARK = 0;
   public static final int SCAN_EVACUATE = 1;
+  public static final int SCAN_VALIDATE = 2;
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace evacuateTrace = new Trace(metaDataSpace);
@@ -127,11 +128,11 @@ public class G1 extends G1Base {
         modbufPool.reset();//(1);
       }
       markTrace.release();
-//      if (!ENABLE_REMEMBERED_SETS) {
+      if (!ENABLE_REMEMBERED_SETS) {
+        VM.memory.globalReleaseVMSpace();
         loSpace.release(true);
         immortalSpace.release();
-        VM.memory.globalReleaseVMSpace();
-//      }
+      }
       return;
     }
 
@@ -145,14 +146,14 @@ public class G1 extends G1Base {
 
     if (phaseId == EVACUATE_PREPARE) {
       regionSpace.shiftMarkTables();
-//      if (!ENABLE_REMEMBERED_SETS) {
-        loSpace.prepare(true);
-        immortalSpace.prepare();
+      if (!ENABLE_REMEMBERED_SETS) {
         VM.memory.globalPrepareVMSpace();
+        immortalSpace.prepare();
+        loSpace.prepare(true);
         regionSpace.prepare();
-//      } else {
-//        regionSpace.resetAllocRegions();
-//      }
+      } else {
+        regionSpace.resetAllocRegions();
+      }
       evacuateTrace.prepare();
       return;
     }
@@ -163,12 +164,22 @@ public class G1 extends G1Base {
 
     if (phaseId == EVACUATE_RELEASE) {
       evacuateTrace.release();
-      regionSpace.release();
       loSpace.release(true);
       immortalSpace.release();
       VM.memory.globalReleaseVMSpace();
       regionSpace.clearRemSetCardsPointingToCollectionSet();
+      regionSpace.release();
       CardTable.clear();
+      return;
+    }
+
+    if (phaseId == Validation.VALIDATE_PREPARE) {
+      Validation.prepare();
+      return;
+    }
+
+    if (phaseId == Validation.VALIDATE_RELEASE) {
+      Validation.release();
       return;
     }
 
@@ -254,6 +265,7 @@ public class G1 extends G1Base {
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, G1MarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_EVACUATE, G1EvacuateTraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_VALIDATE, Validation.TraceLocal.class);
     super.registerSpecializedMethods();
   }
 

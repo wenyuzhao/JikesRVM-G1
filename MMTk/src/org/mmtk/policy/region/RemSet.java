@@ -22,6 +22,31 @@ public class RemSet {
   private static final int WORDS_IN_PRT = BYTES_IN_PRT / Constants.BYTES_IN_WORD;
   private static final int PAGES_IN_PRT = 1 + ((BYTES_IN_PRT - 1) / Constants.BYTES_IN_PAGE);
 
+  @Uninterruptible
+  public static abstract class Visitor<T> {
+    public abstract void visit(Address remset, Address card, T context);
+  }
+
+  public static void iterate(Address remset, Visitor visitor, Object context) {
+//    VM.assertions._assert(false, "Unimplemented");
+    for (Address region = VM.HEAP_START; region.LT(VM.HEAP_END); region = region.plus(Region.BYTES_IN_REGION)) {
+      int regionIndex = (region.toInt() - VM.HEAP_START.toInt()) >>> Region.LOG_BYTES_IN_REGION;
+      Address prtSlot = remset.plus(regionIndex << Constants.LOG_BYTES_IN_ADDRESS);
+      Address prt = prtSlot.loadAddress();
+      if (prt.isZero()) continue;
+      if (Space.isInSpace(G1.REGION_SPACE, region)) {
+         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.getBool(region, Region.MD_ALLOCATED));
+         if (Region.getBool(region, Region.MD_RELOCATE)) continue;
+      }
+      Address regionEnd = region.plus(Region.BYTES_IN_REGION);
+      for (Address card = region; card.LT(regionEnd); card = card.plus(Card.BYTES_IN_CARD)) {
+        if (PerRegionTable.containsCard(prt, card)) {
+          visitor.visit(remset, card, context);
+        }
+      }
+    }
+  }
+
   @Inline
   private static Address getPRT(Address remset, Address region, boolean create) {
     Address slot = remset.plus(Region.heapIndexOf(region) << Constants.LOG_BYTES_IN_ADDRESS);
@@ -59,7 +84,33 @@ public class RemSet {
     }
     Address region = Region.of(card);
     Address prt = getPRT(remset, region, true);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!prt.isZero());
     PerRegionTable.addCard(prt, card);
+  }
+
+  @Inline
+  public static boolean containsCard(Address remset, Address card) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!remset.isZero());
+      VM.assertions._assert(Space.isInSpace(Plan.META, remset));
+      VM.assertions._assert(Card.isAligned(card));
+    }
+    Address region = Region.of(card);
+    Address prt = getPRT(remset, region, false);
+    if (prt.isZero()) return false;
+    return PerRegionTable.containsCard(prt, card);
+  }
+
+  @Inline
+  public static void removeCard(Address remset, Address card) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!remset.isZero());
+      VM.assertions._assert(Space.isInSpace(Plan.META, remset));
+      VM.assertions._assert(Card.isAligned(card));
+    }
+    Address region = Region.of(card);
+    Address prt = getPRT(remset, region, false);
+    if (!prt.isZero()) PerRegionTable.removeCard(prt, card);
   }
 
   @Inline

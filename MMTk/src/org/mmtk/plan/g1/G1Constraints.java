@@ -28,7 +28,7 @@ public class G1Constraints extends StopTheWorldConstraints {
   }
   @Override
   public boolean needsForwardAfterLiveness() {
-    return true;
+    return false;
   }
   @Override
   public int gcHeaderBits() {
@@ -36,11 +36,11 @@ public class G1Constraints extends StopTheWorldConstraints {
   }
   @Override
   public int gcHeaderWords() {
-    return RegionSpace.GC_HEADER_WORDS_REQUIRED;
+    return Validation.ENABLED ? 1 : 0;
   }
   @Override
   public int numSpecializedScans() {
-    return 2;
+    return 3;
   }
   @Override
   public int maxNonLOSDefaultAllocBytes() {

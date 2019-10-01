@@ -14,8 +14,10 @@ package org.mmtk.policy.region;
 
 
 import org.mmtk.plan.Plan;
+import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.g1.CardRefinement;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
@@ -51,7 +53,7 @@ public final class RegionSpace extends Space {
 
   private Atomic.Int youngRegions = new Atomic.Int();
   private Atomic.Int committedRegions = new Atomic.Int();
-  private Lock allocLock = VM.newLock("alloc-lock");
+  private final Lock allocLock = VM.newLock("alloc-lock");
 
   @Inline
   public int youngRegions() { return youngRegions.get(); }
@@ -511,6 +513,47 @@ public final class RegionSpace extends Space {
     return !x.xor(y).rshl(Region.LOG_BYTES_IN_REGION).isZero();
   }
 
+  public void iterateToSpaceRemSetRoots(TraceLocal trace, int id, int numWorkers, boolean nursery) {
+//    let start_time = ::std::time::SystemTime::now();
+    int regions = this.regions.length();
+    int size = (regions + numWorkers - 1) / numWorkers;
+    int start = size * id;
+    int _limit = size * (id + 1);
+    int limit = _limit > regions ? regions : _limit;
+//    regionIterator
+//    let mut cards = 0;
+//
+    for (int i = start; i < limit; i++) {
+      Address region = this.regions.get(i);
+      if (region.isZero()) continue;
+      if (!Region.getBool(region, Region.MD_RELOCATE)) continue;
+//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Region.getBool(region, Region.MD_RELOCATE));
+      /* cards += */iterateRegionRemsetRoots(region, trace, nursery);
+    }
+//    let time = start_time.elapsed().unwrap().as_millis() as usize;
+//    timer.report_remset_card_scanning_time(time, cards);
+  }
+
+  private static boolean remsetVisitorInNursery = false;
+  private static final RemSet.Visitor remsetVisitor = new RemSet.Visitor<TraceLocal>() {
+    @Uninterruptible @Inline public void visit(Address remset, Address card, TraceLocal context) {
+      Card.linearScan(card, remsetRootsLinearScan, !remsetVisitorInNursery, context);
+      RemSet.removeCard(remset, card);
+    }
+  };
+  private static final CardRefinement.LinearScan remsetRootsLinearScan = new CardRefinement.LinearScan<TraceLocal>() {
+    @Uninterruptible @Inline public void scan(Address card, ObjectReference object, TraceLocal context) {
+      context.processNode(object);
+    }
+  };
+
+  private void iterateRegionRemsetRoots(Address region, TraceLocal trace, boolean nursery) {
+    remsetVisitorInNursery = nursery;
+    Address remset = Region.getAddress(region, Region.MD_REMSET);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
+    RemSet.iterate(remset, remsetVisitor, trace);
+  }
+
 //  @Inline
 //  public ObjectReference traceForwardObject(TransitiveClosure trace, ObjectReference object) {
 //    if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
@@ -559,7 +602,7 @@ public final class RegionSpace extends Space {
 
   @Inline
   public boolean isLivePrev(ObjectReference object) {
-    if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
+//    if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
     if (Region.allocatedWithinConurrentMarking(object)) return true;
     return MarkTable.isMarkedPrev(object);
   }

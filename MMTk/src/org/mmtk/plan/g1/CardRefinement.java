@@ -3,6 +3,7 @@ package org.mmtk.plan.g1;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.region.*;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -14,13 +15,13 @@ import org.vmmagic.unboxed.ObjectReference;
 public class CardRefinement {
 
   @Uninterruptible
-  public static abstract class LinearScan {
-    public abstract void scan(Address card, ObjectReference object);
+  public static abstract class LinearScan<T> {
+    public abstract void scan(Address card, ObjectReference object, T context);
   }
 
 
-  private static final LinearScan cardRefineLinearScan = new LinearScan() {
-    @Uninterruptible @Inline public void scan(Address card, ObjectReference o) {
+  private static final LinearScan cardRefineLinearScan = new LinearScan<Object>() {
+    @Uninterruptible @Inline public void scan(Address card, ObjectReference o, Object _context) {
       if (VM.VERIFY_ASSERTIONS) {
         VM.assertions._assert(VM.objectModel.objectStartRef(o).GE(card));
         VM.assertions._assert(VM.objectModel.objectStartRef(o).LT(card.plus(Card.BYTES_IN_CARD)));
@@ -42,6 +43,11 @@ public class CardRefinement {
         if (remset.isZero()) return;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
         Address card = Card.of(source);
+
+//        Log.write("Remember ");
+//        Log.write(Space.getSpaceForObject(source).getName());
+//        Log.write(" card ", card);
+//        Log.writeln(" -> region ", Region.of(field));
         RemSet.addCard(remset, card);
       }
     }
@@ -51,7 +57,7 @@ public class CardRefinement {
   public static boolean refineOneCard(final Address card, boolean markDead) {
     if (CardTable.get(card) != Card.DIRTY) return false;
     CardTable.set(card, Card.NOT_DIRTY);
-    Card.linearScan(card, cardRefineLinearScan, true);
+    Card.linearScan(card, cardRefineLinearScan, false, null);
     return true;
   }
 
