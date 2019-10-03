@@ -39,16 +39,12 @@ public class CardRefinement {
 //        if (VM.VERIFY_ASSERTIONS) {
 //          VM.assertions._assert(VM.debugging.validRef(field));
 //        }
-        Address remset = Region.getAddress(Region.of(field), Region.MD_REMSET);
+        Address region = Region.of(field);
+        Address remset = Region.getAddress(region, Region.MD_REMSET);
         if (remset.isZero()) return;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
         Address card = Card.of(source);
-
-//        Log.write("Remember ");
-//        Log.write(Space.getSpaceForObject(source).getName());
-//        Log.write(" card ", card);
-//        Log.writeln(" -> region ", Region.of(field));
-        RemSet.addCard(remset, card);
+        RemSet.addCard(region, card);
       }
     }
   };

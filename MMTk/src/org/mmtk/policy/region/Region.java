@@ -91,7 +91,8 @@ public class Region {
   public static final int MD_REMSET_SIZE = MD_REMSET_LOCK + BYTES_IN_INT;
   public static final int MD_REMSET_PAGES = MD_REMSET_SIZE + BYTES_IN_INT;
   public static final int MD_REMSET = MD_REMSET_PAGES + BYTES_IN_INT;
-  public static final int MD_CARD_OFFSET_TABLE = MD_REMSET + BYTES_IN_ADDRESS;
+  public static final int MD_REMSET_HEAD_PRT = MD_REMSET + BYTES_IN_ADDRESS;
+  public static final int MD_CARD_OFFSET_TABLE = MD_REMSET_HEAD_PRT + BYTES_IN_ADDRESS;
   public static final int MD_GENERATION = MD_CARD_OFFSET_TABLE + BYTES_IN_ADDRESS;
   private static final int PER_REGION_METADATA_BYTES = MD_GENERATION + BYTES_IN_ADDRESS;
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE << 1;
@@ -134,6 +135,10 @@ public class Region {
   @Inline
   public static boolean getBool(Address region, int offset) {
     return metaDataOf(region, offset).loadByte() != (byte) 0;
+  }
+  @Inline
+  public static Address metaSlot(Address region, int offset) {
+    return metaDataOf(region, offset);
   }
 
 //  @Inline
@@ -186,7 +191,8 @@ public class Region {
   @Inline
   public static void unregister(Address region) {
     Address remset = getAddress(region, MD_REMSET);
-    RemSet.releasePRTs(remset);
+    Address headPRT = getAddress(region, MD_REMSET_HEAD_PRT);
+    RemSet.releasePRTs(headPRT);
     Plan.metaDataSpace.release(remset);
     Plan.metaDataSpace.release(getAddress(region, MD_CARD_OFFSET_TABLE));
     clearState(region);

@@ -173,8 +173,7 @@ public final class RegionSpace extends Space {
     Address r;
     regionIterator.reset();
     while (!(r = regionIterator.next()).isZero()) {
-      Address remset = Region.getAddress(r, Region.MD_REMSET);
-      RemSet.clearCardsInCollectionSet(remset);
+      RemSet.clearCardsInCollectionSet(r);
     }
   }
 
@@ -536,9 +535,9 @@ public final class RegionSpace extends Space {
 
   private static boolean remsetVisitorInNursery = false;
   private static final RemSet.Visitor remsetVisitor = new RemSet.Visitor<TraceLocal>() {
-    @Uninterruptible @Inline public void visit(Address remset, Address card, TraceLocal context) {
+    @Uninterruptible @Inline public void visit(Address region, Address remset, Address card, TraceLocal context) {
       Card.linearScan(card, remsetRootsLinearScan, !remsetVisitorInNursery, context);
-      RemSet.removeCard(remset, card);
+      RemSet.removeCard(region, card);
     }
   };
   private static final CardRefinement.LinearScan remsetRootsLinearScan = new CardRefinement.LinearScan<TraceLocal>() {
@@ -549,9 +548,7 @@ public final class RegionSpace extends Space {
 
   private void iterateRegionRemsetRoots(Address region, TraceLocal trace, boolean nursery) {
     remsetVisitorInNursery = nursery;
-    Address remset = Region.getAddress(region, Region.MD_REMSET);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
-    RemSet.iterate(remset, remsetVisitor, trace);
+    RemSet.iterate(region, remsetVisitor, trace);
   }
 
 //  @Inline

@@ -36,8 +36,8 @@ public class Validation {
         Address remset = Region.getAddress(Region.of(object), Region.MD_REMSET);
         VM.assertions._assert(!remset.isZero());
         Log.writeln("region ", Region.of(object));
-        if (RemSet.containsCard(remset, Card.of(src))) Log.writeln("Remset is correct");
-        else Log.writeln("Remset is incorrect");
+//        if (RemSet.containsCard(remset, Card.of(src))) Log.writeln("Remset is correct");
+//        else Log.writeln("Remset is incorrect");
         VM.assertions.fail("");
       }
       if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
@@ -50,8 +50,8 @@ public class Validation {
         Log.writeln("card ", Card.of(src));
         Log.writeln("card mark ", CardTable.get(Card.of(src)));
         Log.writeln("region ", Region.of(object));
-        if (RemSet.containsCard(remset, Card.of(src))) Log.writeln("Remset is correct");
-        else Log.writeln("Remset is incorrect");
+//        if (RemSet.containsCard(remset, Card.of(src))) Log.writeln("Remset is correct");
+//        else Log.writeln("Remset is incorrect");
       }
       VM.assertions._assert(!Region.getBool(Region.of(object), Region.MD_RELOCATE));
     }

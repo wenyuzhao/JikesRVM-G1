@@ -31,10 +31,8 @@ public class G1EvacuateTraceLocal extends TraceLocal {
       if (G1.ENABLE_REMEMBERED_SETS) {
         // src.slot -> new_object
         if (RegionSpace.isCrossRegionRef(src, slot, newObject) && Space.isInSpace(G1.REGION_SPACE, newObject)) {
-          Address remset = Region.getAddress(Region.of(newObject), Region.MD_REMSET);
-          if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
           Address card = Card.of(src);
-          RemSet.addCard(remset, card);
+          RemSet.addCard(Region.of(newObject), card);
         }
       }
       VM.activePlan.global().storeObjectReference(slot, newObject);
