@@ -540,7 +540,7 @@ public final class RegionSpace extends Space {
       RemSet.removeCard(region, card);
     }
   };
-  private static final CardRefinement.LinearScan remsetRootsLinearScan = new CardRefinement.LinearScan<TraceLocal>() {
+  private static final Card.LinearScan remsetRootsLinearScan = new Card.LinearScan<TraceLocal>() {
     @Uninterruptible @Inline public void scan(Address card, ObjectReference object, TraceLocal context) {
       context.processNode(object);
     }

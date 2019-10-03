@@ -115,7 +115,7 @@ import static org.mmtk.utility.Constants.*;
   }
 
   @Inline
-  public static final void linearScan(Address card, CardRefinement.LinearScan scanner, boolean markDead, Object context) {
+  public static final void linearScan(Address card, Card.LinearScan scanner, boolean markDead, Object context) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     Address cursor = getCardMetaData(card).loadAddress();
     if (cursor.isZero()) return;

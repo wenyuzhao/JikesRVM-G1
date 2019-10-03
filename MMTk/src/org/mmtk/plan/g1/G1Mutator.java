@@ -20,6 +20,7 @@ import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.Region;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
 import org.mmtk.utility.alloc.BumpPointer2;
@@ -27,6 +28,7 @@ import org.mmtk.utility.alloc.RegionAllocator2;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
@@ -56,11 +58,9 @@ public class G1Mutator extends StopTheWorldMutator {
   private final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
   protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
   protected final BumpPointer2 immortal2 = new BumpPointer2(Plan.immortalSpace);
-
-  /****************************************************************************
-   *
-   * Mutator-time allocation
-   */
+  protected Address dirtyCardQueue = Address.zero();
+  protected Address dirtyCardQueueCursor = Address.zero();
+  protected Address dirtyCardQueueLimit = Address.zero();
 
   /**
    * {@inheritDoc}
@@ -124,8 +124,7 @@ public class G1Mutator extends StopTheWorldMutator {
     }
 
     if (phaseId == G1.REFINE_CARDS) {
-      g1.reset();
-      immortal2.reset();
+      flush();
       // TODO: Clear dirty card queue
       return;
     }
@@ -177,6 +176,7 @@ public class G1Mutator extends StopTheWorldMutator {
     g1.reset();
     immortal2.reset();
     if (G1.ENABLE_CONCURRENT_MARKING) modbuf.flushLocal();
+    if (G1.ENABLE_CONCURRENT_REFINEMENT) resetDirtyCardQueue();
     assertRemsetsFlushed();
   }
 
@@ -194,9 +194,46 @@ public class G1Mutator extends StopTheWorldMutator {
 
     if (CardTable.get(card) == Card.NOT_DIRTY) {
       CardTable.set(card, Card.DIRTY);
-//      if super::ENABLE_CONCURRENT_REFINEMENT {
-//        self.rs_enquene(card);
-//      }
+      if (G1.ENABLE_CONCURRENT_REFINEMENT) {
+        rsEnqueue(card);
+      }
+    }
+  }
+
+  private void acquireDirtyCardQueue() {
+    dirtyCardQueue = CardRefinement.Queue.allocateLocalQueue();
+    dirtyCardQueueCursor = dirtyCardQueue;
+    dirtyCardQueueLimit = dirtyCardQueue.plus(CardRefinement.LOCAL_BUFFER_SIZE);
+  }
+
+  @Inline
+  private void rsEnqueue(Address card) {
+    if (dirtyCardQueue.isZero()) acquireDirtyCardQueue();
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCardQueueCursor.plus(4).LE(dirtyCardQueueLimit));
+    dirtyCardQueueCursor.store(card);
+    dirtyCardQueueCursor = dirtyCardQueueCursor.plus(Constants.BYTES_IN_ADDRESS);
+    if (dirtyCardQueueCursor.GE(dirtyCardQueueLimit)) {
+      flushDirtyCardQueue();
+    }
+  }
+
+  @NoInline
+  private void flushDirtyCardQueue() {
+    if (!dirtyCardQueue.isZero()) {
+      CardRefinement.Queue.enqueue(dirtyCardQueue);
+      dirtyCardQueue = Address.zero();
+      dirtyCardQueueCursor = Address.zero();
+      dirtyCardQueueLimit = Address.zero();
+    }
+  }
+
+  @Inline
+  private void resetDirtyCardQueue() {
+    if (!dirtyCardQueue.isZero()) {
+      CardRefinement.Queue.release(dirtyCardQueue);
+      dirtyCardQueue = Address.zero();
+      dirtyCardQueueCursor = Address.zero();
+      dirtyCardQueueLimit = Address.zero();
     }
   }
 

@@ -50,6 +50,7 @@ public class G1Constraints extends StopTheWorldConstraints {
   // G1 Specific features
   public boolean g1ConcurrentMarking() { return true; }
   public boolean g1RememberedSets() { return true; }
+  public boolean g1ConcurrentRefinement() { return true; }
 
   // Derived
   @Override public boolean needsConcurrentWorkers() { return g1ConcurrentMarking(); }

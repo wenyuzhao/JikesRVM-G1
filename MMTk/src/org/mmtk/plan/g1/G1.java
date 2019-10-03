@@ -74,6 +74,16 @@ public class G1 extends G1Base {
   }
 
   @Override
+  @Interruptible("Spawning collector threads requires allocation")
+  protected void spawnCollectorThreads(int numThreads) {
+    if (ENABLE_CONCURRENT_REFINEMENT) {
+      ConcurrentRefinementWorker.spawn();
+//      ConcurrentRefinementWorker.GROUP.initGroup(1, ConcurrentRefinementWorker.class);
+    }
+    super.spawnCollectorThreads(numThreads);
+  }
+
+  @Override
   @Interruptible
   public void processOptions() {
     super.processOptions();
@@ -136,10 +146,15 @@ public class G1 extends G1Base {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
+      if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.pause();
       Space.printVMMap();
       AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
       relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
       RegionSpace.markRegionsAsRelocate(relocationSet);
+      return;
+    }
+
+    if (phaseId == REFINE_CARDS) {
       return;
     }
 
@@ -168,6 +183,7 @@ public class G1 extends G1Base {
       immortalSpace.release();
       VM.memory.globalReleaseVMSpace();
       regionSpace.release();
+      if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.resume();
       return;
     }
 

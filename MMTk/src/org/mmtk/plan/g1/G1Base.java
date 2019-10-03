@@ -15,6 +15,7 @@ class G1Base extends StopTheWorld {
   // G1 Features
   public static final boolean ENABLE_CONCURRENT_MARKING = constraints().g1ConcurrentMarking();
   public static final boolean ENABLE_REMEMBERED_SETS = constraints().g1RememberedSets();
+  public static final boolean ENABLE_CONCURRENT_REFINEMENT = constraints().g1ConcurrentRefinement();
 
   // Collection phases
   public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
@@ -88,6 +89,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (STACK_ROOTS),
       Phase.scheduleCollector(ROOTS),
       Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleMutator  (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
       Phase.scheduleCollector(REMSET_ROOTS),
@@ -103,6 +105,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleCollector(EVACUATE_CLOSURE),
       Phase.scheduleCollector(PHANTOM_REFS),
 
+      Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleMutator  (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
       Phase.scheduleCollector(REMSET_ROOTS),

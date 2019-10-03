@@ -49,7 +49,7 @@ public class Card {
   }
 
   @Inline
-  public static void linearScan(Address card, CardRefinement.LinearScan linearScan, boolean markDead, Object context) {
+  public static void linearScan(Address card, LinearScan linearScan, boolean markDead, Object context) {
     if (!Space.isMappedAddress(card)) return;
     if (Space.isInSpace(G1.REGION_SPACE, card)) {
       Address region = Region.of(card);
@@ -66,7 +66,7 @@ public class Card {
   private static final int LOS_HEADER_SIZE = G1.loSpace.getHeaderSize();
 
   @Inline
-  private static void linearScanLOSCard(Address card, CardRefinement.LinearScan linearScan, Object context) {
+  private static void linearScanLOSCard(Address card, LinearScan linearScan, Object context) {
     Address objectStartRef = card.plus(LOS_HEADER_SIZE);
     ObjectReference o = objectStartRef.plus(OBJECT_REF_OFFSET).toObjectReference();
     if (G1.loSpace.isLive(o)) {
@@ -76,7 +76,7 @@ public class Card {
   }
 
   @Inline
-  private static void linearScanG1Card(Address card, CardRefinement.LinearScan linearScan, Object context, boolean log) {
+  private static void linearScanG1Card(Address card, LinearScan linearScan, Object context, boolean log) {
     Address region = Region.of(card);
     Address cursor = CardOffsetTable.blockStart(region, card);
     if (cursor.isZero()) return;
@@ -105,5 +105,10 @@ public class Card {
     ObjectReference object = cursor.plus(OBJECT_REF_OFFSET).toObjectReference();
     if (BumpPointer2.tibIsZero(object)) return ObjectReference.nullReference();
     return object;
+  }
+
+  @Uninterruptible
+  public static abstract class LinearScan<T> {
+    public abstract void scan(Address card, ObjectReference object, T context);
   }
 }

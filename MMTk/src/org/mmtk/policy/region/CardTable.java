@@ -1,5 +1,6 @@
 package org.mmtk.policy.region;
 
+import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.NoBoundsCheck;
@@ -34,7 +35,10 @@ public class CardTable {
   @Inline
   @NoBoundsCheck
   public static byte get(Address card) {
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
+    if (VM.VERIFY_ASSERTIONS) {
+      if (!Card.isAligned(card)) Log.writeln("Card is not aligned ", card);
+      VM.assertions._assert(Card.isAligned(card));
+    }
     int index = getIndex(card);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
     return table[index];
