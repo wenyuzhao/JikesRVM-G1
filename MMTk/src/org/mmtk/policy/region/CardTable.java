@@ -18,6 +18,14 @@ public class CardTable {
   }
 
   @Inline
+  public static void assertAllCleared() {
+    if (!VM.VERIFY_ASSERTIONS) return;
+    for (int i = 0; i < Card.CARDS_IN_HEAP; i++) {
+      VM.assertions._assert(table[i] == 0);
+    }
+  }
+
+  @Inline
   private static int getIndex(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     return card.diff(VM.HEAP_START).toWord().rshl(Card.LOG_BYTES_IN_CARD).toInt();

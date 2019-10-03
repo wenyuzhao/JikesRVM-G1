@@ -24,6 +24,7 @@ public class RemSet {
 
   @Uninterruptible
   public static abstract class Visitor<T> {
+    @Inline
     public abstract void visit(Address remset, Address card, T context);
   }
 
@@ -147,8 +148,8 @@ public class RemSet {
     Address regionEnd = region.plus(Region.BYTES_IN_REGION);
     for (Address card = region; card.LT(regionEnd); card = card.plus(Card.BYTES_IN_CARD)) {
       if (PerRegionTable.containsCard(prt, card)) {
-        ObjectReference o = VM.objectModel.getObjectFromStartAddress(card);
-        if (!G1.loSpace.isLive(o)) {
+        ObjectReference o = Card.getObjectFromStartAddress(card, card.plus(Card.BYTES_IN_CARD));
+        if (o.isNull() || !G1.loSpace.isLive(o)) {
           PerRegionTable.removeCard(prt, card);
         }
       }
@@ -175,7 +176,14 @@ public class RemSet {
     @Inline
     private static Word getMask(Address prt, Address card) {
       int shift = card.toWord().rshl(Card.LOG_BYTES_IN_CARD).and(WORD_SHIFT_MASK).toInt();
-      return Word.one().lsh(shift);
+      Word mask = Word.one().lsh(shift);
+      if (VM.VERIFY_ASSERTIONS) {
+        Address region = Region.of(card);
+        int bitIndex = card.diff(region).toWord().rshl(Card.LOG_BYTES_IN_CARD).toInt();
+        int shift2 = bitIndex % 32;
+        VM.assertions._assert(shift == shift2);
+      }
+      return mask;
     }
 
     @Inline

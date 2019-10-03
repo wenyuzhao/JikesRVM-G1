@@ -55,34 +55,32 @@ public class Card {
       Address region = Region.of(card);
       if (!Region.getBool(region, Region.MD_ALLOCATED)) return;
       if (Region.getBool(region, Region.MD_RELOCATE)) return;
-//      Log.writeln("Scan g1 card ", card);
-      linearScanG1(card, linearScan, context);
+      linearScanG1Card(card, linearScan, context, markDead);
     } else if (Space.isInSpace(G1.LOS, card)) {
-//      Log.writeln("Scan los card ", card);
-//      ObjectReference o = getObjectFromStartAddress(card, card.plus(BYTES_IN_CARD));
-//      if (G1.loSpace.isLive(o) && Space.isInSpace(G1.LOS, o)) {
-//        linearScan.scan(card, o);
-//      }
-      losCard(card, linearScan, context);
+      linearScanLOSCard(card, linearScan, context);
     } else if (Space.isInSpace(G1.IMMORTAL, card)) {
-//      Log.writeln("Scan imm card ", card);
       BumpPointer2.linearScan(card, linearScan, markDead, context);
     }
   }
 
+  private static final int LOS_HEADER_SIZE = G1.loSpace.getHeaderSize();
+
   @Inline
-  static void losCard(Address card, CardRefinement.LinearScan linearScan, Object context) {
-    ObjectReference o = getObjectFromStartAddress(card, card.plus(BYTES_IN_CARD));
-    if (!o.isNull() && Space.isInSpace(G1.LOS, o) && G1.loSpace.isLive(o)) {
+  private static void linearScanLOSCard(Address card, CardRefinement.LinearScan linearScan, Object context) {
+    Address objectStartRef = card.plus(LOS_HEADER_SIZE);
+    ObjectReference o = objectStartRef.plus(OBJECT_REF_OFFSET).toObjectReference();
+    if (G1.loSpace.isLive(o)) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(VM.debugging.validRef(o));
       linearScan.scan(card, o, context);
     }
   }
 
   @Inline
-  public static void linearScanG1(Address card, CardRefinement.LinearScan linearScan, Object context) {
+  private static void linearScanG1Card(Address card, CardRefinement.LinearScan linearScan, Object context, boolean log) {
     Address region = Region.of(card);
     Address cursor = CardOffsetTable.blockStart(region, card);
     if (cursor.isZero()) return;
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(cursor.GE(card));
     Address limit = card.plus(BYTES_IN_CARD);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(card.LE(cursor));
     while (cursor.LT(limit)) {
@@ -96,7 +94,7 @@ public class Card {
   static final int OBJECT_REF_OFFSET = VM.objectModel.getObjectRefOffset();
 
   @Inline
-  static ObjectReference getObjectFromStartAddress(Address start, Address limit) {
+  public static ObjectReference getObjectFromStartAddress(Address start, Address limit) {
     Address cursor = start;
     if (cursor.GE(limit)) return ObjectReference.nullReference();
     /* Skip over any alignment fill */

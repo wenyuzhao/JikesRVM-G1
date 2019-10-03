@@ -87,6 +87,7 @@ import static org.mmtk.utility.Constants.*;
       if (acquiredStart.EQ(EmbeddedMetaData.getMetaDataBase(acquiredStart))) {
         acquiredStart = acquiredStart.plus(ImmortalSpace.META_DATA_PAGES_PER_REGION << LOG_BYTES_IN_PAGE);
       }
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(acquiredStart));
       Address card = Card.of(acquiredStart);
       createCardAnchor(card, acquiredStart, blockSize.toInt());
       setLimit(acquiredStart, acquiredStart.plus(blockSize));
@@ -96,6 +97,7 @@ import static org.mmtk.utility.Constants.*;
 
   @Inline
   private void createCardAnchor(Address card, Address start, int bytes) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!start.isZero());
     while (bytes > 0) {
       if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
       getCardMetaData(card).store(start);
@@ -117,7 +119,7 @@ import static org.mmtk.utility.Constants.*;
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     Address cursor = getCardMetaData(card).loadAddress();
     if (cursor.isZero()) return;
-    Address limit = card.plus(1 << Card.LOG_BYTES_IN_CARD);
+    final Address limit = card.plus(1 << Card.LOG_BYTES_IN_CARD);
     boolean shouldUpdateAnchor = cursor.LT(card);
 
     while (cursor.LT(limit)) {
@@ -126,11 +128,8 @@ import static org.mmtk.utility.Constants.*;
         shouldUpdateAnchor = false;
         getCardMetaData(card).store(cursor);
       }
-      ObjectReference object = VM.objectModel.getObjectFromStartAddress(cursor);
-      if (tibIsZero(object)) {
-//        Log.writeln(" - break for zero tib");
-        return;
-      }
+      ObjectReference object = Card.getObjectFromStartAddress(cursor, limit);
+      if (object.isNull() || tibIsZero(object)) return;
       Address startRef = VM.objectModel.objectStartRef(object);
       if (startRef.GE(limit)) {
 //        Log.writeln(" - break for limit");

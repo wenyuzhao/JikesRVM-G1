@@ -34,10 +34,6 @@ public class G1EvacuateTraceLocal extends TraceLocal {
           Address remset = Region.getAddress(Region.of(newObject), Region.MD_REMSET);
           if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
           Address card = Card.of(src);
-//          Log.write("TC Remember ");
-//          Log.write(Space.getSpaceForObject(src).getName());
-//          Log.write(" card ", card);
-//          Log.writeln(" -> region ", Region.of(newObject));
           RemSet.addCard(remset, card);
         }
       }
@@ -56,10 +52,12 @@ public class G1EvacuateTraceLocal extends TraceLocal {
           return ForwardingWord.isForwardedOrBeingForwarded(object);
         } else {
           return true;
+//          return G1.regionSpace.isLivePrev(object);
         }
       } else {
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedObject(object));
         return true;
+//        return super.isLive(object);
       }
     } else {
       if (Space.isInSpace(G1.REGION_SPACE, object)) {

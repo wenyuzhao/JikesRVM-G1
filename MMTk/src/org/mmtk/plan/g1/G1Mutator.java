@@ -80,9 +80,7 @@ public class G1Mutator extends StopTheWorldMutator {
   public void postAlloc(ObjectReference ref, ObjectReference typeRef, int bytes, int allocator) {
     switch (allocator) {
       case G1.ALLOC_G1:  return;
-      case G1.ALLOC_LOS:
-//        Log.writeln("Alloc los ", ref);
-        G1.loSpace.initializeHeader(ref, true); return;
+      case G1.ALLOC_LOS: G1.loSpace.initializeHeader(ref, true); return;
       default:           G1.immortalSpace.initializeHeader(ref);  return;
     }
   }
@@ -90,7 +88,8 @@ public class G1Mutator extends StopTheWorldMutator {
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
     if (space == G1.regionSpace) return g1;
-    return super.getAllocatorFromSpace(space);
+    if (space == Plan.loSpace)        return los;
+    return immortal2;
   }
 
   /****************************************************************************
@@ -195,11 +194,6 @@ public class G1Mutator extends StopTheWorldMutator {
 
     if (CardTable.get(card) == Card.NOT_DIRTY) {
       CardTable.set(card, Card.DIRTY);
-//      Log log = getLog();
-//      log.write("Mark ");
-//      log.write(Space.getSpaceForObject(src).getName());
-//      log.writeln(" card ", card);
-//      log.flush();
 //      if super::ENABLE_CONCURRENT_REFINEMENT {
 //        self.rs_enquene(card);
 //      }

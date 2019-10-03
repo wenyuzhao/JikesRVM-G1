@@ -90,7 +90,6 @@ public class G1 extends G1Base {
     if (VERBOSE) {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
-      Log.writeln( ENABLE_CONCURRENT_MARKING ? "ENABLE_CONCURRENT_MARKING=1" : "ENABLE_CONCURRENT_MARKING=0");
     }
 //
     if (phaseId == SET_BARRIER_ACTIVE) {
@@ -163,17 +162,17 @@ public class G1 extends G1Base {
     }
 
     if (phaseId == EVACUATE_RELEASE) {
+      regionSpace.clearRemSetCardsPointingToCollectionSet();
       evacuateTrace.release();
       loSpace.release(true);
       immortalSpace.release();
       VM.memory.globalReleaseVMSpace();
-      regionSpace.clearRemSetCardsPointingToCollectionSet();
       regionSpace.release();
-      CardTable.clear();
       return;
     }
 
     if (phaseId == Validation.VALIDATE_PREPARE) {
+      Space.printVMMap();
       Validation.prepare();
       return;
     }

@@ -22,9 +22,24 @@ public class Validation {
   static final boolean ENABLED = false;
 
   private static void validateEdge(ObjectReference src, Address slot, ObjectReference object) {
-    if (object.isNull()) return;
+    if (!VM.VERIFY_ASSERTIONS || object.isNull()) return;
     if (Space.isInSpace(G1.REGION_SPACE, object)) {
 //      VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_ALLOCATED));
+      if (!Region.getBool(Region.of(object), Region.MD_ALLOCATED)) {
+        VM.objectModel.dumpObject(src);
+        Log.writeln(Space.getSpaceForObject(src).getName());
+        Log.writeln("src card ", Card.of(src));
+        Log.writeln("src card mark ", CardTable.get(Card.of(src)));
+
+        VM.objectModel.dumpObject(object);
+        Log.writeln(Space.getSpaceForObject(object).getName());
+        Address remset = Region.getAddress(Region.of(object), Region.MD_REMSET);
+        VM.assertions._assert(!remset.isZero());
+        Log.writeln("region ", Region.of(object));
+        if (RemSet.containsCard(remset, Card.of(src))) Log.writeln("Remset is correct");
+        else Log.writeln("Remset is incorrect");
+        VM.assertions.fail("");
+      }
       if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
         VM.objectModel.dumpObject(src);
         VM.objectModel.dumpObject(object);
@@ -40,12 +55,26 @@ public class Validation {
       }
       VM.assertions._assert(!Region.getBool(Region.of(object), Region.MD_RELOCATE));
     }
+    if (!Space.isMappedObject(object)) {
+      VM.objectModel.dumpObject(object);
+      VM.objectModel.dumpObject(src);
+      Log.writeln(Space.getSpaceForObject(src).getName());
+      if (Space.isInSpace(G1.REGION_SPACE, src)) {
+        Log.writeln(Region.getBool(Region.of(src), Region.MD_RELOCATE) ? "src in relocate region" : "src not in relocate region");
+        Log.writeln(Region.getBool(Region.of(src), Region.MD_ALLOCATED) ? "region(src) is allocated" : "region(src) is not allocated");
+      }
+      Log.writeln("card(src) = ", Card.of(src));
+      Log.writeln("card mark = ", CardTable.get(Card.of(src)));
+      Log.writeln("region(object) = ", Region.of(object));
+    }
     VM.assertions._assert(Space.isMappedObject(object));
   }
 
   @Uninterruptible
   private static class Validator {
     void validateObject(ObjectReference object) {
+      if (!VM.VERIFY_ASSERTIONS) return;
+      VM.assertions._assert(Space.isMappedObject(object));
       if (Space.isInSpace(G1.REGION_SPACE, object)) {
         VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_ALLOCATED));
         if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
@@ -53,8 +82,12 @@ public class Validation {
           Log.writeln(Space.getSpaceForObject(object).getName());
         }
         VM.assertions._assert(!Region.getBool(Region.of(object), Region.MD_RELOCATE));
+        VM.assertions._assert(G1.regionSpace.isLivePrev(object));
+      } else if (Space.isInSpace(G1.LOS, object)) {
+        VM.assertions._assert(G1.loSpace.isLive(object));
+      } else if (Space.isInSpace(G1.IMMORTAL, object)) {
+        VM.assertions._assert(G1.immortalSpace.isMarked(object));
       }
-      VM.assertions._assert(Space.isMappedObject(object));
     }
   }
 
@@ -127,6 +160,7 @@ public class Validation {
     @Override
     public boolean isLive(ObjectReference object) {
       if (object.isNull()) return false;
+      validator.validateObject(object);
       return object.toAddress().loadInt(GC_HEADER_OFFSET) == markState;
     }
 

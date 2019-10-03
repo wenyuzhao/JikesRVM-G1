@@ -138,8 +138,8 @@ public class G1Collector extends G1CollectorBase {
 
     if (phaseId == G1.EVACUATE_PREPARE) {
       currentTrace = EVACUATE_TRACE;
-      evacuateTrace.prepare();
       g1.reset();
+      evacuateTrace.prepare();
       super.collectionPhase(G1.PREPARE, primary);
       return;
     }
@@ -157,22 +157,26 @@ public class G1Collector extends G1CollectorBase {
     }
 
     if (phaseId == G1.CLEANUP_BLOCKS) {
+      g1.reset();
       G1.regionSpace.cleanupRegions(G1.relocationSet, false);
       return;
     }
 
     if (phaseId == Validation.VALIDATE_PREPARE) {
+      g1.reset();
       currentTrace = VALIDATE_TRACE;
       validateTrace.prepare();
       return;
     }
 
     if (phaseId == Validation.VALIDATE_CLOSURE) {
+      g1.reset();
       validateTrace.completeTrace();
       return;
     }
 
     if (phaseId == Validation.VALIDATE_RELEASE) {
+      g1.reset();
       validateTrace.release();
       return;
     }
