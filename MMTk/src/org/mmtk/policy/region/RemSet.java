@@ -16,10 +16,9 @@ import org.vmmagic.unboxed.Word;
 public class RemSet {
   private static final int LOGICAL_REGIONS_IN_HEAP = VM.HEAP_END.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
   private static final int BYTES_IN_REMSET = LOGICAL_REGIONS_IN_HEAP * Constants.BYTES_IN_ADDRESS;
-  public static final int PAGES_IN_REMSET = 1 + ((BYTES_IN_REMSET - 1) / Constants.BYTES_IN_PAGE);
+  public  static final int PAGES_IN_REMSET = 1 + ((BYTES_IN_REMSET - 1) / Constants.BYTES_IN_PAGE);
   private static final int META_BYTES_IN_PRT = 3 << Constants.LOG_BYTES_IN_ADDRESS;
   private static final int BYTES_IN_PRT = Card.CARDS_IN_REGION / Constants.BITS_IN_BYTE + META_BYTES_IN_PRT;
-  private static final int PAGES_IN_PRT = 1 + ((BYTES_IN_PRT - 1) / Constants.BYTES_IN_PAGE);
   private static final Offset NEXT_PRT_OFFSET = Offset.fromIntZeroExtend(0);
   private static final Offset PREV_PRT_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS);
   private static final Offset PRT_REGION_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 2);
@@ -27,8 +26,7 @@ public class RemSet {
 
   @Uninterruptible
   public static abstract class Visitor<T> {
-    @Inline
-    public abstract void visit(Address region, Address remset, Address card, T context);
+    @Inline public abstract void visit(Address region, Address remset, Address card, T context);
   }
 
   public static void iterate(Address rsRegion, Visitor visitor, Object context) {
@@ -75,11 +73,11 @@ public class RemSet {
       oldValue = slot.prepareAddress();
       if (!create) return oldValue;
       if (!oldValue.isZero()) {
-        if (!newValue.isZero()) Plan.metaDataSpace.release(newValue);
+        if (!newValue.isZero()) PerRegionTable.releasePrtMemory(newValue);
         return oldValue;
       }
       if (newValue.isZero()) {
-        newValue = Plan.metaDataSpace.acquire(PAGES_IN_PRT);
+        newValue = PerRegionTable.allocPrtMemory();
         newValue.store(prtRegion, PRT_REGION_OFFSET);
       }
     } while (!slot.attempt(oldValue, newValue));
@@ -96,10 +94,24 @@ public class RemSet {
   }
 
   @Inline
+  private static void releaseOnePRTNonAtomic(Address headPRTSlot, Address prtSlot, Address prt) {
+    // Remove from freelist
+    Address nextPRT = prt.loadAddress(NEXT_PRT_OFFSET);
+    Address prevPRT = prt.loadAddress(PREV_PRT_OFFSET);
+    if (!nextPRT.isZero()) nextPRT.store(prevPRT, PREV_PRT_OFFSET);
+    if (!prevPRT.isZero()) prevPRT.store(nextPRT, NEXT_PRT_OFFSET);
+    if (headPRTSlot.loadAddress().EQ(prt)) headPRTSlot.store(nextPRT);
+    // Remove from table
+    prtSlot.store(Address.zero());
+    // Release memory
+    PerRegionTable.releasePrtMemory(prt);
+  }
+
+  @Inline
   public static void releasePRTs(Address headPRT) {
     while (!headPRT.isZero()) {
       Address nextPRT = headPRT.loadAddress(NEXT_PRT_OFFSET);
-      Plan.metaDataSpace.release(headPRT);
+      PerRegionTable.releasePrtMemory(headPRT);
       headPRT = nextPRT;
     }
   }
@@ -153,7 +165,7 @@ public class RemSet {
       } else if (Space.isInSpace(G1.IMMORTAL, prtRegion)) {
         // Do nothing
       } else {
-        releaseOnePRT(
+        releaseOnePRTNonAtomic(
             Region.metaSlot(rsRegion, Region.MD_REMSET_HEAD_PRT),
             prtSlot,
             prt
@@ -165,23 +177,9 @@ public class RemSet {
   }
 
   @Inline
-  private static void releaseOnePRT(Address headPRTSlot, Address prtSlot, Address prt) {
-    // Remove from freelist
-    Address nextPRT = prt.loadAddress(NEXT_PRT_OFFSET);
-    Address prevPRT = prt.loadAddress(PREV_PRT_OFFSET);
-    if (!nextPRT.isZero()) nextPRT.store(prevPRT, PREV_PRT_OFFSET);
-    if (!prevPRT.isZero()) prevPRT.store(nextPRT, NEXT_PRT_OFFSET);
-    if (headPRTSlot.loadAddress().EQ(prt)) headPRTSlot.store(nextPRT);
-    // Remove from table
-    prtSlot.store(Address.zero());
-    // Release memory
-    Plan.metaDataSpace.release(prt);
-  }
-
-  @Inline
   private static void clearCSetPRTs(Address rsRegion, Address prtRegion, Address prt, Address prtSlot) {
     if (Region.getBool(prtRegion, Region.MD_RELOCATE)) {
-      releaseOnePRT(
+      releaseOnePRTNonAtomic(
           Region.metaSlot(rsRegion, Region.MD_REMSET_HEAD_PRT),
           prtSlot,
           prt
@@ -203,7 +201,19 @@ public class RemSet {
   }
 
   @Uninterruptible
-  static class PerRegionTable {
+  private static class PerRegionTable {
+    private static final MemoryPool prtMemoryPool = new MemoryPool(BYTES_IN_PRT);
+
+    @Inline
+    private static Address allocPrtMemory() {
+      return prtMemoryPool.alloc();
+    }
+
+    @Inline
+    private static void releasePrtMemory(Address prt) {
+      prtMemoryPool.free(prt);
+    }
+
     @Inline
     private static Address getWord(Address prt, Address card) {
       Address region = Region.of(card);

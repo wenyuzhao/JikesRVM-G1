@@ -28,7 +28,7 @@ class G1Base extends StopTheWorld {
   public static final short CLEAR_BARRIER_ACTIVE        = Phase.createSimple("clear-barrier", null);
   public static final short FINAL_MARK                  = Phase.createSimple("final-mark", null);
   public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
-  public static final short REMSET_ROOTS = Phase.createSimple("refine-cards");
+  public static final short REMSET_ROOTS = Phase.createSimple("remset-roots");
 
   protected static final short preemptConcurrentClosure = Phase.createComplex("preeempt-concurrent-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
