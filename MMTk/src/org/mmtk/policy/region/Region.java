@@ -15,17 +15,10 @@ import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class Region {
-//  public static final boolean VERBOSE;
-  @Inline
-  public static final boolean verbose() {
-    return false;
-//    return VM.VERIFY_ASSERTIONS && Options.verbose.getValue() != 0;
-//    return Options.verbose.getValue() != 0;
-  }
+  public static final boolean VERBOSE_REGION_LIFETIME = true;
 
   // Generation information
-  public static final int NORMAL = 0;
-  public static final int EDEN = NORMAL;
+  public static final int EDEN = 0;
   public static final int SURVIVOR = 1;
   public static final int OLD = 2;
 
@@ -35,38 +28,14 @@ public class Region {
   public static final int LOG_PAGES_IN_REGION = VM.activePlan.constraints().LOG_PAGES_IN_G1_REGION();
   public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION;
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
-//  public static final Word REGION_MASK = (1 << LOG_BYTES_IN_REGION) - 1;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;
   public static final int MAX_ALLOC_SIZE = (int) (BYTES_IN_REGION * 3 / 4);
   public static final int REGIONS_IN_CHUNK = (1 << (EmbeddedMetaData.LOG_PAGES_IN_REGION - LOG_PAGES_IN_REGION)) - 1;
-
-//  public static final int LOG_TLABS_IN_REGION = LOG_BYTES_IN_REGION - LOG_BYTES_IN_TLAB;
-//  public static final int TLABS_IN_REGION = 1 << LOG_TLABS_IN_REGION;
-
-
-  private static final int INITIAL_LOG_BYTES_IN_TLAB = 11;
-  public static final int MIN_TLAB_SIZE = 1 << INITIAL_LOG_BYTES_IN_TLAB;
-  public static final int MAX_TLAB_SIZE = BYTES_IN_REGION;
-//  public static int BYTES_IN_TLAB = MIN_TLAB_SIZE;
-
   public static final Word REGION_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
-//  private static final Word TLAB_MASK = Word.fromIntZeroExtend(BYTES_IN_TLAB - 1);
 
   // Mark table:
   // 1 bit per 4 byte: 1/32 ratio
   // 4M MMTk block ~> 128kb (32 pages)
-
-  // Metadata for each region
-  // 1. (4b) Alive size
-  // 2. (2b) Relocate state
-  // 3. (2b) Allocate state
-  // 4. (4b) Cursor offset
-  // 5. (4b) Remset lock
-  // 6. (4b) Remset size
-  // 6. (4b) Remset pages
-  // 7. (4b) Remset pointer
-  // 8. (4b) Generation state
-  // --- Total 32 bytes ---
 
   // Metadata layout:
   // Total 17 pages:
@@ -94,7 +63,9 @@ public class Region {
   public static final int MD_REMSET_HEAD_PRT = MD_REMSET + BYTES_IN_ADDRESS;
   public static final int MD_CARD_OFFSET_TABLE = MD_REMSET_HEAD_PRT + BYTES_IN_ADDRESS;
   public static final int MD_GENERATION = MD_CARD_OFFSET_TABLE + BYTES_IN_ADDRESS;
-  private static final int PER_REGION_METADATA_BYTES = MD_GENERATION + BYTES_IN_ADDRESS;
+  public static final int MD_NEXT_REGION = MD_GENERATION + BYTES_IN_INT;
+
+  private static final int PER_REGION_METADATA_BYTES = MD_NEXT_REGION + BYTES_IN_ADDRESS;
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE << 1;
 
   public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE)  + 1;
@@ -141,12 +112,6 @@ public class Region {
     return metaDataOf(region, offset);
   }
 
-//  @Inline
-//  public static Address tlabOf(final Address ptr) {
-//    return ptr.toWord().and(TLAB_MASK.not()).toAddress();
-//  }
-
-  // Metadata setter
   @Inline
   public static Address of(final Address ptr) {
     return align(ptr);
@@ -155,6 +120,11 @@ public class Region {
   @Inline
   public static Address of(final ObjectReference ref) {
     return of(VM.objectModel.refToAddress(ref));
+  }
+
+  @Inline
+  public static Address getNext(Address prev) {
+    return getAddress(prev, MD_NEXT_REGION);
   }
 
   @Inline
@@ -169,11 +139,6 @@ public class Region {
   }
 
   @Inline
-  public static int kind(Address region) {
-    return Region.metaDataOf(region, Region.MD_GENERATION).loadInt();
-  }
-
-  @Inline
   public static void register(Address region, int allocationKind) {
     MarkTable.clearAllTables(region);
     clearState(region);
@@ -185,7 +150,7 @@ public class Region {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
-    metaDataOf(region, MD_GENERATION).store(allocationKind);
+    set(region, MD_GENERATION, allocationKind);
   }
 
   @Inline
@@ -327,5 +292,17 @@ public class Region {
   public static int heapIndexOf(Address region) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!region.isZero() && isAligned(region));
     return region.diff(VM.HEAP_START).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
+  }
+
+  static String getGenerationName(Address region) {
+    return getGenerationName(getInt(region, MD_GENERATION));
+  }
+  static String getGenerationName(int gen) {
+    switch (gen) {
+      case EDEN:     return "eden";
+      case SURVIVOR: return "survivor";
+      case OLD:      return "old";
+      default:       return "???";
+    }
   }
 }

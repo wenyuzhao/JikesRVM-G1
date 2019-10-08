@@ -14,6 +14,8 @@ package org.mmtk.plan.g1;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.region.CardTable;
+import org.mmtk.policy.region.CollectionSet;
+import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
@@ -26,6 +28,7 @@ import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.pragma.Unpreemptible;
 import org.vmmagic.unboxed.AddressArray;
 import org.vmmagic.unboxed.ObjectReference;
 import org.vmmagic.unboxed.Word;
@@ -38,16 +41,27 @@ public class G1 extends G1Base {
 
   public static final boolean VERBOSE = true;
 
-  public static final RegionSpace regionSpace = new RegionSpace("region", VMRequest.discontiguous());
+  public static final RegionSpace regionSpace = new RegionSpace("g1");
   public static final int REGION_SPACE = regionSpace.getDescriptor();
-  public static final int ALLOC_G1 = Plan.ALLOC_DEFAULT;
+  public static final int ALLOC_G1_EDEN     = Plan.ALLOCATORS + 1;
+  public static final int ALLOC_G1_SURVIVOR = Plan.ALLOCATORS + 2;
+  public static final int ALLOC_G1_OLD      = Plan.ALLOCATORS + 3;
   public static final int SCAN_MARK = 0;
   public static final int SCAN_EVACUATE = 1;
-  public static final int SCAN_VALIDATE = 2;
+  public static final int SCAN_NURSERY = 2;
+  public static final int SCAN_VALIDATE = 3;
+  // GC Kinds
+  public static boolean inGC = false;
+  public static int gcKind = GCKind.FULL;
+  public static class GCKind {
+    public static final int YOUNG = 0;
+    public static final int MIXED = 1;
+    public static final int FULL = 2;
+  }
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace evacuateTrace = new Trace(metaDataSpace);
-  public static AddressArray blocksSnapshot, relocationSet;
+  public final Trace nurseryTrace = new Trace(metaDataSpace);
   public final SharedDeque modbufPool = new SharedDeque("modBufs", metaDataSpace, 1);
   protected boolean inConcurrentCollection = false;
 
@@ -60,9 +74,6 @@ public class G1 extends G1Base {
     Options.g1MaxNewSizePercent = new G1MaxNewSizePercent();
     Options.g1NewSizePercent = new G1NewSizePercent();
     Options.g1HeapWastePercent = new G1HeapWastePercent();
-    regionSpace.makeAllocAsMarked();
-    smallCodeSpace.makeAllocAsMarked();
-    nonMovingSpace.makeAllocAsMarked();
   }
 
 
@@ -70,7 +81,7 @@ public class G1 extends G1Base {
    * Constructor
    */
   public G1() {
-    collection = _collection;
+    collection = -1;
   }
 
   @Override
@@ -88,7 +99,10 @@ public class G1 extends G1Base {
   public void processOptions() {
     super.processOptions();
     if (ENABLE_CONCURRENT_MARKING) {
-      replacePhase(Phase.scheduleCollector(CLOSURE), Phase.scheduleComplex(concurrentClosure));
+      int oldClosure = Phase.scheduleCollector(CLOSURE);
+      int newClosure = Phase.scheduleComplex(concurrentClosure);
+      ComplexPhase cp = (ComplexPhase) Phase.getPhase(mixedCollection);
+      cp.replacePhase(oldClosure, newClosure);
     }
   }
 
@@ -101,6 +115,9 @@ public class G1 extends G1Base {
       Log.write("Global ");
       Log.writeln(Phase.getName(phaseId));
     }
+
+    if (phaseId == SET_COLLECTION_KIND) inGC = true;
+    if (phaseId == COMPLETE) inGC = false;
 //
     if (phaseId == SET_BARRIER_ACTIVE) {
       G1Mutator.newMutatorBarrierActive = true;
@@ -148,9 +165,8 @@ public class G1 extends G1Base {
     if (phaseId == RELOCATION_SET_SELECTION) {
       if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.pause();
       Space.printVMMap();
-      AddressArray blocksSnapshot = regionSpace.snapshotRegions(false);
-      relocationSet = RegionSpace.computeRelocationRegions(blocksSnapshot, false, false);
-      RegionSpace.markRegionsAsRelocate(relocationSet);
+      int availablePages = getTotalPages() - getPagesUsed();
+      CollectionSet.compute(regionSpace, gcKind, availablePages);
       return;
     }
 
@@ -168,7 +184,7 @@ public class G1 extends G1Base {
       } else {
         regionSpace.resetAllocRegions();
       }
-      evacuateTrace.prepare();
+      (gcKind == GCKind.YOUNG ? nurseryTrace : evacuateTrace).prepare();
       return;
     }
 
@@ -178,7 +194,7 @@ public class G1 extends G1Base {
 
     if (phaseId == EVACUATE_RELEASE) {
       regionSpace.clearRemSetCardsPointingToCollectionSet();
-      evacuateTrace.release();
+      (gcKind == GCKind.YOUNG ? nurseryTrace : evacuateTrace).release();
       loSpace.release(true);
       immortalSpace.release();
       VM.memory.globalReleaseVMSpace();
@@ -224,19 +240,43 @@ public class G1 extends G1Base {
   @Override
   protected boolean concurrentCollectionRequired() {
     if (!ENABLE_CONCURRENT_MARKING) return false;
-    boolean x = !Phase.concurrentPhaseActive() &&
-        ((getPagesReserved() * 100) / getTotalPages()) > 45;
-    if (x) {
-//      Log.writeln("[CONC MARK]");
+    if (!Phase.concurrentPhaseActive()) {
+      if (regionSpace.committedRatio() > 0.45) {
+        gcKind = GCKind.MIXED;
+        return true;
+      }
     }
-    return x;
+    return false;
   }
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    final int totalPages = getTotalPages();
-    final boolean heapFull = ((totalPages - getPagesReserved()) * 10) < totalPages;
-    return spaceFull || heapFull;
+    boolean stressForceGC = stressTestGCRequired();
+    boolean heapFull = getPagesReserved() > getTotalPages();
+    if (spaceFull || stressForceGC || heapFull) {
+      gcKind = GCKind.FULL;
+      return true;
+    }
+    if (ENABLE_GENERATIONAL_GC && !inGC) {
+      if (regionSpace.nurseryRatio() > 0.15) {
+        gcKind = GCKind.YOUNG;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  public void forceFullHeapCollection() {
+    gcKind = GCKind.FULL;
+  }
+
+  @Inline
+  @Unpreemptible
+  @Override
+  public void prepareForUserCollectionRequest() {
+    Log.writeln("UserCollectionRequest");
+    gcKind = GCKind.FULL;
   }
 
 
@@ -245,9 +285,7 @@ public class G1 extends G1Base {
    */
   @Override
   public final int getCollectionReserve() {
-    // we must account for the number of pages required for copying,
-    // which equals the number of semi-space pages reserved
-    return 0;//regionSpace.reservedPages() / 10;
+    return regionSpace.reservedPages() / 10;
   }
 
   @Override
@@ -271,8 +309,7 @@ public class G1 extends G1Base {
 
   @Override
   public boolean willNeverMove(ObjectReference object) {
-    if (Space.isInSpace(REGION_SPACE, object)) return false;
-    return super.willNeverMove(object);
+    return Space.isInSpace(REGION_SPACE, object) ? false : true;
   }
 
   @Override
@@ -280,7 +317,8 @@ public class G1 extends G1Base {
   protected void registerSpecializedMethods() {
     TransitiveClosure.registerSpecializedScan(SCAN_MARK, G1MarkTraceLocal.class);
     TransitiveClosure.registerSpecializedScan(SCAN_EVACUATE, G1EvacuateTraceLocal.class);
-    TransitiveClosure.registerSpecializedScan(SCAN_VALIDATE, Validation.TraceLocal.class);
+    TransitiveClosure.registerSpecializedScan(SCAN_NURSERY, G1NurseryTraceLocal.class);
+//    TransitiveClosure.registerSpecializedScan(SCAN_VALIDATE, Validation.TraceLocal.class);
     super.registerSpecializedMethods();
   }
 
@@ -306,5 +344,14 @@ public class G1 extends G1Base {
       newValue = oldValue.and(LOG_MASK.not());
     } while (!VM.objectModel.attemptAvailableBits(o, oldValue, newValue));
     return true;
+  }
+
+  @Inline
+  public static int pickCopyAllocator(ObjectReference o) {
+    if (!ENABLE_GENERATIONAL_GC) return ALLOC_G1_OLD;
+    switch (Region.getInt(Region.of(o), Region.MD_GENERATION)) {
+      case Region.EDEN: return G1.ALLOC_G1_SURVIVOR;
+      default:          return G1.ALLOC_G1_OLD;
+    }
   }
 }

@@ -8,7 +8,6 @@ import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.policy.region.RemSet;
 import org.mmtk.utility.ForwardingWord;
-import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -16,10 +15,10 @@ import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
-public class G1EvacuateTraceLocal extends TraceLocal {
+public class G1NurseryTraceLocal extends TraceLocal {
 
-  public G1EvacuateTraceLocal(Trace trace) {
-    super(G1.SCAN_EVACUATE, trace);
+  public G1NurseryTraceLocal(Trace trace) {
+    super(G1.SCAN_NURSERY, trace);
   }
 
   @Override
@@ -41,60 +40,38 @@ public class G1EvacuateTraceLocal extends TraceLocal {
 
   @Override
   public boolean isLive(ObjectReference object) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(G1.ENABLE_GENERATIONAL_GC);
     if (object.isNull()) return false;
-
-    if (G1.ENABLE_REMEMBERED_SETS) {
-      if (Space.isInSpace(G1.REGION_SPACE, object)) {
-        Address region = Region.of(object);
-        if (Region.getBool(region, Region.MD_RELOCATE)) {
-          return ForwardingWord.isForwardedOrBeingForwarded(object);
-        } else {
-          return true;
-//          return G1.regionSpace.isLivePrev(object);
-        }
+    if (Space.isInSpace(G1.REGION_SPACE, object)) {
+      if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
+        return ForwardingWord.isForwardedOrBeingForwarded(object);
       } else {
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Space.isMappedObject(object));
         return true;
-//        return super.isLive(object);
       }
-    } else {
-      if (Space.isInSpace(G1.REGION_SPACE, object)) {
-        if (ForwardingWord.isForwardedOrBeingForwarded(object)) return true;
-        return G1.regionSpace.isLiveNext(object);
-      }
-      return super.isLive(object);
     }
+    return true;
   }
 
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(G1.ENABLE_GENERATIONAL_GC);
     if (object.isNull()) return object;
-
-    if (G1.ENABLE_REMEMBERED_SETS) {
-      if (Space.isInSpace(G1.REGION_SPACE, object)) {
-        Address region = Region.of(object);
-        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.getBool(region, Region.MD_ALLOCATED));
-        if (Region.getBool(region, Region.MD_RELOCATE)) {
-          if (G1.regionSpace.isLivePrev(object)) {
-            int allocator = G1.pickCopyAllocator(object);
-            return G1.regionSpace.traceEvacuateObjectInCSet(this, object, allocator);
-          } else {
-            return ObjectReference.nullReference();
-          }
+    if (Space.isInSpace(G1.REGION_SPACE, object)) {
+      Address region = Region.of(object);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Region.getBool(region, Region.MD_ALLOCATED));
+      if (Region.getBool(region, Region.MD_RELOCATE)) {
+        if (G1.regionSpace.isLivePrev(object)) {
+          int allocator = G1.pickCopyAllocator(object);
+          return G1.regionSpace.traceEvacuateObjectInCSet(this, object, allocator);
         } else {
-          return object;
+          return ObjectReference.nullReference();
         }
       } else {
         return object;
       }
     } else {
-      if (Space.isInSpace(G1.REGION_SPACE, object)) {
-        int allocator = G1.pickCopyAllocator(object);
-        return G1.regionSpace.traceEvacuateObject(this, object, allocator, null);
-      } else {
-        return super.traceObject(object);
-      }
+      return object;
     }
   }
 

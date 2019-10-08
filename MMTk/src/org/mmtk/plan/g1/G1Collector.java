@@ -14,6 +14,7 @@ package org.mmtk.plan.g1;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.region.Region;
+import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.RegionAllocator2;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
@@ -42,16 +43,20 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class G1Collector extends G1CollectorBase {
 
-  protected static final byte MARK_TRACE = 0;
-  protected static final byte EVACUATE_TRACE = 1;
-  protected static final byte VALIDATE_TRACE = 2;
+  protected static final int MARK_TRACE     = 0;
+  protected static final int EVACUATE_TRACE = 1;
+  protected static final int NURSERY_TRACE  = 2;
+  protected static final int VALIDATE_TRACE = 3;
 
   protected final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
-  protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.OLD);
   protected final G1MarkTraceLocal markTrace = new G1MarkTraceLocal(global().markTrace, modbuf);
   protected final G1EvacuateTraceLocal evacuateTrace = new G1EvacuateTraceLocal(global().evacuateTrace);
+  protected final G1NurseryTraceLocal nurseryTrace = new G1NurseryTraceLocal(global().nurseryTrace);
   protected final Validation.TraceLocal validateTrace = new Validation.TraceLocal();
-  protected byte currentTrace = MARK_TRACE;
+  protected int currentTrace = MARK_TRACE;
+
+  protected final RegionAllocator2 g1Survivor = new RegionAllocator2(G1.regionSpace, Region.SURVIVOR);
+  protected final RegionAllocator2 g1Old = new RegionAllocator2(G1.regionSpace, Region.OLD);
 
   /****************************************************************************
    *
@@ -71,13 +76,19 @@ public class G1Collector extends G1CollectorBase {
   @Override
   @Inline
   public Address allocCopy(ObjectReference original, int bytes, int align, int offset, int allocator) {
-    return g1.alloc(bytes, align, offset);
+    switch (allocator) {
+      case G1.ALLOC_G1_SURVIVOR: return g1Survivor.alloc(bytes, align, offset);
+      case G1.ALLOC_G1_OLD:      return g1Old.alloc(bytes, align, offset);
+      default:
+        VM.assertions.fail("Unreachable");
+        return Address.zero();
+    }
   }
 
   @Override
   @Inline
   public void postCopy(ObjectReference object, ObjectReference typeRef, int bytes, int allocator) {
-    G1.regionSpace.postCopy(object, bytes);
+    ForwardingWord.clearForwardingBits(object);
   }
 
   /****************************************************************************
@@ -137,46 +148,42 @@ public class G1Collector extends G1CollectorBase {
     }
 
     if (phaseId == G1.EVACUATE_PREPARE) {
-      currentTrace = EVACUATE_TRACE;
-      g1.reset();
-      evacuateTrace.prepare();
+      currentTrace = G1.gcKind == G1.GCKind.YOUNG ? NURSERY_TRACE : EVACUATE_TRACE;
+      if (VM.VERIFY_ASSERTIONS) {
+        if (!G1.ENABLE_GENERATIONAL_GC) VM.assertions._assert(G1.gcKind != G1.GCKind.YOUNG);
+      }
+      g1Survivor.reset();
+      g1Old.reset();
+      getCurrentTrace().prepare();
       super.collectionPhase(G1.PREPARE, primary);
       return;
     }
 
     if (phaseId == G1.EVACUATE_CLOSURE) {
-      evacuateTrace.completeTrace();
+      getCurrentTrace().completeTrace();
       return;
     }
 
     if (phaseId == G1.EVACUATE_RELEASE) {
-      evacuateTrace.release();
-      g1.reset();
+      getCurrentTrace().release();
+      g1Survivor.reset();
+      g1Old.reset();
       super.collectionPhase(G1.RELEASE, primary);
       return;
     }
 
-    if (phaseId == G1.CLEANUP_BLOCKS) {
-      g1.reset();
-      G1.regionSpace.cleanupRegions(G1.relocationSet, false);
-      return;
-    }
-
     if (phaseId == Validation.VALIDATE_PREPARE) {
-      g1.reset();
       currentTrace = VALIDATE_TRACE;
       validateTrace.prepare();
       return;
     }
 
     if (phaseId == Validation.VALIDATE_CLOSURE) {
-      g1.reset();
       validateTrace.completeTrace();
       return;
     }
 
     if (phaseId == Validation.VALIDATE_RELEASE) {
-      g1.reset();
       validateTrace.release();
       return;
     }
@@ -192,8 +199,9 @@ public class G1Collector extends G1CollectorBase {
   @Override
   public TraceLocal getCurrentTrace() {
     switch (currentTrace) {
-      case MARK_TRACE: return markTrace;
+      case MARK_TRACE:     return markTrace;
       case EVACUATE_TRACE: return evacuateTrace;
+      case NURSERY_TRACE:  return nurseryTrace;
       case VALIDATE_TRACE: return validateTrace;
       default:
         VM.assertions.fail("unknown traceLocal");

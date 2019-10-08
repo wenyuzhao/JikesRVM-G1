@@ -16,20 +16,22 @@ class G1Base extends StopTheWorld {
   public static final boolean ENABLE_CONCURRENT_MARKING = constraints().g1ConcurrentMarking();
   public static final boolean ENABLE_REMEMBERED_SETS = constraints().g1RememberedSets();
   public static final boolean ENABLE_CONCURRENT_REFINEMENT = constraints().g1ConcurrentRefinement();
+  public static final boolean ENABLE_GENERATIONAL_GC = constraints().g1GenerationalGC();
+
+
 
   // Collection phases
-  public static final short EVACUATE_PREPARE = Phase.createSimple("evacuate-prepare");
-  public static final short EVACUATE_CLOSURE = Phase.createSimple("evacuate-closure");
-  public static final short EVACUATE_RELEASE = Phase.createSimple("evacuate-release");
+  public static final short EVACUATE_PREPARE         = Phase.createSimple("evacuate-prepare");
+  public static final short EVACUATE_CLOSURE         = Phase.createSimple("evacuate-closure");
+  public static final short EVACUATE_RELEASE         = Phase.createSimple("evacuate-release");
   public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-  public static final short CLEANUP_BLOCKS = Phase.createSimple("cleanup-blocks");
-  public static final short FLUSH_MUTATOR               = Phase.createSimple("flush-mutator", null);
-  public static final short SET_BARRIER_ACTIVE          = Phase.createSimple("set-barrier", null);
-  public static final short FLUSH_COLLECTOR             = Phase.createSimple("flush-collector", null);
-  public static final short CLEAR_BARRIER_ACTIVE        = Phase.createSimple("clear-barrier", null);
-  public static final short FINAL_MARK                  = Phase.createSimple("final-mark", null);
-  public static final short REFINE_CARDS = Phase.createSimple("refine-cards");
-  public static final short REMSET_ROOTS = Phase.createSimple("remset-roots");
+  public static final short FLUSH_MUTATOR            = Phase.createSimple("flush-mutator");
+  public static final short SET_BARRIER_ACTIVE       = Phase.createSimple("set-barrier");
+  public static final short FLUSH_COLLECTOR          = Phase.createSimple("flush-collector");
+  public static final short CLEAR_BARRIER_ACTIVE     = Phase.createSimple("clear-barrier");
+  public static final short FINAL_MARK               = Phase.createSimple("final-mark");
+  public static final short REFINE_CARDS             = Phase.createSimple("refine-cards");
+  public static final short REMSET_ROOTS             = Phase.createSimple("remset-roots");
 
   protected static final short preemptConcurrentClosure = Phase.createComplex("preeempt-concurrent-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
@@ -117,7 +119,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (EVACUATE_RELEASE)
   );
 
-  public static short _collection = Phase.createComplex("_collection", null,
+  public static final short mixedCollection = Phase.createComplex("mixed-collection", null,
       Phase.scheduleComplex  (initPhase),
       // Mark
       Phase.scheduleComplex  (rootClosurePhase),
@@ -127,8 +129,53 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
       // Evacuate
       Phase.scheduleComplex  (ENABLE_REMEMBERED_SETS ? remsetEvacuatePhase : fullTraceEvacuatePhase),
-      // Cleanup
-      Phase.scheduleCollector(CLEANUP_BLOCKS),
+
+      Validation.scheduledPhase(),
+
+      Phase.scheduleComplex  (finishPhase)
+  );
+
+  public static final short nurseryCollection = Phase.createComplex("nursery-collection", null,
+      Phase.scheduleComplex  (initPhase),
+      // Select relocation sets
+      Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+      // Evacuate
+      Phase.scheduleMutator  (EVACUATE_PREPARE),
+      Phase.scheduleGlobal   (EVACUATE_PREPARE),
+      Phase.scheduleCollector(EVACUATE_PREPARE),
+      // Roots
+      Phase.scheduleMutator  (PREPARE_STACKS),
+      Phase.scheduleGlobal   (PREPARE_STACKS),
+      Phase.scheduleCollector(STACK_ROOTS),
+      Phase.scheduleGlobal   (STACK_ROOTS),
+      Phase.scheduleCollector(ROOTS),
+      Phase.scheduleGlobal   (ROOTS),
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleCollector(REMSET_ROOTS),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+      // Refs
+      Phase.scheduleCollector(SOFT_REFS),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+      Phase.scheduleCollector(WEAK_REFS),
+      Phase.scheduleCollector(FINALIZABLE),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+      Phase.scheduleCollector(PHANTOM_REFS),
+
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleCollector(REMSET_ROOTS),
+      Phase.scheduleGlobal   (EVACUATE_CLOSURE),
+      Phase.scheduleCollector(EVACUATE_CLOSURE),
+
+      Phase.scheduleMutator  (EVACUATE_RELEASE),
+      Phase.scheduleCollector(EVACUATE_RELEASE),
+      Phase.scheduleGlobal   (EVACUATE_RELEASE),
 
       Validation.scheduledPhase(),
 
@@ -137,6 +184,11 @@ class G1Base extends StopTheWorld {
 
   @Inline
   short getCollection() {
-    return _collection;
+    if (VM.VERIFY_ASSERTIONS) {
+      if (G1.gcKind == G1.GCKind.YOUNG) {
+        VM.assertions._assert(ENABLE_GENERATIONAL_GC);
+      }
+    }
+    return G1.gcKind == G1.GCKind.YOUNG ? nurseryCollection : mixedCollection;
   }
 }

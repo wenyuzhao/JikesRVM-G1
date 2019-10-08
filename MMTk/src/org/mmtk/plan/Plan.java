@@ -701,6 +701,10 @@ public abstract class Plan {
     Log.writeln();
   }
 
+  @Inline
+  @Unpreemptible
+  public void prepareForUserCollectionRequest() {}
+
   /**
    * The application code has requested a collection.
    */
@@ -710,6 +714,7 @@ public abstract class Plan {
       // Ignore the user GC request.
       return;
     }
+    VM.activePlan.global().prepareForUserCollectionRequest();
     // Mark this as a user triggered collection
     userTriggeredCollection = true;
     // Request the collection

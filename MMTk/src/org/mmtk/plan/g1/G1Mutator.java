@@ -56,7 +56,7 @@ public class G1Mutator extends StopTheWorldMutator {
   public static boolean newMutatorBarrierActive = false;
   protected volatile boolean barrierActive = newMutatorBarrierActive;
   private final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
-  protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, Region.NORMAL);
+  protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, G1.ENABLE_GENERATIONAL_GC ? Region.EDEN : Region.OLD);
   protected final BumpPointer2 immortal2 = new BumpPointer2(Plan.immortalSpace);
   protected Address dirtyCardQueue = Address.zero();
   protected Address dirtyCardQueueCursor = Address.zero();
@@ -68,10 +68,20 @@ public class G1Mutator extends StopTheWorldMutator {
   @Override
   @Inline
   public Address alloc(int bytes, int align, int offset, int allocator, int site) {
+    if (VM.VERIFY_ASSERTIONS) {
+      switch (allocator) {
+        case G1.ALLOC_G1_EDEN:
+        case G1.ALLOC_G1_SURVIVOR:
+        case G1.ALLOC_G1_OLD:
+          VM.assertions.fail("Unreachable");
+          break;
+        default: break;
+      }
+    }
     switch (allocator) {
-      case G1.ALLOC_G1:  return g1.alloc(bytes, align, offset);
-      case G1.ALLOC_LOS: return los.alloc(bytes, align, offset);
-      default:           return immortal2.alloc(bytes, align, offset);
+      case G1.ALLOC_DEFAULT: return g1.alloc(bytes, align, offset);
+      case G1.ALLOC_LOS:     return los.alloc(bytes, align, offset);
+      default:               return immortal2.alloc(bytes, align, offset);
     }
   }
 
@@ -79,16 +89,16 @@ public class G1Mutator extends StopTheWorldMutator {
   @Inline
   public void postAlloc(ObjectReference ref, ObjectReference typeRef, int bytes, int allocator) {
     switch (allocator) {
-      case G1.ALLOC_G1:  return;
-      case G1.ALLOC_LOS: G1.loSpace.initializeHeader(ref, true); return;
-      default:           G1.immortalSpace.initializeHeader(ref);  return;
+      case G1.ALLOC_DEFAULT: return;
+      case G1.ALLOC_LOS:     G1.loSpace.initializeHeader(ref, true); return;
+      default:               G1.immortalSpace.initializeHeader(ref);  return;
     }
   }
 
   @Override
   public Allocator getAllocatorFromSpace(Space space) {
     if (space == G1.regionSpace) return g1;
-    if (space == Plan.loSpace)        return los;
+    if (space == Plan.loSpace)   return los;
     return immortal2;
   }
 
@@ -191,7 +201,6 @@ public class G1Mutator extends StopTheWorldMutator {
   void cardMarkingBarrier(ObjectReference src) {
     if (!G1.ENABLE_REMEMBERED_SETS) return;
     Address card = Card.of(src);
-
     if (CardTable.get(card) == Card.NOT_DIRTY) {
       CardTable.set(card, Card.DIRTY);
       if (G1.ENABLE_CONCURRENT_REFINEMENT) {
@@ -240,7 +249,7 @@ public class G1Mutator extends StopTheWorldMutator {
   @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
-    if (barrierActive) checkAndEnqueueReference(slot.loadObjectReference());
+    if (G1.ENABLE_CONCURRENT_MARKING && barrierActive) checkAndEnqueueReference(slot.loadObjectReference());
     VM.barriers.objectReferenceWrite(src, tgt, metaDataA, metaDataB, mode);
     cardMarkingBarrier(src);
   }
@@ -248,7 +257,7 @@ public class G1Mutator extends StopTheWorldMutator {
   @Inline
   @Override
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
-    if (barrierActive) checkAndEnqueueReference(old);
+    if (G1.ENABLE_CONCURRENT_MARKING && barrierActive) checkAndEnqueueReference(old);
     boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, tgt, metaDataA, metaDataB, mode);
     cardMarkingBarrier(src);
     return result;
@@ -257,7 +266,7 @@ public class G1Mutator extends StopTheWorldMutator {
   @Inline
   @Override
   public ObjectReference javaLangReferenceReadBarrier(ObjectReference ref) {
-    if (barrierActive) checkAndEnqueueReference(ref);
+    if (G1.ENABLE_CONCURRENT_MARKING && barrierActive) checkAndEnqueueReference(ref);
     return ref;
   }
 

@@ -2,14 +2,11 @@ package org.mmtk.plan.g1;
 
 import org.mmtk.plan.Phase;
 import org.mmtk.plan.Trace;
-import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.Region;
-import org.mmtk.policy.region.RemSet;
 import org.mmtk.utility.Log;
-import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -70,29 +67,25 @@ public class Validation {
     VM.assertions._assert(Space.isMappedObject(object));
   }
 
-  @Uninterruptible
-  private static class Validator {
-    void validateObject(ObjectReference object) {
-      if (!VM.VERIFY_ASSERTIONS) return;
-      VM.assertions._assert(Space.isMappedObject(object));
-      if (Space.isInSpace(G1.REGION_SPACE, object)) {
-        VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_ALLOCATED));
-        if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
-          VM.objectModel.dumpObject(object);
-          Log.writeln(Space.getSpaceForObject(object).getName());
-        }
-        VM.assertions._assert(!Region.getBool(Region.of(object), Region.MD_RELOCATE));
-        VM.assertions._assert(G1.regionSpace.isLivePrev(object));
-      } else if (Space.isInSpace(G1.LOS, object)) {
-        VM.assertions._assert(G1.loSpace.isLive(object));
-      } else if (Space.isInSpace(G1.IMMORTAL, object)) {
-        VM.assertions._assert(G1.immortalSpace.isMarked(object));
+  private static void validateObject(ObjectReference object) {
+    if (!VM.VERIFY_ASSERTIONS) return;
+    VM.assertions._assert(Space.isMappedObject(object));
+    if (Space.isInSpace(G1.REGION_SPACE, object)) {
+      VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_ALLOCATED));
+      if (Region.getBool(Region.of(object), Region.MD_RELOCATE)) {
+        VM.objectModel.dumpObject(object);
+        Log.writeln(Space.getSpaceForObject(object).getName());
       }
+      VM.assertions._assert(!Region.getBool(Region.of(object), Region.MD_RELOCATE));
+      VM.assertions._assert(G1.regionSpace.isLivePrev(object));
+    } else if (Space.isInSpace(G1.LOS, object)) {
+      VM.assertions._assert(G1.loSpace.isLive(object));
+    } else if (Space.isInSpace(G1.IMMORTAL, object)) {
+      VM.assertions._assert(G1.immortalSpace.isMarked(object));
     }
   }
 
   private static final Trace trace = new Trace(G1.metaDataSpace);
-  private static final Validator validator = new Validator();
   private static final Offset GC_HEADER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
   public static final short VALIDATE_PLACEHOLDER = Phase.createSimple("validate-placeholder");
   public static final short VALIDATE_PREPARE = Phase.createSimple("validate-prepare");
@@ -138,11 +131,10 @@ public class Validation {
     trace.release();
   }
 
-
   @Uninterruptible
   static class TraceLocal extends org.mmtk.plan.TraceLocal {
     public TraceLocal() {
-      super(G1.SCAN_VALIDATE, trace);
+      super(trace);
     }
 
     @Override
@@ -160,7 +152,7 @@ public class Validation {
     @Override
     public boolean isLive(ObjectReference object) {
       if (object.isNull()) return false;
-      validator.validateObject(object);
+      validateObject(object);
       return object.toAddress().loadInt(GC_HEADER_OFFSET) == markState;
     }
 
@@ -168,7 +160,7 @@ public class Validation {
     public ObjectReference traceObject(ObjectReference object) {
       if (object.isNull()) return object;
       Address markWord = object.toAddress().plus(GC_HEADER_OFFSET);
-      validator.validateObject(object);
+      validateObject(object);
       if (markWord.loadInt() != markState) {
         markWord.store(markState);
         processNode(object);

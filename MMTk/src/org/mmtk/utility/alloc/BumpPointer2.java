@@ -123,18 +123,15 @@ import static org.mmtk.utility.Constants.*;
     boolean shouldUpdateAnchor = cursor.LT(card);
 
     while (cursor.LT(limit)) {
-//      Log.writeln(" - cursor ", cursor);
-      if (shouldUpdateAnchor && cursor.GE(card)) {
-        shouldUpdateAnchor = false;
-        getCardMetaData(card).store(cursor);
-      }
       ObjectReference object = Card.getObjectFromStartAddress(cursor, limit);
       if (object.isNull() || tibIsZero(object)) return;
       Address startRef = VM.objectModel.objectStartRef(object);
-      if (startRef.GE(limit)) {
-//        Log.writeln(" - break for limit");
-        break;
+
+      if (shouldUpdateAnchor && startRef.GE(card)) {
+        shouldUpdateAnchor = false;
+        getCardMetaData(card).store(startRef);
       }
+      if (startRef.GE(limit)) return;
       cursor = VM.objectModel.getObjectEndAddress(object);
       if (startRef.GE(card) && startRef.LT(limit)) {
         if (markDead) {

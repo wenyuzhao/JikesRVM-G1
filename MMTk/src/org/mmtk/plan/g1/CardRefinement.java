@@ -38,7 +38,6 @@ public class CardRefinement {
       if (RegionSpace.isCrossRegionRef(source, slot, field) && Space.isInSpace(G1.REGION_SPACE, field)) {
         Address region = Region.of(field);
         Address remset = Region.getAddress(region, Region.MD_REMSET);
-        if (remset.isZero()) return;
         if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!remset.isZero());
         Address card = Card.of(source);
         RemSet.addCard(region, card);
