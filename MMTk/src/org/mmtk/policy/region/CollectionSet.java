@@ -1,6 +1,7 @@
 package org.mmtk.policy.region;
 
 import org.mmtk.plan.g1.G1;
+import org.mmtk.plan.g1.PauseTimePredictor;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
@@ -14,10 +15,17 @@ import org.vmmagic.unboxed.WordArray;
 
 @Uninterruptible
 public class CollectionSet {
-  public static void compute(RegionSpace space, int gcKind, int availablePages) {
+  @Uninterruptible
+  public static abstract class Predictor {
+    public abstract void record(Address region);
+    public abstract boolean withinBudget();
+  }
+
+
+  public static void compute(RegionSpace space, int gcKind, int availablePages, PauseTimePredictor predictor) {
     switch (gcKind) {
       case G1.GCKind.YOUNG: computeForNurseryGC(space, availablePages); return;
-      case G1.GCKind.MIXED: computeForMixedGC(space, availablePages);   return;
+      case G1.GCKind.MIXED: computeForMixedGC(space, availablePages, predictor);   return;
       case G1.GCKind.FULL:  computeForFullGC(space, availablePages);    return;
     }
   }
@@ -25,13 +33,43 @@ public class CollectionSet {
   private static void computeForNurseryGC(RegionSpace space, int availablePages) {
     for (Address region = space.firstRegion(); !region.isZero(); region = Region.getNext(region)) {
       if (Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
-        markAsRelocate(region);
+        markAsRelocate(region, Region.liveBytes(region));
       }
     }
   }
 
-  private static void computeForMixedGC(RegionSpace space, final int availablePages) {
-    computeForFullGC(space, availablePages);
+  private static void computeForMixedGC(RegionSpace space, final int availablePages, final PauseTimePredictor predictor) {
+    final int regions = space.committedRegions;
+    WordArray array = createArrayOfRegionsAndSizes(regions, space.firstRegion());
+    int availableBytes = availablePages << Constants.LOG_BYTES_IN_PAGE;
+
+    // Select all nursery regions
+    for (int i = 0; i < regions; i++) {
+      Address region = getRegion(array, i);
+      if (Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
+        int size = getSize(array, i);
+        markAsRelocate(region, size);
+        availableBytes -= size;
+        predictor.predict(region, true);
+      }
+    }
+    // Select some old regions
+    if (availableBytes <= 0) return;
+    int count = 0;
+    for (int i = 0; i < regions; i++) {
+      Address region = getRegion(array, i);
+      if (Region.getInt(region, Region.MD_GENERATION) != Region.OLD) continue;
+      int size = getSize(array, i);
+      if (availableBytes - size <= 0) break;
+      if (predictor.predict(region, false)) {
+        availableBytes -= size;
+        markAsRelocate(region, size);
+        count ++;
+      } else {
+        break;
+      }
+    }
+    Log.writeln("Collection Set = ", count);
   }
 
   private static void computeForFullGC(RegionSpace space, int availablePages) {
@@ -42,8 +80,9 @@ public class CollectionSet {
     for (int i = 0; i < regions; i++) {
       Address region = getRegion(array, i);
       if (Region.getInt(region, Region.MD_GENERATION) != Region.OLD) {
-        markAsRelocate(region);
-        availableBytes -= getSize(array, i);
+        int size = getSize(array, i);
+        markAsRelocate(region, size);
+        availableBytes -= size;
       }
     }
     // Select some old regions
@@ -54,16 +93,17 @@ public class CollectionSet {
       int size = getSize(array, i);
       availableBytes -= size;
       if (availableBytes <= 0) break;
-      markAsRelocate(region);
+      markAsRelocate(region, size);
     }
   }
 
-  private static void markAsRelocate(Address region) {
+  private static void markAsRelocate(Address region, int size) {
     if (Region.VERBOSE_REGION_LIFETIME) {
       Log.write("Relocate ");
       Log.write(Region.getGenerationName(region));
       Log.writeln(" region ", region);
     }
+    G1.predictor.stat.totalCopyBytes += size;
     Region.set(region, Region.MD_RELOCATE, true);
   }
 
@@ -73,7 +113,7 @@ public class CollectionSet {
     int cursor = 0;
     for (Address region = headRegion; !region.isZero(); region = Region.getNext(region)) {
       array.set(cursor, region.toWord());
-      array.set(cursor + 1, Word.fromIntZeroExtend(Region.usedSize(region)));
+      array.set(cursor + 1, Word.fromIntZeroExtend(Region.liveBytes(region)));
       cursor += 2;
     }
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(cursor == regions * 2);

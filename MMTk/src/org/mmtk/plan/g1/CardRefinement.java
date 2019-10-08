@@ -58,6 +58,8 @@ public class CardRefinement {
     if (id == 0) {
       Queue.releaseAll();
     }
+    long startTime = id == 0 ? VM.statistics.nanoTime() : 0;
+    VM.activePlan.collector().rendezvous();
 //    int start_time = ::std::time::SystemTime::now();
     int size = (Card.CARDS_IN_HEAP + workers - 1) / workers;
     int start = size * id;
@@ -72,8 +74,10 @@ public class CardRefinement {
         }
       }
     }
-//    let time = start_time.elapsed().unwrap().as_millis() as usize;
-//    PLAN.predictor.timer.report_dirty_card_scanning_time(time, cards);
+    VM.activePlan.collector().rendezvous();
+    if (id == 0) {
+      G1.predictor.stat.totalRefineTime += VM.statistics.nanoTime() - startTime;
+    }
   }
 
   public static final int LOCAL_BUFFER_SIZE = 4096 - Constants.BYTES_IN_ADDRESS;
@@ -94,8 +98,6 @@ public class CardRefinement {
 
     @Inline
     public static void enqueue(Address buffer) {
-//      release(buffer);
-//      if (Plan.gcInProgress()) release(buffer);
       lock.acquire();
       buffer = Conversions.pageAlign(buffer);
       buffer.store(head);

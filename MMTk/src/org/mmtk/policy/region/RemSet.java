@@ -3,6 +3,7 @@ package org.mmtk.policy.region;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.g1.G1;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Constants;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -17,24 +18,26 @@ public class RemSet {
   private static final int LOGICAL_REGIONS_IN_HEAP = VM.HEAP_END.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
   private static final int BYTES_IN_REMSET = LOGICAL_REGIONS_IN_HEAP * Constants.BYTES_IN_ADDRESS;
   public  static final int PAGES_IN_REMSET = 1 + ((BYTES_IN_REMSET - 1) / Constants.BYTES_IN_PAGE);
-  private static final int META_BYTES_IN_PRT = 3 << Constants.LOG_BYTES_IN_ADDRESS;
+  private static final int META_BYTES_IN_PRT = 4 << Constants.LOG_BYTES_IN_ADDRESS;
   private static final int BYTES_IN_PRT = Card.CARDS_IN_REGION / Constants.BITS_IN_BYTE + META_BYTES_IN_PRT;
   private static final Offset NEXT_PRT_OFFSET = Offset.fromIntZeroExtend(0);
   private static final Offset PREV_PRT_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS);
   private static final Offset PRT_REGION_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 2);
-  private static final Offset PRT_DATA_START = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 3);
+  private static final Offset PRT_CARDS_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 3);
+  private static final Offset PRT_DATA_START = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 4);
 
   @Uninterruptible
   public static abstract class Visitor<T> {
     @Inline public abstract void visit(Address region, Address remset, Address card, T context);
   }
 
-  public static void iterate(Address rsRegion, Visitor visitor, Object context) {
+  public static int iterate(Address rsRegion, Visitor visitor, Object context) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!rsRegion.isZero());
       VM.assertions._assert(Space.isInSpace(G1.REGION_SPACE, rsRegion));
       VM.assertions._assert(Region.isAligned(rsRegion));
     }
+    int visitedCards = 0;
     Address remset = Region.getAddress(rsRegion, Region.MD_REMSET);
     Address headPRT = Region.getAddress(rsRegion, Region.MD_REMSET_HEAD_PRT);
     for (Address prt = headPRT; !prt.isZero(); prt = prt.loadAddress(NEXT_PRT_OFFSET)) {
@@ -55,6 +58,7 @@ public class RemSet {
               int bitIndex = (wordIndex << Constants.LOG_BITS_IN_WORD) + i;
               Address card = prtRegion.plus(bitIndex << Card.LOG_BYTES_IN_CARD);
               visitor.visit(rsRegion, remset, card, context);
+              visitedCards += 1;
             }
           }
         }
@@ -62,6 +66,7 @@ public class RemSet {
         wordIndex += 1;
       }
     }
+    return visitedCards;
   }
 
   @Inline
@@ -87,9 +92,9 @@ public class RemSet {
     final Address newHeadPRT = newValue;
     do {
       oldHeadPRT = headPRTSlot.prepareAddress();
-      newHeadPRT.store(oldHeadPRT);
+      newHeadPRT.store(oldHeadPRT, NEXT_PRT_OFFSET);
     } while (!headPRTSlot.attempt(oldHeadPRT, newHeadPRT));
-    if (!oldHeadPRT.isZero()) oldHeadPRT.plus(Constants.BYTES_IN_ADDRESS).store(newHeadPRT);
+    if (!oldHeadPRT.isZero()) oldHeadPRT.store(newHeadPRT, PREV_PRT_OFFSET);
     return newValue;
   }
 
@@ -127,7 +132,9 @@ public class RemSet {
     Address cardRegion = Region.of(card);
     Address prt = getPRT(region, cardRegion, true);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!prt.isZero());
-    PerRegionTable.addCard(prt, card);
+    if (PerRegionTable.addCard(prt, card)) {
+      incCardCount(region);
+    }
   }
 
   @Inline
@@ -140,7 +147,11 @@ public class RemSet {
     }
     Address cardRegion = Region.of(card);
     Address prt = getPRT(region, cardRegion, false);
-    if (!prt.isZero()) PerRegionTable.removeCard(prt, card);
+    if (!prt.isZero()) {
+      if (PerRegionTable.removeCard(prt, card)) {
+        decCardCount(region);
+      }
+    }
   }
 
   @Inline
@@ -152,19 +163,20 @@ public class RemSet {
     }
     Address remset = Region.getAddress(rsRegion, Region.MD_REMSET);
     Address prt = Region.getAddress(rsRegion, Region.MD_REMSET_HEAD_PRT);
+    int removedCards = 0;
     while (!prt.isZero()) {
       Address nextPRT = prt.loadAddress(NEXT_PRT_OFFSET);
-
       Address prtRegion = prt.loadAddress(PRT_REGION_OFFSET);
       int regionIndex = (prtRegion.toInt() - VM.HEAP_START.toInt()) >>> Region.LOG_BYTES_IN_REGION;
       Address prtSlot = remset.plus(regionIndex << Constants.LOG_BYTES_IN_ADDRESS);
       if (Space.isInSpace(G1.REGION_SPACE, prtRegion)) {
-        clearCSetPRTs(rsRegion, prtRegion, prt, prtSlot);
+        removedCards += clearCSetPRTs(rsRegion, prtRegion, prt, prtSlot);
       } else if (Space.isInSpace(G1.LOS, prtRegion)) {
-        clearDeadLosCards(prtRegion, prt);
+        removedCards += clearDeadLosCards(prtRegion, prt);
       } else if (Space.isInSpace(G1.IMMORTAL, prtRegion)) {
         // Do nothing
       } else {
+        removedCards += prt.loadInt(PRT_CARDS_OFFSET);
         releaseOnePRTNonAtomic(
             Region.metaSlot(rsRegion, Region.MD_REMSET_HEAD_PRT),
             prtSlot,
@@ -174,30 +186,46 @@ public class RemSet {
 
       prt = nextPRT;
     }
+    Atomic.Int.fetchAdd(Region.metaSlot(rsRegion, Region.MD_REMSET_SIZE), removedCards);
   }
 
   @Inline
-  private static void clearCSetPRTs(Address rsRegion, Address prtRegion, Address prt, Address prtSlot) {
+  private static int clearCSetPRTs(Address rsRegion, Address prtRegion, Address prt, Address prtSlot) {
     if (Region.getBool(prtRegion, Region.MD_RELOCATE)) {
+      int removedCards = prt.loadInt(PRT_CARDS_OFFSET);
       releaseOnePRTNonAtomic(
           Region.metaSlot(rsRegion, Region.MD_REMSET_HEAD_PRT),
           prtSlot,
           prt
       );
+      return removedCards;
     }
+    return 0;
   }
 
   @Inline
-  private static void clearDeadLosCards(Address region, Address prt) {
+  private static int clearDeadLosCards(Address region, Address prt) {
+    int removedCards = 0;
     Address regionEnd = region.plus(Region.BYTES_IN_REGION);
     for (Address card = region; card.LT(regionEnd); card = card.plus(Card.BYTES_IN_CARD)) {
       if (PerRegionTable.containsCard(prt, card)) {
         ObjectReference o = Card.getObjectFromStartAddress(card, card.plus(Card.BYTES_IN_CARD));
         if (o.isNull() || !G1.loSpace.isLive(o)) {
-          PerRegionTable.removeCard(prt, card);
+          if (PerRegionTable.removeCard(prt, card)) removedCards += 1;
         }
       }
     }
+    return removedCards;
+  }
+
+  @Inline
+  private static void incCardCount(Address region) {
+    Atomic.Int.fetchAdd(Region.metaSlot(region, Region.MD_REMSET_SIZE), 1);
+  }
+
+  @Inline
+  private static void decCardCount(Address region) {
+    Atomic.Int.fetchAdd(Region.metaSlot(region, Region.MD_REMSET_SIZE), -1);
   }
 
   @Uninterruptible
@@ -258,6 +286,7 @@ public class RemSet {
         if (oldValue.and(mask).EQ(mask)) return false;
         newValue = oldValue.or(mask);
       } while (!slot.attempt(oldValue, newValue));
+      Atomic.Int.fetchAdd(prt.plus(PRT_CARDS_OFFSET), 1);
       return true;
     }
 
@@ -276,6 +305,7 @@ public class RemSet {
         if (oldValue.and(mask).isZero()) return false;
         newValue = oldValue.and(mask.not());
       } while (!slot.attempt(oldValue, newValue));
+      Atomic.Int.fetchAdd(prt.plus(PRT_CARDS_OFFSET), -1);
       return true;
     }
 

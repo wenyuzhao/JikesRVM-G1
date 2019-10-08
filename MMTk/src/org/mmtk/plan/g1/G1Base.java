@@ -16,8 +16,24 @@ class G1Base extends StopTheWorld {
   public static final boolean ENABLE_CONCURRENT_MARKING = constraints().g1ConcurrentMarking();
   public static final boolean ENABLE_REMEMBERED_SETS = constraints().g1RememberedSets();
   public static final boolean ENABLE_CONCURRENT_REFINEMENT = constraints().g1ConcurrentRefinement();
-  public static final boolean ENABLE_GENERATIONAL_GC = constraints().g1GenerationalGC();
   public static final boolean ENABLE_HOT_CARD_OPTIMIZATION = constraints().g1HotCardOptimization();
+  public static final boolean ENABLE_GENERATIONAL_GC = constraints().g1GenerationalGC();
+  public static final boolean ENABLE_PAUSE_TIME_PREDICTOR = constraints().g1PauseTimePredictor();
+
+  private static void requires(boolean x) {
+    if (!x) VM.assertions.fail("");
+  }
+
+  static {
+    // Verify features consistency
+    if (ENABLE_CONCURRENT_REFINEMENT) requires(ENABLE_REMEMBERED_SETS);
+    if (ENABLE_HOT_CARD_OPTIMIZATION) {
+      requires(ENABLE_REMEMBERED_SETS);
+      requires(ENABLE_CONCURRENT_REFINEMENT);
+    }
+    if (ENABLE_GENERATIONAL_GC) requires(ENABLE_REMEMBERED_SETS);
+    if (ENABLE_PAUSE_TIME_PREDICTOR) requires(ENABLE_REMEMBERED_SETS);
+  }
 
 
 

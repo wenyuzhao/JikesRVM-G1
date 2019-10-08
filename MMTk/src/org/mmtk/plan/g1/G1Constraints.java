@@ -51,8 +51,11 @@ public class G1Constraints extends StopTheWorldConstraints {
   public boolean g1ConcurrentMarking() { return true; }
   public boolean g1RememberedSets() { return true; }
   public boolean g1ConcurrentRefinement() { return true; }
-  public boolean g1GenerationalGC() { return true; }
   public boolean g1HotCardOptimization() { return true; }
+  public boolean g1GenerationalGC() { return false; }
+  public boolean g1PauseTimePredictor() {
+    return true;
+  }
 
   // Derived
   @Override public boolean needsConcurrentWorkers() { return g1ConcurrentMarking(); }

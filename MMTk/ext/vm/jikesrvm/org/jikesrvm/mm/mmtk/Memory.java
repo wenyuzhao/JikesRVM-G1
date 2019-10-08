@@ -48,6 +48,12 @@ import org.vmmagic.unboxed.Offset;
 
   @Override
   @Inline
+  public long prepareLong(Object object, Offset offset) {
+    return Magic.prepareLong(object, offset);
+  }
+
+  @Override
+  @Inline
   public boolean attemptLong(Object object, Offset offset, long oldValue, long newValue) {
     return Magic.attemptLong(object, offset, oldValue, newValue);
   }

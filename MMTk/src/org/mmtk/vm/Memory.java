@@ -41,6 +41,9 @@ import org.vmmagic.pragma.*;
   public abstract boolean attemptLong(Object object, Offset offset, long oldValue, long newValue);
 
   @Inline
+  public abstract long prepareLong(Object object, Offset offset);
+
+  @Inline
   public abstract void copy(Address source, Address target, int bytes);
 
   /**

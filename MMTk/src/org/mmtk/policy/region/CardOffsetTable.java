@@ -48,7 +48,7 @@ public class CardOffsetTable {
     return blockStartSlow(bot, card, start);
   }
 
-  @NoInline
+  @Inline
   private static Address blockStartSlow(Address bot, Address card, Address blockStart) {
     Address cursor = blockStart;
     final Address limit = card.plus(Card.BYTES_IN_CARD);

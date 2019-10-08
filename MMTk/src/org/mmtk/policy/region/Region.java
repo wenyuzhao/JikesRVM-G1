@@ -128,7 +128,7 @@ public class Region {
   }
 
   @Inline
-  public static int usedSize(Address region) {
+  public static int liveBytes(Address region) {
     int a = metaDataOf(region, MD_LIVE_SIZE).loadInt();
     Address prevCursor = metaDataOf(region, MD_PREV_CURSOR).loadAddress();
     Address nextCursor = metaDataOf(region, MD_NEXT_CURSOR).loadAddress();

@@ -162,7 +162,14 @@ public class G1Collector extends G1CollectorBase {
     }
 
     if (phaseId == G1.EVACUATE_CLOSURE) {
+      final int id = parallelWorkerOrdinal();
+      long startTime = id == 0 ? VM.statistics.nanoTime() : 0;
+      VM.activePlan.collector().rendezvous();
       getCurrentTrace().completeTrace();
+      VM.activePlan.collector().rendezvous();
+      if (id == 0) {
+        G1.predictor.stat.totalCopyTime += VM.statistics.nanoTime() - startTime;
+      }
       return;
     }
 

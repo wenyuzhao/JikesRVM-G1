@@ -58,6 +58,7 @@ public class G1 extends G1Base {
     public static final int MIXED = 1;
     public static final int FULL = 2;
   }
+  public static final PauseTimePredictor predictor = new PauseTimePredictor();
 
   public final Trace markTrace = new Trace(metaDataSpace);
   public final Trace evacuateTrace = new Trace(metaDataSpace);
@@ -165,8 +166,9 @@ public class G1 extends G1Base {
     if (phaseId == RELOCATION_SET_SELECTION) {
       if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.pause();
       Space.printVMMap();
+      predictor.prepare();
       int availablePages = getTotalPages() - getPagesUsed();
-      CollectionSet.compute(regionSpace, gcKind, availablePages);
+      CollectionSet.compute(regionSpace, gcKind, availablePages, predictor);
       return;
     }
 
@@ -201,6 +203,10 @@ public class G1 extends G1Base {
       regionSpace.release();
       if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.resume();
       return;
+    }
+
+    if (phaseId == COMPLETE) {
+      predictor.release();
     }
 
     if (phaseId == Validation.VALIDATE_PREPARE) {

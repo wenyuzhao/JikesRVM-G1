@@ -46,6 +46,16 @@ public class Atomic {
     }
 
     @Inline
+    public static int fetchAdd(Address pointer, int delta) {
+      int oldValue, newValue;
+      do {
+        oldValue = pointer.prepareInt();
+        newValue = oldValue + delta;
+      } while (!pointer.attempt(oldValue, newValue));
+      return oldValue;
+    }
+
+    @Inline
     public final void addNonAtomic(int value) {
       set(get() + value);
     }
@@ -53,29 +63,30 @@ public class Atomic {
 
   @Uninterruptible
   public static class Long {
-    private final long[] value = new long[] { 0 };
+    @Entrypoint private volatile long value;
+
+    private static final Offset VALUE_OFFSET = VM.objectModel.getFieldOffset(Long.class, "value", long.class);
 
     @Inline
     public final void set(long v) {
-      value[0] = v;
+      value = v;
     }
 
     @Inline
     public final long get() {
-      return value[0];
+      return value;
     }
 
     @Inline
     public final boolean attempt(long oldValue, long newValue) {
-      return VM.memory.attemptLong(value, Offset.fromIntZeroExtend(0), oldValue, newValue);
+      return VM.memory.attemptLong(this, VALUE_OFFSET, oldValue, newValue);
     }
 
     @Inline
     public final long add(long value) {
-      Address pointer = ObjectReference.fromObject(this.value).toAddress();
       long oldValue, newValue;
       do {
-        oldValue = pointer.loadLong();
+        oldValue = VM.memory.prepareLong(this, VALUE_OFFSET);
         newValue = oldValue + value;
       } while (!attempt(oldValue, newValue));
       return oldValue;

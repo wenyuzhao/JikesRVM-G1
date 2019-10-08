@@ -16,6 +16,7 @@ package org.mmtk.policy.region;
 import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
+import org.mmtk.plan.g1.G1;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
@@ -341,13 +342,21 @@ public final class RegionSpace extends Space {
   }
 
   public void iterateToSpaceRemSetRoots(TraceLocal trace, int id, int numWorkers, boolean nursery) {
+    long startTime = id == 0 ? VM.statistics.nanoTime() : 0;
+    int cards = 0;
+    VM.activePlan.collector().rendezvous();
     if (id == 0) atomicRegionIterator.reset();
     VM.activePlan.collector().rendezvous();
     Address region;
     while (!(region = atomicRegionIterator.next()).isZero()) {
       if (!Region.getBool(region, Region.MD_RELOCATE)) continue;
-      iterateRegionRemsetRoots(region, trace, nursery);
+      cards += iterateRegionRemsetRoots(region, trace, nursery);
     }
+    VM.activePlan.collector().rendezvous();
+    if (id == 0) {
+      G1.predictor.stat.totalRemSetTime += VM.statistics.nanoTime() - startTime;
+    }
+    G1.predictor.stat.totalRemSetCards.add(cards);
   }
 
   private static boolean remsetVisitorInNursery = false;
@@ -365,9 +374,9 @@ public final class RegionSpace extends Space {
     }
   };
 
-  private void iterateRegionRemsetRoots(Address region, TraceLocal trace, boolean nursery) {
+  private int iterateRegionRemsetRoots(Address region, TraceLocal trace, boolean nursery) {
     remsetVisitorInNursery = nursery;
-    RemSet.iterate(region, remsetVisitor, trace);
+    return RemSet.iterate(region, remsetVisitor, trace);
   }
 
   @Override
