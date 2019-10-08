@@ -3,6 +3,7 @@ package org.mmtk.plan.g1;
 import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.ParallelCollector;
 import org.mmtk.plan.ParallelCollectorGroup;
+import org.mmtk.policy.region.CardTable;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.Lock;
@@ -65,6 +66,10 @@ public class ConcurrentRefinementWorker extends ParallelCollector {
       if (GROUP.isAborted()) return;
       Address card = cursor.loadAddress();
       if (card.isZero()) return;
+      if (G1.ENABLE_HOT_CARD_OPTIMIZATION && CardTable.increaseHotness(card)) {
+        // Skip this hot card
+        continue;
+      }
       CardRefinement.refineOneCard(card, false);
     }
   }

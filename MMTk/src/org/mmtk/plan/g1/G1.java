@@ -52,7 +52,7 @@ public class G1 extends G1Base {
   public static final int SCAN_VALIDATE = 3;
   // GC Kinds
   public static boolean inGC = false;
-  public static int gcKind = GCKind.FULL;
+  public static int gcKind = GCKind.YOUNG;
   public static class GCKind {
     public static final int YOUNG = 0;
     public static final int MIXED = 1;
@@ -268,6 +268,7 @@ public class G1 extends G1Base {
 
   @Override
   public void forceFullHeapCollection() {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Plan.gcInProgress());
     gcKind = GCKind.FULL;
   }
 
@@ -275,7 +276,7 @@ public class G1 extends G1Base {
   @Unpreemptible
   @Override
   public void prepareForUserCollectionRequest() {
-    Log.writeln("UserCollectionRequest");
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!Plan.gcInProgress());
     gcKind = GCKind.FULL;
   }
 

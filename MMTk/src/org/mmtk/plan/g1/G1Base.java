@@ -17,6 +17,7 @@ class G1Base extends StopTheWorld {
   public static final boolean ENABLE_REMEMBERED_SETS = constraints().g1RememberedSets();
   public static final boolean ENABLE_CONCURRENT_REFINEMENT = constraints().g1ConcurrentRefinement();
   public static final boolean ENABLE_GENERATIONAL_GC = constraints().g1GenerationalGC();
+  public static final boolean ENABLE_HOT_CARD_OPTIMIZATION = constraints().g1HotCardOptimization();
 
 
 

@@ -13,6 +13,7 @@
 package org.mmtk.plan.g1;
 
 import org.mmtk.plan.*;
+import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.Region;
 import org.mmtk.utility.ForwardingWord;
 import org.mmtk.utility.Log;
@@ -143,7 +144,7 @@ public class G1Collector extends G1CollectorBase {
     }
 
     if (phaseId == G1.REMSET_ROOTS) {
-      G1.regionSpace.iterateToSpaceRemSetRoots(getCurrentTrace(), parallelWorkerOrdinal(), parallelWorkerCount(), false);
+      G1.regionSpace.iterateToSpaceRemSetRoots(getCurrentTrace(), parallelWorkerOrdinal(), parallelWorkerCount(), G1.gcKind == G1.GCKind.YOUNG);
       return;
     }
 
@@ -156,6 +157,7 @@ public class G1Collector extends G1CollectorBase {
       g1Old.reset();
       getCurrentTrace().prepare();
       super.collectionPhase(G1.PREPARE, primary);
+      CardTable.clearAllHotnessPar(parallelWorkerOrdinal(), parallelWorkerCount());
       return;
     }
 

@@ -10,9 +10,12 @@ import org.vmmagic.unboxed.WordArray;
 
 @Uninterruptible
 public class CardTable {
+  private static final byte HOTNESS_THRESHOLD = 4;
   private static final byte[] table = new byte[Card.CARDS_IN_HEAP];
+  private static final byte[] hotnessTable = new byte[Card.CARDS_IN_HEAP];
 
   @Inline
+  @NoBoundsCheck
   public static void clear() {
     for (int i = 0; i < Card.CARDS_IN_HEAP; i++)
       table[i] = 0;
@@ -24,6 +27,29 @@ public class CardTable {
     for (int i = 0; i < Card.CARDS_IN_HEAP; i++) {
       VM.assertions._assert(table[i] == 0);
     }
+  }
+
+  @Inline
+  @NoBoundsCheck
+  public static boolean increaseHotness(Address card) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
+    int index = getIndex(card);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+    int hotness = hotnessTable[index];
+    if (hotness >= HOTNESS_THRESHOLD) return true;
+    hotnessTable[index] += 1;
+    return false;
+  }
+
+  @Inline
+  @NoBoundsCheck
+  public static void clearAllHotnessPar(int id, int workers) {
+    int totalSize = (Card.CARDS_IN_HEAP + workers - 1) / workers;
+    int start = totalSize * id;
+    int _limit = totalSize * (id + 1);
+    int limit = _limit > Card.CARDS_IN_HEAP ? Card.CARDS_IN_HEAP : _limit;
+    for (int i = start; i < limit; i++)
+      hotnessTable[i] = 0;
   }
 
   @Inline
