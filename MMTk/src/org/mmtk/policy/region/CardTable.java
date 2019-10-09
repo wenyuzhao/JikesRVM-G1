@@ -14,7 +14,7 @@ import org.vmmagic.unboxed.WordArray;
 
 @Uninterruptible
 public class CardTable {
-  private static final byte HOTNESS_THRESHOLD = 4;
+  public static final byte HOTNESS_THRESHOLD = 4;
   private static final int[] table = new int[(Card.CARDS_IN_HEAP + 3) / 4];
   private static final byte[] hotnessTable = new byte[Card.CARDS_IN_HEAP];
   private static final Atomic.Int numDirtyCards = new Atomic.Int();
@@ -26,14 +26,15 @@ public class CardTable {
 
   @Inline
   @NoBoundsCheck
-  public static boolean increaseHotness(Address card) {
+  public static int increaseHotness(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     int index = getIndex(card);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
-    int hotness = hotnessTable[index];
-    if (hotness >= HOTNESS_THRESHOLD) return true;
-    hotnessTable[index] += 1;
-    return false;
+    byte oldHotness = hotnessTable[index];
+    if (oldHotness > HOTNESS_THRESHOLD) return oldHotness;
+    byte newHotness = (byte) (oldHotness + 1);
+    hotnessTable[index] = newHotness;
+    return newHotness;
   }
 
   @Inline

@@ -18,7 +18,7 @@ import org.vmmagic.unboxed.Offset;
 public class Validation {
   static final boolean ENABLED = false;
 
-  private static void validateEdge(ObjectReference src, Address slot, ObjectReference object) {
+  public static void validateEdge(ObjectReference src, Address slot, ObjectReference object) {
     if (!VM.VERIFY_ASSERTIONS || object.isNull()) return;
     if (Space.isInSpace(G1.REGION_SPACE, object)) {
 //      VM.assertions._assert(Region.getBool(Region.of(object), Region.MD_ALLOCATED));
@@ -67,7 +67,7 @@ public class Validation {
     VM.assertions._assert(Space.isMappedObject(object));
   }
 
-  private static void validateObject(ObjectReference object) {
+  public static void validateObject(ObjectReference object) {
     if (!VM.VERIFY_ASSERTIONS) return;
     VM.assertions._assert(Space.isMappedObject(object));
     if (Space.isInSpace(G1.REGION_SPACE, object)) {

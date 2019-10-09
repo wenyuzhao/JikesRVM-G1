@@ -134,7 +134,9 @@ public class G1Mutator extends StopTheWorldMutator {
     }
 
     if (phaseId == G1.REFINE_CARDS) {
-      flush();
+      g1.reset();
+      immortal2.reset();
+      flushDirtyCardQueue();
       // TODO: Clear dirty card queue
       return;
     }
@@ -169,12 +171,14 @@ public class G1Mutator extends StopTheWorldMutator {
     }
 
     if (phaseId == Validation.VALIDATE_PREPARE) {
-      flush();
+      g1.reset();
+      immortal2.reset();
       return;
     }
 
     if (phaseId == Validation.VALIDATE_RELEASE) {
-      flush();
+      g1.reset();
+      immortal2.reset();
       return;
     }
 
@@ -182,11 +186,17 @@ public class G1Mutator extends StopTheWorldMutator {
   }
 
   @Override
+  public void deinitMutator() {
+    flush();
+    flushDirtyCardQueue();
+  }
+
+  @Override
   public void flushRememberedSets() {
     g1.reset();
     immortal2.reset();
     if (G1.ENABLE_CONCURRENT_MARKING) modbuf.flushLocal();
-    if (G1.ENABLE_CONCURRENT_REFINEMENT) resetDirtyCardQueue();
+//    flushDirtyCardQueue();
     assertRemsetsFlushed();
   }
 
@@ -203,16 +213,14 @@ public class G1Mutator extends StopTheWorldMutator {
     Address card = Card.of(src);
     if (CardTable.get(card) == Card.NOT_DIRTY) {
       CardTable.set(card, Card.DIRTY);
-      if (G1.ENABLE_CONCURRENT_REFINEMENT) {
-        rsEnqueue(card);
-      }
+      rsEnqueue(card);
     }
   }
 
   private void acquireDirtyCardQueue() {
-    dirtyCardQueue = CardRefinement.Queue.allocateLocalQueue();
+    dirtyCardQueue = CardRefinement.filledRSBufferQueue.allocateLocalQueue();
     dirtyCardQueueCursor = dirtyCardQueue;
-    dirtyCardQueueLimit = dirtyCardQueue.plus(CardRefinement.LOCAL_BUFFER_SIZE);
+    dirtyCardQueueLimit = dirtyCardQueue.plus(CardRefinement.filledRSBufferQueue.LOCAL_BUFFER_SIZE);
   }
 
   @Inline
@@ -229,22 +237,22 @@ public class G1Mutator extends StopTheWorldMutator {
   @NoInline
   private void flushDirtyCardQueue() {
     if (!dirtyCardQueue.isZero()) {
-      CardRefinement.Queue.enqueue(dirtyCardQueue);
+      CardRefinement.filledRSBufferQueue.enqueue(dirtyCardQueue);
       dirtyCardQueue = Address.zero();
       dirtyCardQueueCursor = Address.zero();
       dirtyCardQueueLimit = Address.zero();
     }
   }
 
-  @Inline
-  private void resetDirtyCardQueue() {
-    if (!dirtyCardQueue.isZero()) {
-      CardRefinement.Queue.release(dirtyCardQueue);
-      dirtyCardQueue = Address.zero();
-      dirtyCardQueueCursor = Address.zero();
-      dirtyCardQueueLimit = Address.zero();
-    }
-  }
+//  @Inline
+//  private void resetDirtyCardQueue() {
+//    if (!dirtyCardQueue.isZero()) {
+//      CardRefinement.filledRSBufferQueue.release(dirtyCardQueue);
+//      dirtyCardQueue = Address.zero();
+//      dirtyCardQueueCursor = Address.zero();
+//      dirtyCardQueueLimit = Address.zero();
+//    }
+//  }
 
   @Inline
   @Override

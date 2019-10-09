@@ -45,6 +45,7 @@ public class PauseTimePredictor {
   /// Return true if within pause time goal
   @Inline
   public boolean predict(Address region, boolean alwaysIncludeInCSet) {
+    if (!G1.ENABLE_PAUSE_TIME_PREDICTOR) return true;
     double delta = S * Region.getInt(region, Region.MD_REMSET_SIZE) + C * Region.liveBytes(region);
     Log.write("Region ", region);
     Log.write(" oldvcs ");
@@ -72,6 +73,7 @@ public class PauseTimePredictor {
 
   @Inline
   private static double mix(double a, double b) {
+    if (a == 0) return b;
     return (a + b) / 2;
   }
 }

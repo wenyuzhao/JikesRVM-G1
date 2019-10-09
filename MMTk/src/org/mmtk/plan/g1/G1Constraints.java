@@ -48,13 +48,14 @@ public class G1Constraints extends StopTheWorldConstraints {
   }
 
   // G1 Specific features
+  public int g1LogPagesInRegion() { return 8; }
   public boolean g1ConcurrentMarking() { return true; }
   public boolean g1RememberedSets() { return true; }
   public boolean g1ConcurrentRefinement() { return true; }
   public boolean g1HotCardOptimization() { return true; }
   public boolean g1GenerationalGC() { return false; }
   public boolean g1PauseTimePredictor() {
-    return true;
+    return false;
   }
 
   // Derived

@@ -18,6 +18,7 @@ import org.mmtk.policy.Space;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
+import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
 
 /**
@@ -50,6 +51,13 @@ public class G1MarkTraceLocal extends TraceLocal {
     return false;
   }
 
+  @Override
+  @Inline
+  public void processEdge(ObjectReference source, Address slot) {
+//    ObjectReference field = slot.loadObjectReference();
+//    Validation.validateEdge(source, slot, field);
+    super.processEdge(source, slot);
+  }
   /**
    * {@inheritDoc}
    */

@@ -22,6 +22,9 @@ import org.vmmagic.pragma.*;
  * issues with ordering of static initialization.
  */
 @Uninterruptible public abstract class PlanConstraints {
+  public int g1LogPagesInRegion() {
+    return 8;
+  }
   public int LOG_PAGES_IN_G1_REGION() {
     return 8;
   }

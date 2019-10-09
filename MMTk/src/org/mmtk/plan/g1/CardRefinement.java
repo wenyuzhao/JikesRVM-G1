@@ -54,92 +54,36 @@ public class CardRefinement {
   }
 
   @Inline
-  public static void collectorRefineAllDirtyCards(int id, int workers) {
-    if (id == 0) {
-      Queue.releaseAll();
+  private static void refineOneBuffer(final Address buffer) {
+    final Address limit = buffer.plus(CardRefinement.filledRSBufferQueue.LOCAL_BUFFER_SIZE);
+    for (Address cursor = buffer; cursor.LT(limit); cursor = cursor.plus(Constants.BYTES_IN_ADDRESS)) {
+      Address card = cursor.loadAddress();
+      if (card.isZero()) return;
+      CardRefinement.refineOneCard(card, false);
     }
+  }
+
+  @Inline
+  public static void collectorRefineAllDirtyCards(int id, int workers) {
     long startTime = id == 0 ? VM.statistics.nanoTime() : 0;
     VM.activePlan.collector().rendezvous();
-//    int start_time = ::std::time::SystemTime::now();
-    int size = (Card.CARDS_IN_HEAP + workers - 1) / workers;
-    int start = size * id;
-    int _limit = size * (id + 1);
-    int limit = _limit > Card.CARDS_IN_HEAP ? Card.CARDS_IN_HEAP : _limit;
-    int cards = 0;
-    for (int i = start; i < limit; i++) {
-      Address card = VM.HEAP_START.plus(i << Card.LOG_BYTES_IN_CARD);
-      if (CardTable.get(card) == Card.DIRTY) {
-        if (refineOneCard(card, false)) {
-          cards += 1;
-        }
-      }
+
+    // 1. Drain filledRSBufferQueue
+    Address buffer;
+    while (!(buffer = filledRSBufferQueue.dequeue()).isZero()) {
+      refineOneBuffer(buffer);
+      filledRSBufferQueue.release(buffer);
     }
+    // 2. Drain cardQueue
+    hotCardQueue.collectorProcessAll(id, workers);
+
     VM.activePlan.collector().rendezvous();
     if (id == 0) {
+      hotCardQueue.reset();
       G1.predictor.stat.totalRefineTime += VM.statistics.nanoTime() - startTime;
     }
   }
 
-  public static final int LOCAL_BUFFER_SIZE = 4096 - Constants.BYTES_IN_ADDRESS;
-  private static final int PAGES_IN_BUFFER = 1 + (((LOCAL_BUFFER_SIZE + Constants.BYTES_IN_ADDRESS) - 1) / Constants.BYTES_IN_PAGE);
-
-  @Uninterruptible
-  public static class Queue {
-    private static final Lock lock = VM.newLock("Global queue lock");
-    private static Address head = Address.zero();
-    private static int size = 0;
-
-    @Inline
-    public static Address allocateLocalQueue() {
-      Address a = G1.metaDataSpace.acquire(PAGES_IN_BUFFER);
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!a.isZero());
-      return a.plus(Constants.BYTES_IN_ADDRESS);
-    }
-
-    @Inline
-    public static void enqueue(Address buffer) {
-      lock.acquire();
-      buffer = Conversions.pageAlign(buffer);
-      buffer.store(head);
-      head = buffer;
-      size += 1;
-      if (size > 5) {
-        ConcurrentRefinementWorker.GROUP.triggerCycle();
-      }
-      lock.release();
-    }
-
-    public static Address dequeue() {
-      lock.acquire();
-      Address buf = head;
-      if (buf.isZero()) {
-        lock.release();
-        return Address.zero();
-      }
-      head = buf.loadAddress();
-      size -= 1;
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(size >= 0);
-      lock.release();
-      return buf.plus(Constants.BYTES_IN_ADDRESS);
-    }
-
-    @Inline
-    public static void release(Address buffer) {
-      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!buffer.isZero());
-      G1.metaDataSpace.release(Conversions.pageAlign(buffer));
-    }
-
-    public static void releaseAll() {
-      lock.acquire();
-      Address buf = head;
-      while (!buf.isZero()) {
-        Address next = buf.loadAddress();
-        release(buf);
-        buf = next;
-      }
-      head = Address.zero();
-      size = 0;
-      lock.release();
-    }
-  }
+  public static final BufferQueue filledRSBufferQueue = new BufferQueue();
+  public static final CardQueue hotCardQueue = new CardQueue();
 }

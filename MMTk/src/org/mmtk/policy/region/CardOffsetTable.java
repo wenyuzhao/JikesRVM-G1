@@ -3,6 +3,7 @@ package org.mmtk.policy.region;
 import org.mmtk.plan.g1.G1;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BumpPointer2;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -43,7 +44,13 @@ public class CardOffsetTable {
     }
     Address bot = Region.getAddress(region, Region.MD_CARD_OFFSET_TABLE);
     Address start = get(bot, card);
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!start.isZero());
+
+    if (VM.VERIFY_ASSERTIONS) {
+      if (start.isZero()) {
+        Log.writeln("Incorrect offset for card ", card);
+      }
+      VM.assertions._assert(!start.isZero());
+    }
     if (start.GE(card)) return start;
     return blockStartSlow(bot, card, start);
   }

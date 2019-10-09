@@ -25,7 +25,7 @@ public class Region {
   // Region size
 //  public static final boolean USE_PLAN_SPECIFIC_REGION_SIZE = true;
 
-  public static final int LOG_PAGES_IN_REGION = VM.activePlan.constraints().LOG_PAGES_IN_G1_REGION();
+  public static final int LOG_PAGES_IN_REGION = VM.activePlan.constraints().g1LogPagesInRegion();
   public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION;
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;

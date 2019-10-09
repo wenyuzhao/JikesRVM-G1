@@ -3,6 +3,7 @@ package org.mmtk.plan.g1;
 import org.mmtk.plan.CollectorContext;
 import org.mmtk.plan.ParallelCollector;
 import org.mmtk.plan.ParallelCollectorGroup;
+import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
@@ -60,27 +61,39 @@ public class ConcurrentRefinementWorker extends ParallelCollector {
 //    monitor.unlock();
   }
 
-  private void refineOneBuffer(final Address buffer) {
-    final Address limit = buffer.plus(CardRefinement.LOCAL_BUFFER_SIZE);
+  private boolean refineOneBuffer(final Address buffer) {
+    final Address limit = buffer.plus(CardRefinement.filledRSBufferQueue.LOCAL_BUFFER_SIZE);
     for (Address cursor = buffer; cursor.LT(limit); cursor = cursor.plus(Constants.BYTES_IN_ADDRESS)) {
-      if (GROUP.isAborted()) return;
+      if (GROUP.isAborted()) return false;
       Address card = cursor.loadAddress();
-      if (card.isZero()) return;
-      if (G1.ENABLE_HOT_CARD_OPTIMIZATION && CardTable.increaseHotness(card)) {
-        // Skip this hot card
-        continue;
+      if (card.isZero()) return true;
+      if (G1.ENABLE_HOT_CARD_OPTIMIZATION) {
+        int hotness = CardTable.increaseHotness(card);
+        if (hotness >= CardTable.HOTNESS_THRESHOLD) {
+          // Skip this hot card
+          if (hotness == CardTable.HOTNESS_THRESHOLD)
+            CardRefinement.hotCardQueue.enqeueueNonAtomic(card);
+          continue;
+        }
       }
       CardRefinement.refineOneCard(card, false);
     }
+    return true;
   }
 
   private void refine() {
 //    Log.writeln("Refine");
     while (!GROUP.isAborted()) {
-      Address buf = CardRefinement.Queue.dequeue();
+      Address buf = CardRefinement.filledRSBufferQueue.dequeue();
       if (buf.isZero()) return;
-      refineOneBuffer(buf);
-      CardRefinement.Queue.release(buf);
+      Log.writeln("Concurrent Refine buffer ", buf);
+      boolean complete = refineOneBuffer(buf);
+      Log.writeln("Concurrent Refine buffer end ", buf);
+      if (!complete) {
+        CardRefinement.filledRSBufferQueue.enqueue(buf);
+      } else {
+        CardRefinement.filledRSBufferQueue.release(buf);
+      }
     }
   }
 }

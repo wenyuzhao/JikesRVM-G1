@@ -32,6 +32,8 @@ public class Stat {
   }
 
   public void pauseEnd() {
+    Log.writeln("totalRefineTime ", totalRefineTime);
+    Log.writeln("totalRefineCards ", totalRefineCards);
     endTime =  VM.statistics.nanoTime();
     totalTime = endTime - startTime;
     long ud = totalRefineTime;
