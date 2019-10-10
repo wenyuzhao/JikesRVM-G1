@@ -39,7 +39,7 @@ import org.vmmagic.unboxed.Word;
 @Uninterruptible
 public class G1 extends G1Base {
 
-  public static final boolean VERBOSE = true;
+  public static final boolean VERBOSE = false;
 
   public static final RegionSpace regionSpace = new RegionSpace("g1");
   public static final int REGION_SPACE = regionSpace.getDescriptor();
@@ -164,8 +164,11 @@ public class G1 extends G1Base {
     }
 
     if (phaseId == RELOCATION_SET_SELECTION) {
+//      if (gcKind == GCKind.YOUNG) Log.writeln("Young GC");
+//      if (gcKind == GCKind.MIXED) Log.writeln("Mixed GC");
+//      if (gcKind == GCKind.FULL)  Log.writeln("Full GC");
       if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.pause();
-      Space.printVMMap();
+//      Space.printVMMap();
       predictor.prepare();
       int availablePages = getTotalPages() - getPagesUsed();
       CollectionSet.compute(regionSpace, gcKind, availablePages, predictor);
@@ -206,7 +209,7 @@ public class G1 extends G1Base {
     }
 
     if (phaseId == COMPLETE) {
-      predictor.release();
+      predictor.release(gcKind == GCKind.YOUNG);
     }
 
     if (phaseId == Validation.VALIDATE_PREPARE) {
@@ -223,26 +226,6 @@ public class G1 extends G1Base {
     super.collectionPhase(phaseId);
   }
 
-  /****************************************************************************
-   *
-   * Accounting
-   */
-
-  final int BOOT_PAGES = VM.AVAILABLE_START.diff(VM.HEAP_START).toInt() / Constants.BYTES_IN_PAGE;
-  final float RESERVE_PERCENT = Options.g1ReservePercent.getValue() / 100f;
-
-
-//  protected boolean collectionRequired(boolean spaceFull, Space space) {
-//    Log.writeln(spaceFull ? "spaceFull=1" : "spaceFull=0");
-//    boolean stressForceGC = stressTestGCRequired();
-//    boolean heapFull = getPagesReserved() > getTotalPages();
-//    Log.writeln("getPagesReserved ", getPagesReserved());
-//    Log.writeln("getTotalPages ", getTotalPages());
-//    Log.writeln(heapFull ? "heapFull=1" : "heapFull=0");
-//
-//    return spaceFull || stressForceGC || heapFull;
-//  }
-
   @Override
   protected boolean concurrentCollectionRequired() {
     if (!ENABLE_CONCURRENT_MARKING) return false;
@@ -257,14 +240,13 @@ public class G1 extends G1Base {
 
   @Override
   protected boolean collectionRequired(boolean spaceFull, Space space) {
-    boolean stressForceGC = stressTestGCRequired();
     boolean heapFull = getPagesReserved() > getTotalPages();
-    if (spaceFull || stressForceGC || heapFull) {
+    if (spaceFull || heapFull) {
       gcKind = GCKind.FULL;
       return true;
     }
     if (ENABLE_GENERATIONAL_GC && !inGC) {
-      if (regionSpace.nurseryRatio() > 0.15) {
+      if (regionSpace.nurseryRatio() > predictor.nurseryRatio) {
         gcKind = GCKind.YOUNG;
         return true;
       }
@@ -311,7 +293,7 @@ public class G1 extends G1Base {
   @Override
   @Inline
   public int getPagesUsed() {
-    return super.getPagesUsed() + regionSpace.reservedPages();
+    return (int) (regionSpace.reservedPages() + super.getPagesUsed());
   }
 
   @Override

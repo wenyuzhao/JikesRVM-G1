@@ -36,22 +36,22 @@ public class RegionAllocator2 extends Allocator {
 
   protected final RegionSpace space;
   protected final int spaceDescriptor;
-  private final int allocationKind;
+  private final int generation;
   private Address cursor = Address.zero();
   private Address limit = Address.zero();
   int refills = 0;
-  int tlabSize = (MIN_TLAB_SIZE + MAX_TLAB_SIZE) >> 1;
+  int tlabSize = MIN_TLAB_SIZE;// + MAX_TLAB_SIZE) >> 1;
 
   /**
    * Constructor.
    *
    * @param space The space to bump point into.
-   * @param allocationKind TODO
+   * @param generation TODO
    */
-  public RegionAllocator2(RegionSpace space, int allocationKind) {
+  public RegionAllocator2(RegionSpace space, int generation) {
     this.space = space;
     this.spaceDescriptor = space.getDescriptor();
-    this.allocationKind = allocationKind;
+    this.generation = generation;
   }
 
   @Inline
@@ -146,7 +146,7 @@ public class RegionAllocator2 extends Allocator {
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
     int size = bytes > tlabSize ? bytes : tlabSize;
     size = alignTLAB(size);
-    Address tlab = space.allocTLAB(allocationKind, size);
+    Address tlab = space.allocTLAB(generation, size);
     if (tlab.isZero()) return tlab;
     refills += 1;
     retireTLAB();

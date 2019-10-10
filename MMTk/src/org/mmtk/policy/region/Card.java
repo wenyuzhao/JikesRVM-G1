@@ -8,6 +8,7 @@ import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BumpPointer2;
 import org.mmtk.utility.alloc.LinearScan;
+import org.mmtk.utility.heap.layout.HeapLayout;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -50,15 +51,16 @@ public class Card {
 
   @Inline
   public static void linearScan(Address card, LinearScan linearScan, boolean markDead, Object context) {
-    if (!Space.isMappedAddress(card)) return;
-    if (Space.isInSpace(G1.REGION_SPACE, card)) {
+//    if (!Space.isMappedAddress(card)) return;
+    final int descriptor = HeapLayout.vmMap.getDescriptorForAddress(card);
+    if (descriptor == G1.REGION_SPACE) {
       Address region = Region.of(card);
-      if (!Region.getBool(region, Region.MD_ALLOCATED)) return;
+//      if (!Region.getBool(region, Region.MD_ALLOCATED)) return;
       if (Region.getBool(region, Region.MD_RELOCATE)) return;
       linearScanG1Card(card, linearScan, context, markDead);
-    } else if (Space.isInSpace(G1.LOS, card)) {
+    } else if (descriptor == G1.LOS) {
       linearScanLOSCard(card, linearScan, context);
-    } else if (Space.isInSpace(G1.IMMORTAL, card)) {
+    } else if (descriptor == G1.IMMORTAL) {
       BumpPointer2.linearScan(card, linearScan, markDead, context);
     }
   }

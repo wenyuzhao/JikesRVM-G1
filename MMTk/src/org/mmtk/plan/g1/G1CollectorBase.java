@@ -81,6 +81,8 @@ public class G1CollectorBase extends StopTheWorldCollector {
             continueCollecting = true;
             Phase.notifyConcurrentPhaseIncomplete();
           }
+        } else {
+          G1.gcKind = G1.GCKind.FULL;
         }
       }
       rendezvous();

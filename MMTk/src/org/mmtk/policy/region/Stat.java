@@ -8,7 +8,7 @@ import org.vmmagic.pragma.Uninterruptible;
 @Uninterruptible
 public class Stat {
   // Data collected during a GC pause
-  private long startTime, endTime, totalTime;
+  public long startTime, endTime, totalTime;
   public long totalRefineCards = 0;
   public long totalRefineTime = 0;
   public Atomic.Int totalRemSetCards = new Atomic.Int();
@@ -32,8 +32,6 @@ public class Stat {
   }
 
   public void pauseEnd() {
-    Log.writeln("totalRefineTime ", totalRefineTime);
-    Log.writeln("totalRefineCards ", totalRefineCards);
     endTime =  VM.statistics.nanoTime();
     totalTime = endTime - startTime;
     long ud = totalRefineTime;
@@ -45,10 +43,5 @@ public class Stat {
     U = totalRefineCards == 0 ? 0 : (((double) ud) / (double) totalRefineCards);
     S = totalRemSetCards.get() == 0 ? 0 : (((double) vs) / (double) totalRemSetCards.get());
     C = totalCopyBytes == 0 ? 0 : (((double) vc) / (double) totalCopyBytes);
-    Log.writeln("V_cs ", totalTime);
-    Log.writeln("V_fixed ", V_fixed);
-    Log.write("U "); Log.writeln(U);
-    Log.write("S "); Log.writeln(S);
-    Log.write("C "); Log.writeln(C);
   }
 }

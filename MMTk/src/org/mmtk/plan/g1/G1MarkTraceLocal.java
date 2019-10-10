@@ -12,10 +12,14 @@
  */
 package org.mmtk.plan.g1;
 
+import org.mmtk.plan.Plan;
 import org.mmtk.plan.Trace;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.policy.Space;
+import org.mmtk.utility.Log;
 import org.mmtk.utility.deque.ObjectReferenceDeque;
+import org.mmtk.utility.heap.layout.HeapLayout;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
@@ -47,37 +51,40 @@ public class G1MarkTraceLocal extends TraceLocal {
   }
 
   @Override
+  @Inline
   protected boolean overwriteReferenceDuringTrace() {
     return false;
   }
 
-  @Override
-  @Inline
-  public void processEdge(ObjectReference source, Address slot) {
-//    ObjectReference field = slot.loadObjectReference();
-//    Validation.validateEdge(source, slot, field);
-    super.processEdge(source, slot);
-  }
   /**
    * {@inheritDoc}
    */
   @Override
+  @Inline
   public boolean isLive(ObjectReference object) {
     if (object.isNull()) return false;
     if (Space.isInSpace(G1.REGION_SPACE, object)) {
       return G1.regionSpace.isLiveNext(object);
     }
-    return super.isLive(object);
+    if (Space.isInSpace(G1.LOS, object)) return Plan.loSpace.isLive(object);
+    return true;
   }
 
   @Override
   @Inline
   public ObjectReference traceObject(ObjectReference object) {
     if (object.isNull()) return object;
-    if (Space.isInSpace(G1.REGION_SPACE, object)) {
-      return G1.regionSpace.traceMarkObject(this, object);
+    final int descriptor = HeapLayout.vmMap.getDescriptorForAddress(VM.objectModel.refToAddress(object));
+    if (descriptor == G1.REGION_SPACE) return G1.regionSpace.traceMarkObject(this, object);
+    if (descriptor == G1.IMMORTAL)     return G1.immortalSpace.traceObject(this, object);
+    if (descriptor == G1.LOS)          return G1.loSpace.traceObject(this, object);
+    if (descriptor == G1.VM_SPACE)     return object;
+    if (VM.VERIFY_ASSERTIONS) {
+      Log.writeln("Failing object => ", object);
+      Space.printVMMap();
+      VM.assertions._assert(false, "No special case for space in traceObject");
     }
-    return super.traceObject(object);
+    return ObjectReference.nullReference();
   }
 
   /**
@@ -87,6 +94,7 @@ public class G1MarkTraceLocal extends TraceLocal {
    * @return True if the object will not move.
    */
   @Override
+  @Inline
   public boolean willNotMoveInCurrentCollection(ObjectReference object) {
     if (Space.isInSpace(G1.REGION_SPACE, object)) {
       return true;
@@ -96,6 +104,7 @@ public class G1MarkTraceLocal extends TraceLocal {
   }
 
   @Override
+  @Inline
   protected void processRememberedSets() {
     if (!G1.ENABLE_CONCURRENT_MARKING) return;
     ObjectReference obj;

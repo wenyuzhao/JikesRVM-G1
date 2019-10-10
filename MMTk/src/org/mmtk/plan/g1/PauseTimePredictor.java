@@ -2,6 +2,7 @@ package org.mmtk.plan.g1;
 
 import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.Region;
+import org.mmtk.policy.region.RemSet;
 import org.mmtk.policy.region.Stat;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
@@ -26,6 +27,7 @@ public class PauseTimePredictor {
   static final long PAUSE_TIME_GOAL = VM.statistics.millisToNanos(50); // ms
 
   // Parameters
+  float nurseryRatio = 0.15f;
   long V_fixed;
   double U, S, C;
   public final Stat stat = new Stat();
@@ -35,10 +37,6 @@ public class PauseTimePredictor {
 
   public void prepare() {
     stat.pauseStart(CardTable.numDirtyCards());
-    Log.writeln("Dirty cards ", CardTable.numDirtyCards());
-    Log.write("U = "); Log.writeln(U);
-    Log.writeln("Ud = ", (long) (U * CardTable.numDirtyCards()));
-    Log.write("V_cs = "); Log.writeln(V_cs);
     V_cs = V_fixed + (long) (U * CardTable.numDirtyCards());
   }
 
@@ -46,12 +44,8 @@ public class PauseTimePredictor {
   @Inline
   public boolean predict(Address region, boolean alwaysIncludeInCSet) {
     if (!G1.ENABLE_PAUSE_TIME_PREDICTOR) return true;
-    double delta = S * Region.getInt(region, Region.MD_REMSET_SIZE) + C * Region.liveBytes(region);
-    Log.write("Region ", region);
-    Log.write(" oldvcs ");
-    Log.write(V_cs);
-    Log.write(" delta ");
-    Log.writeln(delta);
+    int cards = RemSet.calculateRememberedCards(region);
+    double delta = S * cards + C * Region.liveBytes(region);
     if (alwaysIncludeInCSet) {
       V_cs += delta;
       return true;
@@ -63,12 +57,30 @@ public class PauseTimePredictor {
   }
 
   // Update parameters
-  public void release() {
+  public void release(boolean nursery) {
     stat.pauseEnd();
-    V_fixed = (V_fixed + stat.V_fixed) / 2;
-    U = mix(U, stat.U);
-    S = mix(S, stat.S);
-    C = mix(C, stat.C);
+    if (nursery) {
+      V_fixed = mix(V_fixed, stat.V_fixed);
+      U = mix(U, stat.U);
+      long nurserySizeAwareTime = stat.totalTime - stat.V_fixed - stat.totalRefineTime;
+      if (nurserySizeAwareTime < 0) return;
+      long budget = PAUSE_TIME_GOAL - stat.V_fixed - stat.totalRefineTime;
+      if (budget < 0) budget = 0;
+      nurseryRatio = (float) (nurseryRatio * (((double) budget) / ((double) nurserySizeAwareTime)));
+      if (nurseryRatio < 0.05f) nurseryRatio = 0.05f;
+      if (nurseryRatio > 0.40f) nurseryRatio = 0.40f;
+    } else {
+      V_fixed = mix(V_fixed, stat.V_fixed);
+      U = mix(U, stat.U);
+      S = mix(S, stat.S);
+      C = mix(C, stat.C);
+    }
+  }
+
+  @Inline
+  private static long mix(long a, long b) {
+    if (a == 0) return b;
+    return (a + b) / 2;
   }
 
   @Inline

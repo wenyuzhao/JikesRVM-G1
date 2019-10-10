@@ -30,7 +30,7 @@ public class CardQueue {
 
   @NoInline
   private void enqeueueSlow(Address card) {
-    Log.writeln("[Hot Card Queue Resize]");
+//    Log.writeln("[Hot Card Queue Resize]");
     // Expand space
     size = size == 0 ? 1024 : (size << 1);
     final int pages = (size << LOG_BYTES_IN_ADDRESS) >>> LOG_BYTES_IN_PAGE;

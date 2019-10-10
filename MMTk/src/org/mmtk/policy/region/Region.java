@@ -15,7 +15,7 @@ import static org.mmtk.utility.Constants.*;
 
 @Uninterruptible
 public class Region {
-  public static final boolean VERBOSE_REGION_LIFETIME = true;
+  public static final boolean VERBOSE_REGION_LIFETIME = false;
 
   // Generation information
   public static final int EDEN = 0;
@@ -29,8 +29,8 @@ public class Region {
   public static final int PAGES_IN_REGION = 1 << LOG_PAGES_IN_REGION;
   public static final int LOG_BYTES_IN_REGION = LOG_PAGES_IN_REGION + LOG_BYTES_IN_PAGE;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;
-  public static final int MAX_ALLOC_SIZE = (int) (BYTES_IN_REGION * 3 / 4);
-  public static final int REGIONS_IN_CHUNK = (1 << (EmbeddedMetaData.LOG_PAGES_IN_REGION - LOG_PAGES_IN_REGION)) - 1;
+  public static final int MAX_ALLOC_SIZE = (int) (BYTES_IN_REGION / 2);
+  private static final int REGIONS_IN_CHUNK = (1 << (EmbeddedMetaData.LOG_PAGES_IN_REGION - LOG_PAGES_IN_REGION));
   public static final Word REGION_MASK = Word.fromIntZeroExtend(BYTES_IN_REGION - 1);// 0..011111111111
 
   // Mark table:
@@ -42,13 +42,14 @@ public class Region {
   // Page 0-15: mark table
   // Page 16: Per region metadata
 
-
+  private static final int META_REGIONS_PER_CHUNK = 1;
+  public static final float MEMORY_RATIO = ((float) (REGIONS_IN_CHUNK - META_REGIONS_PER_CHUNK)) / ((float) REGIONS_IN_CHUNK); // 0.75
   // Mark table
   private static final int LOG_PAGES_IN_MARKTABLE = 5;
   public static final int BYTES_IN_MARKTABLE = 1 << (LOG_PAGES_IN_MARKTABLE + LOG_BYTES_IN_PAGE);
   public static final int MARKTABLE0_OFFSET = 0;
   public static final int MARKTABLE1_OFFSET = BYTES_IN_MARKTABLE;
-  public static final int MARK_BYTES_PER_REGION = BYTES_IN_MARKTABLE / (REGIONS_IN_CHUNK + 1);
+  public static final int MARK_BYTES_PER_REGION = BYTES_IN_MARKTABLE / REGIONS_IN_CHUNK;
   // Per region metadata (offsets)
   public static final int MD_LIVE_SIZE = 0;
   public static final int MD_RELOCATE = MD_LIVE_SIZE + BYTES_IN_INT;
@@ -68,9 +69,13 @@ public class Region {
   private static final int PER_REGION_METADATA_BYTES = MD_NEXT_REGION + BYTES_IN_ADDRESS;
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE << 1;
 
-  public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE)  + 1;
+//  public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE) + 1;//(META_REGIONS_PER_CHUNK * PAGES_IN_REGION);
+  public static final int METADATA_PAGES_PER_CHUNK = META_REGIONS_PER_CHUNK * PAGES_IN_REGION;
 
   static {
+    int metadataBytes = (1 << LOG_PAGES_IN_MARKTABLE) * BYTES_IN_PAGE;
+    metadataBytes += PER_REGION_METADATA_BYTES * REGIONS_IN_CHUNK;
+    if (metadataBytes > BYTES_IN_REGION) VM.assertions.fail("Region size too small");
 //    if (VM.VERIFY_ASSERTIONS) {
 //      VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
 //      VM.assertions._assert(PER_REGION_METADATA_BYTES == 40);
@@ -220,13 +225,13 @@ public class Region {
     }
     int index = region.diff(chunk).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
     if (VM.VERIFY_ASSERTIONS) {
-      if (!(index >= 1 && index <= REGIONS_IN_CHUNK)) {
+      if (!(index >= 1 && index < REGIONS_IN_CHUNK)) {
         Log.write("Invalid region ", region);
         Log.write(" chunk=", chunk);
         Log.write(" index=", index);
         Log.writeln(" region=", region);
       }
-      VM.assertions._assert(index >= 1 && index <= REGIONS_IN_CHUNK);
+      VM.assertions._assert(index >= 1 && index < REGIONS_IN_CHUNK);
     }
     return index;
   }
@@ -243,13 +248,13 @@ public class Region {
     }
     int index = region.diff(chunk).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
     if (VM.VERIFY_ASSERTIONS) {
-      if (!(index >= 1 && index <= REGIONS_IN_CHUNK)) {
+      if (!(index >= 1 && index < REGIONS_IN_CHUNK)) {
         Log.write("Invalid region ", region);
         Log.write(" chunk=", chunk);
         Log.write(" index=", index);
         Log.writeln(" region=", region);
       }
-      VM.assertions._assert(index >= 1 && index <= REGIONS_IN_CHUNK);
+      VM.assertions._assert(index >= 1 && index < REGIONS_IN_CHUNK);
     }
     return index - 1;
   }

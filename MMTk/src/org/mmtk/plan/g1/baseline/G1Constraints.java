@@ -16,4 +16,10 @@ import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
 public class G1Constraints extends org.mmtk.plan.g1.G1Constraints {
+  @Override public boolean g1ConcurrentMarking() { return false; }
+  @Override public boolean g1RememberedSets() { return false; }
+  @Override public boolean g1ConcurrentRefinement() { return false; }
+  @Override public boolean g1HotCardOptimization() { return false; }
+  @Override public boolean g1GenerationalGC() { return false; }
+  @Override public boolean g1PauseTimePredictor() { return false; }
 }

@@ -122,6 +122,16 @@ public class RemSet {
   }
 
   @Inline
+  public static int calculateRememberedCards(Address region) {
+    int count = 0;
+    Address headPRT = Region.getAddress(region, Region.MD_REMSET_HEAD_PRT);
+    for (Address prt = headPRT; !prt.isZero(); prt = prt.loadAddress(NEXT_PRT_OFFSET)) {
+      count += prt.loadInt(PRT_CARDS_OFFSET);
+    }
+    return count;
+  }
+
+  @Inline
   public static void addCard(Address region, Address card) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!region.isZero());
@@ -186,7 +196,7 @@ public class RemSet {
 
       prt = nextPRT;
     }
-    Atomic.Int.fetchAdd(Region.metaSlot(rsRegion, Region.MD_REMSET_SIZE), removedCards);
+//    Atomic.Int.fetchAdd(Region.metaSlot(rsRegion, Region.MD_REMSET_SIZE), removedCards);
   }
 
   @Inline
@@ -220,12 +230,12 @@ public class RemSet {
 
   @Inline
   private static void incCardCount(Address region) {
-    Atomic.Int.fetchAdd(Region.metaSlot(region, Region.MD_REMSET_SIZE), 1);
+//    Atomic.Int.fetchAdd(Region.metaSlot(region, Region.MD_REMSET_SIZE), 1);
   }
 
   @Inline
   private static void decCardCount(Address region) {
-    Atomic.Int.fetchAdd(Region.metaSlot(region, Region.MD_REMSET_SIZE), -1);
+//    Atomic.Int.fetchAdd(Region.metaSlot(region, Region.MD_REMSET_SIZE), -1);
   }
 
   @Uninterruptible

@@ -8,7 +8,6 @@ import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.policy.region.RemSet;
 import org.mmtk.utility.ForwardingWord;
-import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;

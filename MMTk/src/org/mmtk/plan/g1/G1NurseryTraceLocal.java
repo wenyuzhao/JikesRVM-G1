@@ -80,7 +80,7 @@ public class G1NurseryTraceLocal extends TraceLocal {
     if (Space.isInSpace(G1.REGION_SPACE, object)) {
       return false;
     } else {
-      return super.willNotMoveInCurrentCollection(object);
+      return true;
     }
   }
 }

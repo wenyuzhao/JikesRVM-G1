@@ -23,6 +23,7 @@ public class CollectionSet {
 
 
   public static void compute(RegionSpace space, int gcKind, int availablePages, PauseTimePredictor predictor) {
+    availablePages = ((int) ((availablePages >>> Region.LOG_PAGES_IN_REGION) * Region.MEMORY_RATIO) << Region.LOG_PAGES_IN_REGION);
     switch (gcKind) {
       case G1.GCKind.YOUNG: computeForNurseryGC(space, availablePages); return;
       case G1.GCKind.MIXED: computeForMixedGC(space, availablePages, predictor);   return;
@@ -69,7 +70,6 @@ public class CollectionSet {
         break;
       }
     }
-    Log.writeln("Collection Set = ", count);
   }
 
   private static void computeForFullGC(RegionSpace space, int availablePages) {
@@ -97,6 +97,7 @@ public class CollectionSet {
     }
   }
 
+  @Inline
   private static void markAsRelocate(Address region, int size) {
     if (Region.VERBOSE_REGION_LIFETIME) {
       Log.write("Relocate ");

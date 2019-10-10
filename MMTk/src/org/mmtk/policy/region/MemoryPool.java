@@ -116,10 +116,6 @@ public class MemoryPool {
         if (chunk.isZero()) VM.assertions.fail("OutOfMemory");
         cursor = chunk.plus(CELL_SIZE);
         limit = chunk.plus(BYTES_PER_SLOW_ALLOCATION);
-//        final Address chunkLimit = chunk.plus(BYTES_PER_SLOW_ALLOCATION);
-//        for (Address cursor = chunk.plus(CELL_SIZE); cursor.plus(CELL_SIZE).LE(chunkLimit); cursor = cursor.plus(CELL_SIZE)) {
-//            pushNode(cursor);
-//        }
         lock.release();
         return zero(chunk);
     }

@@ -86,9 +86,7 @@ public class ConcurrentRefinementWorker extends ParallelCollector {
     while (!GROUP.isAborted()) {
       Address buf = CardRefinement.filledRSBufferQueue.dequeue();
       if (buf.isZero()) return;
-      Log.writeln("Concurrent Refine buffer ", buf);
       boolean complete = refineOneBuffer(buf);
-      Log.writeln("Concurrent Refine buffer end ", buf);
       if (!complete) {
         CardRefinement.filledRSBufferQueue.enqueue(buf);
       } else {

@@ -48,7 +48,7 @@ public final class RegionSpace extends Space {
 
   @Entrypoint private Address headRegion = Address.zero();
   int nurseryRegions = 0;
-  int committedRegions = 0;
+  public int committedRegions = 0;
   private AddressArray allocRegions = AddressArray.create(3);
   private final Lock allocLock = VM.newLock("alloc-lock");
 
@@ -60,7 +60,7 @@ public final class RegionSpace extends Space {
   @Inline
   public float nurseryRatio() {
     float nursery = (float) nurseryRegions;
-    float total = (float) (VM.activePlan.global().getTotalPages() >>> Region.LOG_PAGES_IN_REGION);
+    float total = (float) (VM.activePlan.global().getTotalPages() >>> Region.LOG_PAGES_IN_REGION) * Region.MEMORY_RATIO;
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(total != 0f);
     return nursery / total;
   }
@@ -68,7 +68,7 @@ public final class RegionSpace extends Space {
   @Inline
   public float committedRatio() {
     float committed = (float) committedRegions;
-    float total = (float) (VM.activePlan.global().getTotalPages() >>> Region.LOG_PAGES_IN_REGION);
+    float total = (float) (VM.activePlan.global().getTotalPages() >>> Region.LOG_PAGES_IN_REGION) * Region.MEMORY_RATIO;
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(total != 0f);
     return committed / total;
   }
