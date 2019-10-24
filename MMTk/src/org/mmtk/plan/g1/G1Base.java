@@ -19,6 +19,8 @@ class G1Base extends StopTheWorld {
   public static final boolean ENABLE_HOT_CARD_OPTIMIZATION = constraints().g1HotCardOptimization();
   public static final boolean ENABLE_GENERATIONAL_GC = constraints().g1GenerationalGC();
   public static final boolean ENABLE_PAUSE_TIME_PREDICTOR = constraints().g1PauseTimePredictor();
+  public static final boolean USE_XOR_BARRIER = constraints().g1UseXorBarrier();
+  public static final boolean FORCE_DRAIN_MODBUF = constraints().g1ForceDrainModbuf();
 
   private static void requires(boolean x) {
     if (!x) VM.assertions.fail("");
@@ -49,6 +51,7 @@ class G1Base extends StopTheWorld {
   public static final short FINAL_MARK               = Phase.createSimple("final-mark");
   public static final short REFINE_CARDS             = Phase.createSimple("refine-cards");
   public static final short REMSET_ROOTS             = Phase.createSimple("remset-roots");
+  public static final short STAT_REMSET              = Phase.createSimple("stat-remset");
 
   protected static final short preemptConcurrentClosure = Phase.createComplex("preeempt-concurrent-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
@@ -111,6 +114,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleMutator  (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
+      Phase.schedulePlaceholder(STAT_REMSET),
       Phase.scheduleCollector(REMSET_ROOTS),
       Phase.scheduleGlobal   (EVACUATE_CLOSURE),
       Phase.scheduleCollector(EVACUATE_CLOSURE),
@@ -170,6 +174,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleMutator  (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
+      Phase.schedulePlaceholder(STAT_REMSET),
       Phase.scheduleCollector(REMSET_ROOTS),
       Phase.scheduleGlobal   (EVACUATE_CLOSURE),
       Phase.scheduleCollector(EVACUATE_CLOSURE),

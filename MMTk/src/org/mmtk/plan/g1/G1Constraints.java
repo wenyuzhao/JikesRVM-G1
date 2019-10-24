@@ -57,6 +57,8 @@ public class G1Constraints extends StopTheWorldConstraints {
   public boolean g1PauseTimePredictor() {
     return true;
   }
+  public boolean g1ForceDrainModbuf() { return false; }
+  public boolean g1UseXorBarrier() { return true; }
 
   // Derived
   @Override public boolean needsConcurrentWorkers() { return g1ConcurrentMarking(); }

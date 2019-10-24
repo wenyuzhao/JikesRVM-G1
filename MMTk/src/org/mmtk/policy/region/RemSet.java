@@ -31,6 +31,37 @@ public class RemSet {
     @Inline public abstract void visit(Address region, Address remset, Address card, T context);
   }
 
+  public static int committedBytes(Address rsRegion) {
+    int prts = 0;
+    Address headPRT = Region.getAddress(rsRegion, Region.MD_REMSET_HEAD_PRT);
+    for (Address prt = headPRT; !prt.isZero(); prt = prt.loadAddress(NEXT_PRT_OFFSET)) {
+      prts += 1;
+    }
+    return BYTES_IN_PRT * prts + BYTES_IN_REMSET;
+  }
+
+  public static int rememberedCards(Address rsRegion) {
+    int visitedCards = 0;
+    Address headPRT = Region.getAddress(rsRegion, Region.MD_REMSET_HEAD_PRT);
+    for (Address prt = headPRT; !prt.isZero(); prt = prt.loadAddress(NEXT_PRT_OFFSET)) {
+      // Scan for cards
+      final Address prtLimit = prt.plus(BYTES_IN_PRT);
+      Address prtWordSlot = prt.plus(PRT_DATA_START);
+      while (prtWordSlot.LT(prtLimit)) {
+        Word word = prtWordSlot.loadWord();
+        if (!word.isZero()) {
+          for (int i = 0; i < Constants.BITS_IN_WORD; i++) {
+            if (!word.and(Word.one().lsh(i)).isZero()) {
+              visitedCards += 1;
+            }
+          }
+        }
+        prtWordSlot = prtWordSlot.plus(Constants.BYTES_IN_ADDRESS);
+      }
+    }
+    return visitedCards;
+  }
+
   public static int iterate(Address rsRegion, Visitor visitor, Object context) {
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(!rsRegion.isZero());

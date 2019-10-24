@@ -100,6 +100,16 @@ public final class MemoryManager {
    */
   private static boolean collectionEnabled = false;
 
+  @Interruptible
+  public static void harnessBegin() {
+    Plan.harnessBegin();
+  }
+
+  @Interruptible
+  public static void harnessEnd() {
+    Plan.harnessEnd();
+  }
+
   /***********************************************************************
    *
    * Initialization

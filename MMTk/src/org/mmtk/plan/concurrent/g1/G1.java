@@ -197,8 +197,8 @@ public class G1 extends Concurrent {
     collection = matureCollection;
   }
 
-  DoubleCounter remsetFootprint = new DoubleCounter("remset.footprint", true, true, true);
-  DoubleCounter remsetUtilization = new DoubleCounter("remset.utilization", true, true, true);
+//  DoubleCounter remsetFootprint = new DoubleCounter("remset.footprint", true, true, true);
+//  DoubleCounter remsetUtilization = new DoubleCounter("remset.utilization", true, true, true);
 
   /****************************************************************************
    *
@@ -266,7 +266,7 @@ public class G1 extends Concurrent {
         double remsetCards = regionSpace.calculateRemSetCards();
         int totalPages = regionSpace.committedRegions() << Region.LOG_PAGES_IN_REGION;
         if (totalPages != 0) {
-          remsetFootprint.log(remsetPages * 100 / totalPages);
+//          remsetFootprint.log(remsetPages * 100 / totalPages);
         }
         if (remsetPages != 0) {
 //          if (remsetCards > remsetPages * Constants.BITS_IN_PAGE) {
@@ -274,7 +274,7 @@ public class G1 extends Concurrent {
 //            Log.writeln("pages ", (int) remsetPages);
 //            VM.assertions.fail("> 100%");
 //          }
-          remsetUtilization.log(remsetCards * 100 / (remsetPages * Constants.BITS_IN_PAGE));
+//          remsetUtilization.log(remsetCards * 100 / (remsetPages * Constants.BITS_IN_PAGE));
         }
       }
 //      remsetLogCursor += 3;

@@ -200,10 +200,14 @@ public class G1 extends G1Base {
     if (phaseId == EVACUATE_RELEASE) {
       regionSpace.clearRemSetCardsPointingToCollectionSet();
       (gcKind == GCKind.YOUNG ? nurseryTrace : evacuateTrace).release();
-      loSpace.release(true);
-      immortalSpace.release();
-      VM.memory.globalReleaseVMSpace();
-      regionSpace.release();
+      if (G1.gcKind == GCKind.YOUNG) {
+        regionSpace.release();
+      } else {
+        loSpace.release(true);
+        immortalSpace.release();
+        VM.memory.globalReleaseVMSpace();
+        regionSpace.release();
+      }
       if (ENABLE_CONCURRENT_REFINEMENT) ConcurrentRefinementWorker.resume();
       return;
     }
@@ -312,6 +316,19 @@ public class G1 extends G1Base {
   }
 
   final static Word LOG_MASK = Word.one().lsh(2);
+  final protected static byte LOG_BIT = 1 << 2;
+
+  @Inline
+  public static void markAsLogged(ObjectReference o) {
+    byte value = VM.objectModel.readAvailableByte(o);
+    VM.objectModel.writeAvailableByte(o, (byte) (value | LOG_BIT));
+  }
+
+  @Inline
+  public static boolean isUnlogged(ObjectReference o) {
+    byte value = VM.objectModel.readAvailableByte(o);
+    return (value & LOG_BIT) == 0;
+  }
 
   @Inline
   public static boolean attemptLog(ObjectReference o) {

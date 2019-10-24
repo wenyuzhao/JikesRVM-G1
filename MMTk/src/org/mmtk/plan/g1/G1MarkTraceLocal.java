@@ -106,11 +106,12 @@ public class G1MarkTraceLocal extends TraceLocal {
   @Override
   @Inline
   protected void processRememberedSets() {
-    if (!G1.ENABLE_CONCURRENT_MARKING) return;
-    ObjectReference obj;
-    while (!(obj = modbuf.pop()).isNull()) {
-      if (G1.attemptUnlog(obj))
-        traceObject(obj);
+    if (G1.ENABLE_CONCURRENT_MARKING || G1.FORCE_DRAIN_MODBUF) {
+      ObjectReference obj;
+      while (!(obj = modbuf.pop()).isNull()) {
+        if (G1.attemptUnlog(obj))
+          traceObject(obj);
+      }
     }
   }
 }

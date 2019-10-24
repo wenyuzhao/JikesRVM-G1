@@ -20,6 +20,7 @@ import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.Region;
 import org.mmtk.policy.Space;
+import org.mmtk.policy.region.RegionSpace;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.Allocator;
@@ -55,7 +56,7 @@ public class G1Mutator extends StopTheWorldMutator {
 
   public static boolean newMutatorBarrierActive = false;
   protected volatile boolean barrierActive = newMutatorBarrierActive;
-  private final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
+  protected final ObjectReferenceDeque modbuf = new ObjectReferenceDeque("modbuf", global().modbufPool);
   protected final RegionAllocator2 g1 = new RegionAllocator2(G1.regionSpace, G1.ENABLE_GENERATIONAL_GC ? Region.EDEN : Region.OLD);
   protected final BumpPointer2 immortal2 = new BumpPointer2(Plan.immortalSpace);
   protected Address dirtyCardQueue = Address.zero();
@@ -208,12 +209,24 @@ public class G1Mutator extends StopTheWorldMutator {
   }
 
   @Inline
-  void cardMarkingBarrier(ObjectReference src) {
+  protected void cardMarkingBarrier(ObjectReference src) {
     if (!G1.ENABLE_REMEMBERED_SETS) return;
     Address card = Card.of(src);
     if (CardTable.get(card) == Card.NOT_DIRTY) {
       CardTable.set(card, Card.DIRTY);
       rsEnqueue(card);
+    }
+  }
+
+  @NoInline
+  protected void cardMarkingBarrierOutOfLine(ObjectReference src) {
+    cardMarkingBarrier(src);
+  }
+
+  @Inline
+  protected void xorBarrier(ObjectReference src, Address slot, ObjectReference ref) {
+    if (RegionSpace.isCrossRegionRef(src, slot, ref)) {
+      cardMarkingBarrierOutOfLine(src);
     }
   }
 
@@ -259,7 +272,11 @@ public class G1Mutator extends StopTheWorldMutator {
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
     if (G1.ENABLE_CONCURRENT_MARKING && barrierActive) checkAndEnqueueReference(slot.loadObjectReference());
     VM.barriers.objectReferenceWrite(src, tgt, metaDataA, metaDataB, mode);
-    cardMarkingBarrier(src);
+    if (G1.USE_XOR_BARRIER) {
+      xorBarrier(src, slot, tgt);
+    } else {
+      cardMarkingBarrier(src);
+    }
   }
 
   @Inline
@@ -267,7 +284,13 @@ public class G1Mutator extends StopTheWorldMutator {
   public boolean objectReferenceTryCompareAndSwap(ObjectReference src, Address slot, ObjectReference old, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
     if (G1.ENABLE_CONCURRENT_MARKING && barrierActive) checkAndEnqueueReference(old);
     boolean result = VM.barriers.objectReferenceTryCompareAndSwap(src, old, tgt, metaDataA, metaDataB, mode);
-    cardMarkingBarrier(src);
+    if (result) {
+      if (G1.USE_XOR_BARRIER) {
+        xorBarrier(src, slot, tgt);
+      } else {
+        cardMarkingBarrier(src);
+      }
+    }
     return result;
   }
 

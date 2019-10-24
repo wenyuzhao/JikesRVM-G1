@@ -36,6 +36,7 @@ public class PauseTimePredictor {
   double V_cs;
 
   public void prepare() {
+    if (!G1.ENABLE_PAUSE_TIME_PREDICTOR) return;
     stat.pauseStart(CardTable.numDirtyCards());
     V_cs = V_fixed + (long) (U * CardTable.numDirtyCards());
   }
@@ -58,6 +59,7 @@ public class PauseTimePredictor {
 
   // Update parameters
   public void release(boolean nursery) {
+    if (!G1.ENABLE_PAUSE_TIME_PREDICTOR) return;
     stat.pauseEnd();
     if (nursery) {
       V_fixed = mix(V_fixed, stat.V_fixed);

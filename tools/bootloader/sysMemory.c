@@ -28,7 +28,7 @@ void* checkMalloc(int length)
     sysExit(EXIT_STATUS_SYSCALL_TROUBLE);
   }
   if (inRVMAddressSpace((Address)result)) {
-    ERROR_PRINTF("malloc returned something that is in RVM address space: %p\n",result);
+//    ERROR_PRINTF("malloc returned something that is in RVM address space: %p\n",result);
   }
   return result;
 }

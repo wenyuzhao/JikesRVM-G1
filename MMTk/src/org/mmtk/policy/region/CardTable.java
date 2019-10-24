@@ -48,6 +48,11 @@ public class CardTable {
       hotnessTable[i] = 0;
   }
 
+  public static void clear() {
+    for (int i = 0; i < table.length; i++)
+      table[i] = 0;
+  }
+
   @Inline
   private static int getIndex(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));

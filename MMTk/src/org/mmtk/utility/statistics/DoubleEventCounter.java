@@ -21,7 +21,7 @@ import org.vmmagic.pragma.Uninterruptible;
  * events that occur for each phase).
  */
 @Uninterruptible
-public class DoubleCounter extends Counter {
+public class DoubleEventCounter extends Counter {
 
   /****************************************************************************
    *
@@ -31,12 +31,10 @@ public class DoubleCounter extends Counter {
   /**
    *
    */
-//  private final double[] count;
+  private final double[] count;
 
-  protected long count = 0;
-  protected double value = 0;
+  protected double currentCount = 0;
   private boolean running = false;
-  private final boolean reportMean;
 
   /****************************************************************************
    *
@@ -48,7 +46,7 @@ public class DoubleCounter extends Counter {
    *
    * @param name The name to be associated with this counter
    */
-  public DoubleCounter(String name) {
+  public DoubleEventCounter(String name) {
     this(name, true, false);
   }
 
@@ -60,7 +58,7 @@ public class DoubleCounter extends Counter {
    * when <code>startAll()</code> is called (otherwise the counter
    * must be explicitly started).
    */
-  public DoubleCounter(String name, boolean start) {
+  public DoubleEventCounter(String name, boolean start) {
     this(name, start, false);
   }
 
@@ -74,14 +72,9 @@ public class DoubleCounter extends Counter {
    * @param mergephases {@code true} if this counter does not separately
    * report GC and Mutator phases.
    */
-  public DoubleCounter(String name, boolean start, boolean mergephases) {
-    this(name, start, mergephases, false);
-  }
-
-  public DoubleCounter(String name, boolean start, boolean mergephases, boolean reportMean) {
+  public DoubleEventCounter(String name, boolean start, boolean mergephases) {
     super(name, start, mergephases);
-//    count = new double[Stats.MAX_PHASES];
-    this.reportMean = reportMean;
+    count = new double[Stats.MAX_PHASES];
   }
 
   /****************************************************************************
@@ -92,17 +85,30 @@ public class DoubleCounter extends Counter {
   /**
    * Increment the event counter
    */
+  public void inc() {
+    if (running) inc(1);
+  }
+
+  /**
+   * Increment the event counter by <code>value</code>
+   *
+   * @param value The amount by which the counter should be incremented.
+   */
+  public void inc(int value) {
+    if (running) currentCount += value;
+  }
 
   /**
    * Increments the event counter by {@code value}.
    *
    * @param value The amount by which the counter should be incremented.
    */
+  public void inc(long value) {
+    if (running) currentCount += value;
+  }
+
   public void inc(double value) {
-    if (running) {
-      count += 1;
-      this.value += value;
-    }
+    if (running) currentCount += value;
   }
 
 
@@ -125,9 +131,8 @@ public class DoubleCounter extends Counter {
   protected void stop() {
     if (!Stats.gatheringStats) return;
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(running);
-//    count[Stats.phase] = currentCount;
-//    count = 0;
-//    value = 0;
+    count[Stats.phase] = currentCount;
+    currentCount = 0;
     running = false;
   }
 
@@ -140,10 +145,10 @@ public class DoubleCounter extends Counter {
    */
   @Override
   void phaseChange(int oldPhase) {
-//    if (running) {
-//      count[oldPhase] = currentCount;
-//      currentCount = 0;
-//    }
+    if (running) {
+      count[oldPhase] = currentCount;
+      currentCount = 0;
+    }
   }
 
   /**
@@ -152,71 +157,57 @@ public class DoubleCounter extends Counter {
    */
   @Override
   protected final void printCount(int phase) {
-    VM.assertions.fail("Unimplemented");
-//    if (VM.VERIFY_ASSERTIONS && mergePhases())
-//      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((phase | 1) == (phase + 1));
-//    if (mergePhases())
-//      printValue(count[phase] + count[phase + 1]);
-//    else
-//      printValue(count[phase]);
+    if (VM.VERIFY_ASSERTIONS && mergePhases())
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((phase | 1) == (phase + 1));
+    if (mergePhases())
+      printValue(count[phase] + count[phase + 1]);
+    else
+      printValue(count[phase]);
   }
 
   /**
    * Print the current value for this counter (mid-phase)
    */
-//  public final void printCurrent() {
-//    VM.assertions.fail("Unimplemented");
-////    printValue(currentCount);
-//  }
+  public final void printCurrent() {
+    printValue(currentCount);
+  }
 
   @Override
   public final void printTotal() {
-//    Log.write(name);
-//    Log.writeln(value);
-//    Log.writeln(name, count);
-//    Log.write(name);
-//    Log.writeln(value / count);
-    if (reportMean) {
-//      if (count == 0) {
-        printValue(value / count);
-//      } else {
-
-//      }
-    } else {
-      printValue(value);
+    long total = 0;
+    for (int p = 0; p <= Stats.phase; p++) {
+      total += count[p];
     }
+    printValue(total);
   }
 
   @Override
   protected final void printTotal(boolean mutator) {
-    VM.assertions.fail("Unimplemented");
-//    long total = 0;
-//    for (int p = (mutator) ? 0 : 1; p <= Stats.phase; p += 2) {
-//      total += count[p];
-//    }
-//    printValue(total);
+    long total = 0;
+    for (int p = (mutator) ? 0 : 1; p <= Stats.phase; p += 2) {
+      total += count[p];
+    }
+    printValue(total);
   }
 
   @Override
   protected final void printMin(boolean mutator) {
-    VM.assertions.fail("Unimplemented");
-//    int p = (mutator) ? 0 : 1;
-//    long min = count[p];
-//    for (; p < Stats.phase; p += 2) {
-//      if (count[p] < min) min = count[p];
-//    }
-//    printValue(min);
+    int p = (mutator) ? 0 : 1;
+    double min = count[p];
+    for (; p < Stats.phase; p += 2) {
+      if (count[p] < min) min = count[p];
+    }
+    printValue(min);
   }
 
   @Override
   protected final void printMax(boolean mutator) {
-    VM.assertions.fail("Unimplemented");
-//    int p = (mutator) ? 0 : 1;
-//    long max = count[p];
-//    for (; p < Stats.phase; p += 2) {
-//      if (count[p] > max) max = count[p];
-//    }
-//    printValue(max);
+    int p = (mutator) ? 0 : 1;
+    double max = count[p];
+    for (; p < Stats.phase; p += 2) {
+      if (count[p] > max) max = count[p];
+    }
+    printValue(max);
   }
 
   /**
@@ -230,7 +221,6 @@ public class DoubleCounter extends Counter {
 
   @Override
   public void printLast() {
-    VM.assertions.fail("Unimplemented");
-//    if (Stats.phase > 0) printCount(Stats.phase - 1);
+    if (Stats.phase > 0) printCount(Stats.phase - 1);
   }
 }
