@@ -59,6 +59,7 @@ public class G1Constraints extends StopTheWorldConstraints {
   }
   public boolean g1ForceDrainModbuf() { return false; }
   public boolean g1UseXorBarrier() { return true; }
+  public float g1FixedNurseryRatio() { return 0.15f; }
 
   // Derived
   @Override public boolean needsConcurrentWorkers() { return g1ConcurrentMarking(); }

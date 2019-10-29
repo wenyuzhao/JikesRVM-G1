@@ -3,6 +3,7 @@ package org.mmtk.policy.region;
 
 //import org.mmtk.policy.*;
 import org.mmtk.plan.Plan;
+import org.mmtk.plan.g1.G1;
 import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
 import org.mmtk.vm.VM;
@@ -145,26 +146,33 @@ public class Region {
 
   @Inline
   public static void register(Address region, int allocationKind) {
-    MarkTable.clearAllTables(region);
+//    MarkTable.clearAllTables(region);
     clearState(region);
     set(region, MD_ALLOCATED, true);
     set(region, MD_PREV_CURSOR, region);
     set(region, MD_NEXT_CURSOR, region);
-    set(region, MD_REMSET, Plan.metaDataSpace.acquire(RemSet.PAGES_IN_REMSET));
-    set(region, MD_CARD_OFFSET_TABLE, Plan.metaDataSpace.acquire(CardOffsetTable.PAGES_IN_CARD_OFFSET_TABLE));
+    if (G1.ENABLE_REMEMBERED_SETS) {
+      set(region, MD_REMSET, Plan.metaDataSpace.acquire(RemSet.PAGES_IN_REMSET));
+      set(region, MD_CARD_OFFSET_TABLE, Plan.metaDataSpace.acquire(CardOffsetTable.PAGES_IN_CARD_OFFSET_TABLE));
+    }
     if (VM.VERIFY_ASSERTIONS) {
       VM.assertions._assert(allocationKind >= 0 && allocationKind <= 2);
     }
     set(region, MD_GENERATION, allocationKind);
+//    if (allocationKind != OLD) {
+//      CardTable.setAllNursery(region);
+//    }
   }
 
   @Inline
   public static void unregister(Address region) {
-    Address remset = getAddress(region, MD_REMSET);
-    Address headPRT = getAddress(region, MD_REMSET_HEAD_PRT);
-    RemSet.releasePRTs(headPRT);
-    Plan.metaDataSpace.release(remset);
-    Plan.metaDataSpace.release(getAddress(region, MD_CARD_OFFSET_TABLE));
+    if (G1.ENABLE_REMEMBERED_SETS) {
+      Address remset = getAddress(region, MD_REMSET);
+      Address headPRT = getAddress(region, MD_REMSET_HEAD_PRT);
+      RemSet.releasePRTs(headPRT);
+      Plan.metaDataSpace.release(remset);
+      Plan.metaDataSpace.release(getAddress(region, MD_CARD_OFFSET_TABLE));
+    }
     clearState(region);
   }
 
@@ -272,7 +280,7 @@ public class Region {
   }
 
   @Inline
-  public static Address allocate(Address region, int size, boolean atomic) {
+  public static Address allocate(final Address region, final int size, final boolean atomic) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(isAligned(region));
     Address slot = metaDataOf(region, MD_NEXT_CURSOR);
     Address regionEnd = region.plus(BYTES_IN_REGION);

@@ -226,9 +226,11 @@ public final class RegionSpace extends Space {
   @Inline
   @LogicallyUninterruptible
   public Address allocTLAB(int allocationKind, int tlabSize) {
-    Address tlab = allocTLABFastOnce(allocationKind, tlabSize);
-    if (!tlab.isZero()) {
-      return tlab;
+    if (tlabSize < Region.BYTES_IN_REGION) {
+      Address tlab = allocTLABFastOnce(allocationKind, tlabSize);
+      if (!tlab.isZero()) {
+        return tlab;
+      }
     }
     // Slow path
     Address result = allocTLABSlow(allocationKind, tlabSize);
@@ -239,6 +241,7 @@ public final class RegionSpace extends Space {
   }
 
   @Inline
+  @NoBoundsCheck
   private Address allocTLABFastOnce(int allocationKind, int tlabSize) {
     Address allocRegion = allocRegions.get(allocationKind);
     if (allocRegion.isZero()) return Address.zero();
@@ -248,7 +251,7 @@ public final class RegionSpace extends Space {
   private Address allocTLABSlow(int generation, int tlabSize) {
     allocLock.acquire();
     // Try again
-    {
+    if (tlabSize < Region.BYTES_IN_REGION) {
       Address tlab = allocTLABFastOnce(generation, tlabSize);
       if (!tlab.isZero()) {
         allocLock.release();
@@ -262,7 +265,7 @@ public final class RegionSpace extends Space {
       return Address.zero();
     }
     Address result = Region.allocate(region, tlabSize, false);
-    allocRegions.set(generation, region);
+    if (tlabSize < Region.BYTES_IN_REGION) allocRegions.set(generation, region);
     allocLock.release();
     return result;
   }

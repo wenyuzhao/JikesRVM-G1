@@ -27,7 +27,7 @@ public class PauseTimePredictor {
   static final long PAUSE_TIME_GOAL = VM.statistics.millisToNanos(50); // ms
 
   // Parameters
-  float nurseryRatio = 0.15f;
+  float nurseryRatio = G1.constraints().g1FixedNurseryRatio();
   long V_fixed;
   double U, S, C;
   public final Stat stat = new Stat();

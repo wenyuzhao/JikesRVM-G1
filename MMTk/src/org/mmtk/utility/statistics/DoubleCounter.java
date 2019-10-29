@@ -180,7 +180,7 @@ public class DoubleCounter extends Counter {
 //      if (count == 0) {
         printValue(value / count);
 //      } else {
-
+//        printValue(0);
 //      }
     } else {
       printValue(value);
@@ -225,7 +225,7 @@ public class DoubleCounter extends Counter {
    * @param value The value to be printed
    */
   void printValue(double value) {
-    Log.write(value);
+    Log.write(value, 6);
   }
 
   @Override

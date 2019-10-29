@@ -49,6 +49,9 @@ public class CardRefinement {
   public static boolean refineOneCard(final Address card, boolean markDead) {
     if (CardTable.get(card) != Card.DIRTY) return false;
     CardTable.set(card, Card.NOT_DIRTY);
+    if (Space.isInSpace(G1.REGION_SPACE, card) && Region.getInt(Region.of(card), Region.MD_GENERATION) != Region.OLD) {
+      return false;
+    }
     Card.linearScan(card, cardRefineLinearScan, false, null);
     return true;
   }

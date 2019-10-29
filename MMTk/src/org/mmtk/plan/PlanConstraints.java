@@ -28,6 +28,17 @@ import org.vmmagic.pragma.*;
   public int LOG_PAGES_IN_G1_REGION() {
     return 8;
   }
+  public boolean g1ConcurrentMarking() { return true; }
+  public boolean g1RememberedSets() { return true; }
+  public boolean g1ConcurrentRefinement() { return true; }
+  public boolean g1HotCardOptimization() { return true; }
+  public boolean g1GenerationalGC() { return true; }
+  public boolean g1PauseTimePredictor() {
+    return true;
+  }
+  public boolean g1ForceDrainModbuf() { return false; }
+  public boolean g1UseXorBarrier() { return true; }
+  public float g1FixedNurseryRatio() { return 0.15f; }
 
   public boolean G1_CARD_SUPPORT() {
     return false;

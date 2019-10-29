@@ -31,7 +31,12 @@ public class G1NurseryTraceLocal extends TraceLocal {
         // src.slot -> new_object
         if (RegionSpace.isCrossRegionRef(src, slot, newObject) && Space.isInSpace(G1.REGION_SPACE, newObject)) {
           Address card = Card.of(src);
-          RemSet.addCard(Region.of(newObject), card);
+//          RemSet.addCard(Region.of(newObject), card);
+          if (Space.isInSpace(G1.REGION_SPACE, card) && Region.getInt(Region.of(card), Region.MD_GENERATION) != Region.OLD) {
+            // Do nothing
+          } else {
+            RemSet.addCard(Region.of(newObject), card);
+          }
         }
       }
       VM.activePlan.global().storeObjectReference(slot, newObject);

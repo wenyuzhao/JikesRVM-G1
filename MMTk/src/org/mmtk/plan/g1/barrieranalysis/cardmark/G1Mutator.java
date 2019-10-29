@@ -26,11 +26,11 @@ public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.baseline.G1Mutat
   @Inline
   @Override
   protected void cardMarkingBarrier(ObjectReference src) {
-    Address card = Card.of(src);
     if (G1.MEASURE_TAKERATE) G1.barrierFast.inc(1);
-    if (CardTable.get(card) == Card.NOT_DIRTY) {
+    int index = CardTable.getIndex(src);
+    if (CardTable.get(index) == Card.NOT_DIRTY) {
       if (G1.MEASURE_TAKERATE) G1.barrierSlow.inc(1);
-      CardTable.set(card, Card.DIRTY);
+      CardTable.set(index, Card.DIRTY);
     }
   }
 

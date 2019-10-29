@@ -21,33 +21,46 @@ import org.mmtk.utility.Log;
 import org.mmtk.utility.statistics.DoubleCounter;
 import org.mmtk.utility.statistics.DoubleEventCounter;
 import org.mmtk.utility.statistics.EventCounter;
+import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 
 @Uninterruptible
 public class G1 extends org.mmtk.plan.g1.G1 {
-  static final DoubleCounter remsetAccumulatedFootprint;
-  static final DoubleCounter remsetAccumulatedUtilization;
+  protected static final short statRemSet = Phase.createComplex("stat-remset", null,
+      Phase.scheduleGlobal   (REFINE_CARDS),
+      Phase.scheduleMutator  (REFINE_CARDS),
+      Phase.scheduleCollector(REFINE_CARDS),
+      Phase.scheduleGlobal   (STAT_REMSET)
+  );
+
+  static final DoubleCounter remsetFootprintOverMaxHeapSize;
+  static final DoubleCounter remsetFootprintOverUsedHeapSize;
+  static final DoubleCounter remsetUtilization;
 
   static {
-    remsetAccumulatedFootprint = new DoubleCounter("remset.accumulated.footprint", true, true, true);
-    remsetAccumulatedUtilization = new DoubleCounter("remset.accumulated.utilization", true, true, true);
+    remsetFootprintOverMaxHeapSize = new DoubleCounter("remset.footprint.overMaxHeapSize", true, true, true);
+    remsetFootprintOverUsedHeapSize = new DoubleCounter("remset.footprint.overUsedHeapSize", true, true, true);
+    remsetUtilization = new DoubleCounter("remset.utilization", true, true, true);
   }
 
 
   private void statRemSet() {
-    int remsetUsedBytes = 0, remsetRecordedCards = 0, remsetRegionSpaceUsedBytes = 0;
+    int committedBytes = 0, recordedCards = 0;
     for (Address region = regionSpace.firstRegion(); !region.isZero(); region = Region.getNext(region)) {
-      remsetUsedBytes += RemSet.committedBytes(region);
-      remsetRecordedCards += RemSet.rememberedCards(region);
-      remsetRegionSpaceUsedBytes += Region.BYTES_IN_REGION;
+      committedBytes += RemSet.committedBytes(region);
+      recordedCards += RemSet.rememberedCards(region);
     }
+    int maxHeapSize = this.getTotalPages() * Constants.BYTES_IN_PAGE;
+    int usedHeapSize = this.getPagesUsed() * Constants.BYTES_IN_PAGE;
 
-    double footprint = ((double) remsetUsedBytes) / ((double) remsetRegionSpaceUsedBytes);
-    double utilization = ((double) remsetRecordedCards) / ((double) (remsetUsedBytes * Constants.BITS_IN_BYTE));
+    double footprintOverMaxHeapSize = ((double) committedBytes) / ((double) maxHeapSize);
+    double footprintOverUsedHeapSize = ((double) committedBytes) / ((double) usedHeapSize);
+    double utilization = ((double) recordedCards) / ((double) (committedBytes));
 
-    remsetAccumulatedFootprint.inc(footprint * 100);
-    remsetAccumulatedUtilization.inc(utilization * 100);
+    remsetFootprintOverMaxHeapSize.inc(footprintOverMaxHeapSize);
+    remsetFootprintOverUsedHeapSize.inc(footprintOverUsedHeapSize);
+    remsetUtilization.inc(utilization);
   }
 
   @Override
@@ -63,16 +76,16 @@ public class G1 extends org.mmtk.plan.g1.G1 {
   public void processOptions() {
     super.processOptions();
     {
-      int oldClosure = Phase.schedulePlaceholder(STAT_REMSET);
-      int newClosure = Phase.scheduleGlobal(STAT_REMSET);
+      int oldPhase= Phase.schedulePlaceholder(STAT_REMSET);
+      int newPhase = Phase.scheduleComplex(statRemSet);
       ComplexPhase cp = (ComplexPhase) Phase.getPhase(mixedCollection);
-      cp.replacePhase(oldClosure, newClosure);
+      cp.replacePhase(oldPhase, newPhase);
     }
     {
-      int oldClosure = Phase.schedulePlaceholder(STAT_REMSET);
-      int newClosure = Phase.scheduleGlobal(STAT_REMSET);
+      int oldPhase= Phase.schedulePlaceholder(STAT_REMSET);
+      int newPhase = Phase.scheduleComplex(statRemSet);
       ComplexPhase cp = (ComplexPhase) Phase.getPhase(nurseryCollection);
-      cp.replacePhase(oldClosure, newClosure);
+      cp.replacePhase(oldPhase, newPhase);
     }
   }
 }

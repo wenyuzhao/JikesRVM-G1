@@ -12,17 +12,13 @@
  */
 package org.mmtk.utility.alloc;
 
-import org.mmtk.plan.g1.CardRefinement;
-import org.mmtk.plan.g1.G1;
+import org.mmtk.plan.Plan;
 import org.mmtk.policy.ImmortalSpace;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.region.Card;
 import org.mmtk.utility.Conversions;
-import org.mmtk.utility.Log;
-import org.mmtk.utility.gcspy.drivers.LinearSpaceDriver;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
-import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.*;
 
@@ -42,6 +38,11 @@ import static org.mmtk.utility.Constants.*;
   public BumpPointer2(Space space) {
     this.space = space;
     reset();
+  }
+
+  public final void rebind(Space space) {
+    reset();
+    this.space = space;
   }
 
 
@@ -135,7 +136,7 @@ import static org.mmtk.utility.Constants.*;
       cursor = VM.objectModel.getObjectEndAddress(object);
       if (startRef.GE(card) && startRef.LT(limit)) {
         if (markDead) {
-          if (G1.immortalSpace.isMarked(object) && !isDead(object)) {
+          if (Plan.immortalSpace.isMarked(object) && !isDead(object)) {
             scanner.scan(card, object, context);
           } else {
             markAsDead(object);

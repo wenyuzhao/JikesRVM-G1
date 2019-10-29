@@ -10,11 +10,12 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.g1.remsetanalysis.generational;
+package org.mmtk.plan.g1.remsetanalysis.generational20;
 
 import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
 public class G1Constraints extends org.mmtk.plan.g1.remsetanalysis.G1Constraints {
   @Override public boolean g1GenerationalGC() { return true; }
+  public float g1FixedNurseryRatio() { return 0.20f; }
 }

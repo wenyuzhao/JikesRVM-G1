@@ -4,6 +4,7 @@ import org.mmtk.utility.Atomic;
 import org.mmtk.utility.Constants;
 import org.mmtk.utility.Log;
 import org.mmtk.vm.VM;
+import org.vmmagic.pragma.Entrypoint;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.NoBoundsCheck;
 import org.vmmagic.pragma.Uninterruptible;
@@ -56,7 +57,12 @@ public class CardTable {
   @Inline
   private static int getIndex(Address card) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
-    return card.diff(VM.HEAP_START).toWord().rshl(Card.LOG_BYTES_IN_CARD).toInt();
+    return card.toWord().rshl(Card.LOG_BYTES_IN_CARD).toInt();
+  }
+
+  @Inline
+  public static int getIndex(ObjectReference ref) {
+    return VM.objectModel.objectStartRef(ref).toWord().rshl(Card.LOG_BYTES_IN_CARD).toInt();
   }
 
   static final Word BYTE_MASK = Word.fromIntZeroExtend((1 << Constants.BITS_IN_BYTE) - 1);
@@ -74,6 +80,14 @@ public class CardTable {
     int shift = (index & 3) << Constants.LOG_BITS_IN_BYTE;
     Word word = wordSlot.loadWord();
     return (byte) word.and(BYTE_MASK.lsh(shift)).rshl(shift).toInt();
+  }
+
+  @Inline
+  @NoBoundsCheck
+  public static byte get(final int index) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+    Address table = ObjectReference.fromObject(CardTable.table).toAddress();
+    return table.plus(index).loadByte();
   }
 
   @Inline
@@ -100,11 +114,36 @@ public class CardTable {
     int index = getIndex(card);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
     Address wordSlot = ObjectReference.fromObject(table).toAddress().plus(index & ~3);
-    int shift = (index & 3) << Constants.LOG_BITS_IN_BYTE;
+//    int shift = (index & 3) << Constants.LOG_BITS_IN_BYTE;
     boolean success = attemptByteInWord(wordSlot, index & 3, value);
     if (success) {
       if (value == Card.DIRTY) numDirtyCards.add(1);
       else numDirtyCards.add(-1);
+    }
+  }
+
+  @Inline
+  @NoBoundsCheck
+  public static void set(final int index, final byte value) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+    Address wordSlot = ObjectReference.fromObject(table).toAddress().plus(index & ~3);
+    boolean success = attemptByteInWord(wordSlot, index & 3, value);
+    if (success) {
+      if (value == Card.DIRTY) numDirtyCards.add(1);
+      else numDirtyCards.add(-1);
+    }
+  }
+
+  @Inline
+  @NoBoundsCheck
+  public static void setAllNursery(Address region) {
+    Address regionLimit = region.plus(Region.BYTES_IN_REGION);
+    for (Address card = region; card.LT(regionLimit); card = card.plus(Card.BYTES_IN_CARD)) {
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
+      int index = getIndex(card);
+      if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+      Address wordSlot = ObjectReference.fromObject(table).toAddress().plus(index & ~3);
+      boolean success = attemptByteInWord(wordSlot, index & 3, Card.NURSERY);
     }
   }
 }

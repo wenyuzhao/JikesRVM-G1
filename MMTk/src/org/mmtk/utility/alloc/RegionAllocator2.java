@@ -13,6 +13,7 @@
 
 package org.mmtk.utility.alloc;
 
+import org.mmtk.plan.g1.G1;
 import org.mmtk.policy.Space;
 import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardOffsetTable;
@@ -32,7 +33,7 @@ public class RegionAllocator2 extends Allocator {
   static final int LOG_UNIT_SIZE = 9;
   static final int UNIT_SIZE = 1 << LOG_UNIT_SIZE;
   static final int MIN_TLAB_SIZE = 2 * 1024;
-  static final int MAX_TLAB_SIZE = VM.activePlan.constraints().maxNonLOSDefaultAllocBytes();
+  static final int MAX_TLAB_SIZE = Region.BYTES_IN_REGION;
 
   protected final RegionSpace space;
   protected final int spaceDescriptor;
@@ -41,6 +42,7 @@ public class RegionAllocator2 extends Allocator {
   private Address limit = Address.zero();
   int refills = 0;
   int tlabSize = MIN_TLAB_SIZE;// + MAX_TLAB_SIZE) >> 1;
+  private static final int REFILLS_PER_GC = 50;
 
   /**
    * Constructor.
@@ -61,7 +63,7 @@ public class RegionAllocator2 extends Allocator {
   }
 
   public void adjustTLABSize() {
-    float factor = (float) refills / 50f;
+    float factor = (float) refills / ((float) REFILLS_PER_GC);
     tlabSize = (int) (((float) tlabSize) * factor);
     tlabSize = alignTLAB(tlabSize);
     if (tlabSize < MIN_TLAB_SIZE) {
@@ -78,6 +80,7 @@ public class RegionAllocator2 extends Allocator {
     limit = Address.zero();
   }
 
+  @Inline
   private static void initOffsets(final Address start, Address limit) {
     Address region = Region.of(start);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(limit.LE(region.plus(Region.BYTES_IN_REGION)));
@@ -92,7 +95,9 @@ public class RegionAllocator2 extends Allocator {
     }
   }
 
+  @Inline
   private void retireTLAB() {
+    if (!G1.ENABLE_REMEMBERED_SETS) return;
     if (cursor.isZero() || limit.isZero()) {
       return;
     }
@@ -124,8 +129,9 @@ public class RegionAllocator2 extends Allocator {
       return allocSlow(bytes, align, offset);
     }
     /* sufficient memory is available, so we can finish performing the allocation */
-    fillAlignmentGap(cursor, start);
+    if (G1.ENABLE_REMEMBERED_SETS) fillAlignmentGap(cursor, start);
     cursor = end;
+    end.plus(128).prefetch();
     return start;
   }
 
@@ -143,6 +149,7 @@ public class RegionAllocator2 extends Allocator {
    * zero on failure
    */
   @Override
+  @Inline
   protected final Address allocSlowOnce(int bytes, int align, int offset) {
     int size = bytes > tlabSize ? bytes : tlabSize;
     size = alignTLAB(size);
@@ -152,7 +159,7 @@ public class RegionAllocator2 extends Allocator {
     retireTLAB();
     cursor = tlab;
     limit = cursor.plus(size);
-    initOffsets(cursor, limit);
+    if (G1.ENABLE_REMEMBERED_SETS) initOffsets(cursor, limit);
     return alloc(bytes, align, offset);
   }
 

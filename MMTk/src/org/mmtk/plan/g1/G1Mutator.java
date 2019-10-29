@@ -118,7 +118,6 @@ public class G1Mutator extends StopTheWorldMutator {
       Log.writeln(Phase.getName(phaseId));
     }
     if (phaseId == G1.PREPARE) {
-      g1.adjustTLABSize();
       g1.reset();
       immortal2.reset();
       VM.memory.collectorPrepareVMSpace();
@@ -143,6 +142,7 @@ public class G1Mutator extends StopTheWorldMutator {
     }
 
     if (phaseId == G1.EVACUATE_PREPARE) {
+      g1.adjustTLABSize();
       g1.reset();
       immortal2.reset();
       VM.memory.collectorPrepareVMSpace();
@@ -211,10 +211,10 @@ public class G1Mutator extends StopTheWorldMutator {
   @Inline
   protected void cardMarkingBarrier(ObjectReference src) {
     if (!G1.ENABLE_REMEMBERED_SETS) return;
-    Address card = Card.of(src);
-    if (CardTable.get(card) == Card.NOT_DIRTY) {
-      CardTable.set(card, Card.DIRTY);
-      rsEnqueue(card);
+    int index = CardTable.getIndex(src);
+    if (CardTable.get(index) == Card.NOT_DIRTY) {
+      CardTable.set(index, Card.DIRTY);
+      rsEnqueue(Word.fromIntZeroExtend(index).lsh(Card.LOG_BYTES_IN_CARD).toAddress());
     }
   }
 

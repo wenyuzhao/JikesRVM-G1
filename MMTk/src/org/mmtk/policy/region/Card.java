@@ -1,14 +1,10 @@
 package org.mmtk.policy.region;
 
-import org.mmtk.plan.Plan;
-import org.mmtk.plan.g1.CardRefinement;
 import org.mmtk.plan.g1.G1;
-import org.mmtk.policy.Space;
 import org.mmtk.utility.Constants;
-import org.mmtk.utility.Log;
 import org.mmtk.utility.alloc.BumpPointer2;
-import org.mmtk.utility.alloc.LinearScan;
 import org.mmtk.utility.heap.layout.HeapLayout;
+import org.mmtk.utility.heap.layout.VMLayoutConstants;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
 import org.vmmagic.pragma.Uninterruptible;
@@ -20,12 +16,13 @@ import org.vmmagic.unboxed.Word;
 public class Card {
   public static final int LOG_BYTES_IN_CARD = 9;
   public static final int BYTES_IN_CARD = 1 << LOG_BYTES_IN_CARD;
-  public static final int CARDS_IN_HEAP = VM.HEAP_END.diff(VM.HEAP_START).toWord().rshl(LOG_BYTES_IN_CARD).toInt();
+  public static final int CARDS_IN_HEAP = 1 << (VMLayoutConstants.LOG_ADDRESS_SPACE - LOG_BYTES_IN_CARD);//.HEAP_END.diff(VM.HEAP_START).toWord().rshl(LOG_BYTES_IN_CARD).toInt();
   public static final int CARDS_IN_REGION = Word.fromIntZeroExtend(Region.BYTES_IN_REGION).rshl(LOG_BYTES_IN_CARD).toInt();
   public static final Word CARD_MASK = Word.fromIntZeroExtend(BYTES_IN_CARD - 1);// 0..0111111111
 
   public static final byte NOT_DIRTY = 0;
   public static final byte DIRTY = 1;
+  public static final byte NURSERY = 2;
 
   @Inline
   public static Address of(Address address) {

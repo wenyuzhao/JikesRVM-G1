@@ -1,6 +1,7 @@
 package org.mmtk.plan.g1;
 
 import org.mmtk.plan.Phase;
+import org.mmtk.plan.PlanConstraints;
 import org.mmtk.plan.StopTheWorld;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
@@ -9,8 +10,8 @@ import org.vmmagic.pragma.Uninterruptible;
 @Uninterruptible
 class G1Base extends StopTheWorld {
   @Inline
-  public static G1Constraints constraints() {
-    return (G1Constraints) VM.activePlan.constraints();
+  public static PlanConstraints constraints() {
+    return VM.activePlan.constraints();
   }
   // G1 Features
   public static final boolean ENABLE_CONCURRENT_MARKING = constraints().g1ConcurrentMarking();
@@ -114,7 +115,6 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleMutator  (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
-      Phase.schedulePlaceholder(STAT_REMSET),
       Phase.scheduleCollector(REMSET_ROOTS),
       Phase.scheduleGlobal   (EVACUATE_CLOSURE),
       Phase.scheduleCollector(EVACUATE_CLOSURE),
@@ -148,6 +148,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleComplex  (completeClosurePhase),
       // Select relocation sets
       Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+      Phase.schedulePlaceholder(STAT_REMSET),
       // Evacuate
       Phase.scheduleComplex  (ENABLE_REMEMBERED_SETS ? remsetEvacuatePhase : fullTraceEvacuatePhase),
 
@@ -160,6 +161,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleComplex  (initPhase),
       // Select relocation sets
       Phase.scheduleGlobal   (RELOCATION_SET_SELECTION),
+      Phase.schedulePlaceholder(STAT_REMSET),
       // Evacuate
       Phase.scheduleMutator  (EVACUATE_PREPARE),
       Phase.scheduleGlobal   (EVACUATE_PREPARE),
@@ -174,7 +176,6 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (REFINE_CARDS),
       Phase.scheduleMutator  (REFINE_CARDS),
       Phase.scheduleCollector(REFINE_CARDS),
-      Phase.schedulePlaceholder(STAT_REMSET),
       Phase.scheduleCollector(REMSET_ROOTS),
       Phase.scheduleGlobal   (EVACUATE_CLOSURE),
       Phase.scheduleCollector(EVACUATE_CLOSURE),

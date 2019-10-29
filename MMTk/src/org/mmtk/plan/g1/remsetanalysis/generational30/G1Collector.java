@@ -10,9 +10,9 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.g1.remsetanalysis.generational;
+package org.mmtk.plan.g1.remsetanalysis.generational30;
 
 import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
-public class G1 extends org.mmtk.plan.g1.remsetanalysis.G1 {}
+public class G1Collector extends org.mmtk.plan.g1.remsetanalysis.G1Collector {}

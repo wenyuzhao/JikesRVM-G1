@@ -10,20 +10,12 @@
  *  See the COPYRIGHT.txt file distributed with this work for information
  *  regarding copyright ownership.
  */
-package org.mmtk.plan.g1.barrieranalysis.baseline;
+package org.mmtk.plan.g1.remsetanalysis.generational30;
 
-import org.mmtk.utility.statistics.DoubleCounter;
-import org.mmtk.utility.statistics.EventCounter;
 import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
-public class G1 extends org.mmtk.plan.g1.G1 {
-  public static final boolean MEASURE_TAKERATE = false;
-  public static final EventCounter barrierSlow;
-  public static final EventCounter barrierFast;
-
-  static {
-    barrierSlow = new EventCounter("barrier.slow");
-    barrierFast = new EventCounter("barrier.fast");
-  }
+public class G1Constraints extends org.mmtk.plan.g1.remsetanalysis.G1Constraints {
+  @Override public boolean g1GenerationalGC() { return true; }
+  public float g1FixedNurseryRatio() { return 0.30f; }
 }

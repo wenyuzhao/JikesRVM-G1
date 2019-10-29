@@ -40,6 +40,15 @@ public class RemSet {
     return BYTES_IN_PRT * prts + BYTES_IN_REMSET;
   }
 
+  public static int committedPRTs(Address rsRegion) {
+    int prts = 0;
+    Address headPRT = Region.getAddress(rsRegion, Region.MD_REMSET_HEAD_PRT);
+    for (Address prt = headPRT; !prt.isZero(); prt = prt.loadAddress(NEXT_PRT_OFFSET)) {
+      prts += 1;
+    }
+    return prts;
+  }
+
   public static int rememberedCards(Address rsRegion) {
     int visitedCards = 0;
     Address headPRT = Region.getAddress(rsRegion, Region.MD_REMSET_HEAD_PRT);
