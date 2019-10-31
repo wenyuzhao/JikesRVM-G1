@@ -15,16 +15,16 @@ import org.vmmagic.unboxed.Word;
 
 @Uninterruptible
 public class RemSet {
-  private static final int LOGICAL_REGIONS_IN_HEAP = VM.HEAP_END.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt();
+  private static final int LOGICAL_REGIONS_IN_HEAP = VM.HEAP_END.diff(VM.HEAP_START).toWord().rshl(Region.LOG_BYTES_IN_REGION).toInt() + 1;
   private static final int BYTES_IN_REMSET = LOGICAL_REGIONS_IN_HEAP * Constants.BYTES_IN_ADDRESS;
-  public  static final int PAGES_IN_REMSET = 1 + ((BYTES_IN_REMSET - 1) / Constants.BYTES_IN_PAGE);
+  public  static final int PAGES_IN_REMSET = (BYTES_IN_REMSET + (Constants.BYTES_IN_PAGE - 1)) / Constants.BYTES_IN_PAGE;
   private static final int META_BYTES_IN_PRT = 4 << Constants.LOG_BYTES_IN_ADDRESS;
-  private static final int BYTES_IN_PRT = Card.CARDS_IN_REGION / Constants.BITS_IN_BYTE + META_BYTES_IN_PRT;
-  private static final Offset NEXT_PRT_OFFSET = Offset.fromIntZeroExtend(0);
-  private static final Offset PREV_PRT_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS);
+  private static final int BYTES_IN_PRT = ((Card.CARDS_IN_REGION + (Constants.BITS_IN_BYTE - 1)) / Constants.BITS_IN_BYTE) + META_BYTES_IN_PRT;
+  private static final Offset NEXT_PRT_OFFSET   = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 0);
+  private static final Offset PREV_PRT_OFFSET   = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 1);
   private static final Offset PRT_REGION_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 2);
-  private static final Offset PRT_CARDS_OFFSET = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 3);
-  private static final Offset PRT_DATA_START = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 4);
+  private static final Offset PRT_CARDS_OFFSET  = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 3);
+  private static final Offset PRT_DATA_START    = Offset.fromIntZeroExtend(Constants.BYTES_IN_ADDRESS * 4);
 
   @Uninterruptible
   public static abstract class Visitor<T> {
@@ -204,6 +204,19 @@ public class RemSet {
     }
   }
 
+  public static boolean containsCard(Address region, Address card) {
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(!region.isZero());
+      VM.assertions._assert(Space.isInSpace(G1.REGION_SPACE, region));
+      VM.assertions._assert(Region.isAligned(region));
+      VM.assertions._assert(Card.isAligned(card));
+    }
+    Address cardRegion = Region.of(card);
+    Address prt = getPRT(region, cardRegion, false);
+    if (prt.isZero()) return false;
+    return PerRegionTable.containsCard(prt, card);
+  }
+
   @Inline
   public static void clearCardsInCollectionSet(Address rsRegion) {
     if (VM.VERIFY_ASSERTIONS) {
@@ -259,8 +272,10 @@ public class RemSet {
     Address regionEnd = region.plus(Region.BYTES_IN_REGION);
     for (Address card = region; card.LT(regionEnd); card = card.plus(Card.BYTES_IN_CARD)) {
       if (PerRegionTable.containsCard(prt, card)) {
-        ObjectReference o = Card.getObjectFromStartAddress(card, card.plus(Card.BYTES_IN_CARD));
-        if (o.isNull() || !G1.loSpace.isLive(o)) {
+        Address objectStartRef = card.plus(Card.LOS_HEADER_SIZE);
+        ObjectReference o = objectStartRef.plus(Card.OBJECT_REF_OFFSET).toObjectReference();
+        if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(!o.isNull());
+        if (!G1.loSpace.isLive(o)) {
           if (PerRegionTable.removeCard(prt, card)) removedCards += 1;
         }
       }

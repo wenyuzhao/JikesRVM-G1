@@ -176,6 +176,9 @@ public final class RegionSpace extends Space {
         Log.write(Region.getGenerationName(generation));
         Log.writeln(" region ", region);
       }
+      if (VM.VERIFY_ASSERTIONS) {
+        VM.assertions._assert(Region.isAligned(region));
+      }
       // Increase counter
       if (generation != Region.OLD) nurseryRegions += 1;
       committedRegions += 1;

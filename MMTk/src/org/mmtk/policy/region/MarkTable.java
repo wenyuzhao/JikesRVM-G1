@@ -116,6 +116,7 @@ public class MarkTable {
     Address rtn = base.plus(offset);
 //    Address rtn = base.plus(EmbeddedMetaData.getMetaDataOffset(address, LOG_LIVE_COVERAGE, LOG_BYTES_IN_WORD));
     if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert(offset.toInt() < Region.MARK_BYTES_PER_REGION);
       VM.assertions._assert(rtn.GE(base));
       VM.assertions._assert(rtn.LT(base.plus(Region.MARK_BYTES_PER_REGION)));
     }

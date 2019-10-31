@@ -43,14 +43,13 @@ public class Region {
   // Page 0-15: mark table
   // Page 16: Per region metadata
 
-  private static final int META_REGIONS_PER_CHUNK = 1;
-  public static final float MEMORY_RATIO = ((float) (REGIONS_IN_CHUNK - META_REGIONS_PER_CHUNK)) / ((float) REGIONS_IN_CHUNK); // 0.75
   // Mark table
-  private static final int LOG_PAGES_IN_MARKTABLE = 5;
+  private static final int LOG_PAGES_IN_MARKTABLE = EmbeddedMetaData.LOG_PAGES_IN_REGION - 5;
   public static final int BYTES_IN_MARKTABLE = 1 << (LOG_PAGES_IN_MARKTABLE + LOG_BYTES_IN_PAGE);
   public static final int MARKTABLE0_OFFSET = 0;
   public static final int MARKTABLE1_OFFSET = BYTES_IN_MARKTABLE;
   public static final int MARK_BYTES_PER_REGION = BYTES_IN_MARKTABLE / REGIONS_IN_CHUNK;
+  public static final int MARK_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE) * 2;
   // Per region metadata (offsets)
   public static final int MD_LIVE_SIZE = 0;
   public static final int MD_RELOCATE = MD_LIVE_SIZE + BYTES_IN_INT;
@@ -71,12 +70,21 @@ public class Region {
   private static final int PER_REGION_META_START_OFFSET = BYTES_IN_MARKTABLE << 1;
 
 //  public static final int METADATA_PAGES_PER_CHUNK = (1 << LOG_PAGES_IN_MARKTABLE) + 1;//(META_REGIONS_PER_CHUNK * PAGES_IN_REGION);
+  private static final int METADATA_BYTES = MARK_PAGES_PER_CHUNK * BYTES_IN_PAGE + PER_REGION_METADATA_BYTES * REGIONS_IN_CHUNK;
+
+//  public static final int METADATA_PAGES_PER_CHUNK = MARK_PAGES_PER_CHUNK + 1;
+  private static final int META_REGIONS_PER_CHUNK = (METADATA_BYTES + BYTES_IN_REGION - 1) / BYTES_IN_REGION;
   public static final int METADATA_PAGES_PER_CHUNK = META_REGIONS_PER_CHUNK * PAGES_IN_REGION;
+  public static final float MEMORY_RATIO = ((float) (REGIONS_IN_CHUNK - META_REGIONS_PER_CHUNK)) / ((float) REGIONS_IN_CHUNK); // 0.75
 
   static {
-    int metadataBytes = (1 << LOG_PAGES_IN_MARKTABLE) * BYTES_IN_PAGE;
+    int metadataBytes = (1 << LOG_PAGES_IN_MARKTABLE) * BYTES_IN_PAGE * 2;
     metadataBytes += PER_REGION_METADATA_BYTES * REGIONS_IN_CHUNK;
-    if (metadataBytes > BYTES_IN_REGION) VM.assertions.fail("Region size too small");
+    if (metadataBytes > META_REGIONS_PER_CHUNK * BYTES_IN_REGION) {
+      Log.writeln("META_REGIONS_PER_CHUNK=", META_REGIONS_PER_CHUNK);
+      Log.writeln("metadataBytes=", metadataBytes);
+      VM.assertions.fail("Region size too small");
+    }
 //    if (VM.VERIFY_ASSERTIONS) {
 //      VM.assertions._assert(LOG_PAGES_IN_REGION >= 4 && LOG_PAGES_IN_REGION <= 8);
 //      VM.assertions._assert(PER_REGION_METADATA_BYTES == 40);
@@ -205,7 +213,7 @@ public class Region {
   private static void clearState(Address region) {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
     Address metaData = chunk.plus(PER_REGION_META_START_OFFSET);
-    Address perRegionMeta = metaData.plus(PER_REGION_METADATA_BYTES * indexOf(region));
+    Address perRegionMeta = metaData.plus(PER_REGION_METADATA_BYTES * indexOf2(region));
     VM.memory.zero(false, perRegionMeta, Extent.fromIntZeroExtend(PER_REGION_METADATA_BYTES));
   }
 
@@ -245,33 +253,10 @@ public class Region {
   }
 
   @Inline
-  static int indexOf(Address region) {
-    Address chunk = EmbeddedMetaData.getMetaDataBase(region);
-    if (VM.VERIFY_ASSERTIONS) {
-      if (region.EQ(chunk)) {
-        Log.write("Invalid region ", region);
-        Log.writeln(" chunk ", chunk);
-      }
-      VM.assertions._assert(region.NE(chunk));
-    }
-    int index = region.diff(chunk).toWord().rshl(LOG_BYTES_IN_REGION).toInt();
-    if (VM.VERIFY_ASSERTIONS) {
-      if (!(index >= 1 && index < REGIONS_IN_CHUNK)) {
-        Log.write("Invalid region ", region);
-        Log.write(" chunk=", chunk);
-        Log.write(" index=", index);
-        Log.writeln(" region=", region);
-      }
-      VM.assertions._assert(index >= 1 && index < REGIONS_IN_CHUNK);
-    }
-    return index - 1;
-  }
-
-  @Inline
   private static Address metaDataOf(Address region, int metaDataOffset) {
     Address chunk = EmbeddedMetaData.getMetaDataBase(region);
     Address perRegionMetaData = chunk.plus(PER_REGION_META_START_OFFSET);
-    Address meta = perRegionMetaData.plus(PER_REGION_METADATA_BYTES * indexOf(region)).plus(metaDataOffset);
+    Address meta = perRegionMetaData.plus(PER_REGION_METADATA_BYTES * indexOf2(region)).plus(metaDataOffset);
     if (VM.VERIFY_ASSERTIONS) {
 //      VM.assertions._assert(meta.GE(chunk.plus(BYTES_IN_PAGE * 16)));
 //      VM.assertions._assert(meta.LT(chunk.plus(BYTES_IN_PAGE * 17)));

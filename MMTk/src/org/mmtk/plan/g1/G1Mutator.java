@@ -230,7 +230,7 @@ public class G1Mutator extends StopTheWorldMutator {
     }
   }
 
-  private void acquireDirtyCardQueue() {
+  protected void acquireDirtyCardQueue() {
     dirtyCardQueue = CardRefinement.filledRSBufferQueue.allocateLocalQueue();
     dirtyCardQueueCursor = dirtyCardQueue;
     dirtyCardQueueLimit = dirtyCardQueue.plus(CardRefinement.filledRSBufferQueue.LOCAL_BUFFER_SIZE);

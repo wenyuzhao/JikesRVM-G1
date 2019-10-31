@@ -430,7 +430,8 @@ public abstract class Space {
    * failure.
    */
   @LogicallyUninterruptible
-  public Address acquire(int pages) {
+  public Address acquire(final int pages) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(pages != 0);
     boolean allowPoll = VM.activePlan.isMutator() && Plan.isInitialized();
 
     /* Check page budget */

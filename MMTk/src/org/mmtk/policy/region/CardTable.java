@@ -76,6 +76,7 @@ public class CardTable {
     }
     int index = getIndex(card);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((index & ~3) < (CardTable.table.length * 4 - 3));
     Address wordSlot = ObjectReference.fromObject(table).toAddress().plus(index & ~3);
     int shift = (index & 3) << Constants.LOG_BITS_IN_BYTE;
     Word word = wordSlot.loadWord();
@@ -87,6 +88,7 @@ public class CardTable {
   public static byte get(final int index) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
     Address table = ObjectReference.fromObject(CardTable.table).toAddress();
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index < (CardTable.table.length * 4));
     return table.plus(index).loadByte();
   }
 
@@ -113,6 +115,7 @@ public class CardTable {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(Card.isAligned(card));
     int index = getIndex(card);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert((index & ~3) < (CardTable.table.length * 4 - 3));
     Address wordSlot = ObjectReference.fromObject(table).toAddress().plus(index & ~3);
 //    int shift = (index & 3) << Constants.LOG_BITS_IN_BYTE;
     boolean success = attemptByteInWord(wordSlot, index & 3, value);
@@ -126,6 +129,9 @@ public class CardTable {
   @NoBoundsCheck
   public static void set(final int index, final byte value) {
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(index >= 0 && index < Card.CARDS_IN_HEAP);
+    if (VM.VERIFY_ASSERTIONS) {
+      VM.assertions._assert((index & ~3) < (CardTable.table.length * 4 - 3));
+    }
     Address wordSlot = ObjectReference.fromObject(table).toAddress().plus(index & ~3);
     boolean success = attemptByteInWord(wordSlot, index & 3, value);
     if (success) {

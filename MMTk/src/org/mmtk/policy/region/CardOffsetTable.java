@@ -15,7 +15,7 @@ import org.vmmagic.unboxed.ObjectReference;
 @Uninterruptible
 public class CardOffsetTable {
   public static final int BYTES_IN_CARD_OFFSET_TABLE = Card.CARDS_IN_REGION << Constants.LOG_BYTES_IN_ADDRESS;
-  public static final int PAGES_IN_CARD_OFFSET_TABLE = BYTES_IN_CARD_OFFSET_TABLE >> Constants.LOG_BYTES_IN_PAGE;
+  public static final int PAGES_IN_CARD_OFFSET_TABLE = (BYTES_IN_CARD_OFFSET_TABLE + (Constants.BYTES_IN_PAGE - 1)) / Constants.BYTES_IN_PAGE;
 
   @Inline
   public static void set(Address region, Address card, Address offset) {

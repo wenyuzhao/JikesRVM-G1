@@ -154,6 +154,7 @@ public final class FreeListPageResource extends PageResource {
   @Override
   @Inline
   protected Address allocPages(int reservedPages, int requiredPages, boolean zeroed) {
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(requiredPages != 0);
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(metaDataPagesPerRegion == 0 || requiredPages <= PAGES_IN_CHUNK - metaDataPagesPerRegion);
     lock();
     boolean newChunk = false;

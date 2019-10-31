@@ -27,6 +27,7 @@ public class Validation {
         Log.writeln(Space.getSpaceForObject(src).getName());
         Log.writeln("src card ", Card.of(src));
         Log.writeln("src card mark ", CardTable.get(Card.of(src)));
+        Log.writeln("slot ", slot);
 
         VM.objectModel.dumpObject(object);
         Log.writeln(Space.getSpaceForObject(object).getName());
@@ -42,6 +43,8 @@ public class Validation {
         VM.objectModel.dumpObject(object);
         Log.writeln(Space.getSpaceForObject(src).getName());
         Log.writeln(Space.getSpaceForObject(object).getName());
+
+        Log.writeln("slot ", slot);
         Address remset = Region.getAddress(Region.of(object), Region.MD_REMSET);
         VM.assertions._assert(!remset.isZero());
         Log.writeln("card ", Card.of(src));
@@ -60,6 +63,7 @@ public class Validation {
         Log.writeln(Region.getBool(Region.of(src), Region.MD_RELOCATE) ? "src in relocate region" : "src not in relocate region");
         Log.writeln(Region.getBool(Region.of(src), Region.MD_ALLOCATED) ? "region(src) is allocated" : "region(src) is not allocated");
       }
+      Log.writeln("slot ", slot);
       Log.writeln("card(src) = ", Card.of(src));
       Log.writeln("card mark = ", CardTable.get(Card.of(src)));
       Log.writeln("region(object) = ", Region.of(object));

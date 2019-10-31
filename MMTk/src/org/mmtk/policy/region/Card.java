@@ -62,7 +62,7 @@ public class Card {
     }
   }
 
-  private static final int LOS_HEADER_SIZE = G1.loSpace.getHeaderSize();
+  static final int LOS_HEADER_SIZE = G1.loSpace.getHeaderSize();
 
   @Inline
   private static void linearScanLOSCard(Address card, LinearScan linearScan, Object context) {
