@@ -22,6 +22,7 @@ import org.mmtk.utility.statistics.DoubleCounter;
 import org.mmtk.utility.statistics.DoubleEventCounter;
 import org.mmtk.utility.statistics.EventCounter;
 import org.mmtk.vm.VM;
+import org.vmmagic.pragma.Interruptible;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 
@@ -73,6 +74,7 @@ public class G1 extends org.mmtk.plan.g1.G1 {
   }
 
   @Override
+  @Interruptible
   public void processOptions() {
     super.processOptions();
     {

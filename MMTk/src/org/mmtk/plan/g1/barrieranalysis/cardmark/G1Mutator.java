@@ -14,8 +14,10 @@ package org.mmtk.plan.g1.barrieranalysis.cardmark;
 
 import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
+import org.mmtk.utility.Constants;
 import org.mmtk.vm.VM;
 import org.vmmagic.pragma.Inline;
+import org.vmmagic.pragma.NoInline;
 import org.vmmagic.pragma.Uninterruptible;
 import org.vmmagic.unboxed.Address;
 import org.vmmagic.unboxed.ObjectReference;
@@ -31,6 +33,19 @@ public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.baseline.G1Mutat
     if (CardTable.get(index) == Card.NOT_DIRTY) {
       if (G1.MEASURE_TAKERATE) G1.barrierSlow.inc(1);
       CardTable.set(index, Card.DIRTY);
+      rsEnqueue(Word.fromIntZeroExtend(index).lsh(Card.LOG_BYTES_IN_CARD).toAddress());
+    }
+  }
+
+  @Inline
+  @NoInline
+  private void rsEnqueue(Address card) {
+    if (dirtyCardQueue.isZero()) acquireDirtyCardQueue();
+    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCardQueueCursor.plus(4).LE(dirtyCardQueueLimit));
+    dirtyCardQueueCursor.store(card);
+    dirtyCardQueueCursor = dirtyCardQueueCursor.plus(Constants.BYTES_IN_ADDRESS);
+    if (dirtyCardQueueCursor.GE(dirtyCardQueueLimit)) {
+      dirtyCardQueueCursor = dirtyCardQueue;
     }
   }
 
