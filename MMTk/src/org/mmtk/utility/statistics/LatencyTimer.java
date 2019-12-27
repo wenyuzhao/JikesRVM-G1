@@ -34,7 +34,8 @@ public class LatencyTimer {
 
   @Inline
   public static boolean isEnabled() {
-    return Options.enableLatencyTimer.getValue();
+//    return true;//
+    return VM.activePlan.constraints().__g1LatencyTimer();
   }
 
   static {

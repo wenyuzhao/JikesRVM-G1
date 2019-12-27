@@ -16,4 +16,8 @@ import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
 public class G1Constraints extends org.mmtk.plan.g1.barrieranalysis.xor.G1Constraints {
+  @Override
+  public int g1LogPagesInRegion() {
+    return 9;
+  }
 }

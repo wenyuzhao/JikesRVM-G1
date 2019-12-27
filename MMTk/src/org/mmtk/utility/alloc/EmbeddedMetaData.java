@@ -14,6 +14,7 @@ package org.mmtk.utility.alloc;
 
 import static org.mmtk.utility.Constants.LOG_BYTES_IN_PAGE;
 
+import org.mmtk.utility.heap.layout.VMLayoutConstants;
 import org.vmmagic.unboxed.*;
 import org.vmmagic.pragma.*;
 
@@ -32,7 +33,7 @@ import org.vmmagic.pragma.*;
 public final class EmbeddedMetaData {
 
   /* The (log of the) size of each region of meta data management */
-  public static final int LOG_BYTES_IN_REGION = 22;
+  public static final int LOG_BYTES_IN_REGION = VMLayoutConstants.LOG_BYTES_IN_CHUNK;
   public static final int BYTES_IN_REGION = 1 << LOG_BYTES_IN_REGION;
   private static final Word REGION_MASK = Word.fromIntSignExtend(BYTES_IN_REGION - 1);
   public static final int LOG_PAGES_IN_REGION = LOG_BYTES_IN_REGION - LOG_BYTES_IN_PAGE;

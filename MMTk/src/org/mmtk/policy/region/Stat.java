@@ -15,6 +15,7 @@ public class Stat {
   public long totalRemSetTime = 0;
   public int totalCopyBytes = 0;
   public long totalCopyTime = 0;
+  public Atomic.Long nurserySurvivedBytes = new Atomic.Long();
 
   // Derived data
   // Only valid after a stat round is finished (at the end of a pause)
@@ -29,6 +30,7 @@ public class Stat {
     totalRemSetTime = 0;
     totalCopyBytes = 0;
     totalCopyTime = 0;
+    nurserySurvivedBytes.set(0);
   }
 
   public void pauseEnd() {

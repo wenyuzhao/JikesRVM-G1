@@ -24,12 +24,14 @@ import org.vmmagic.unboxed.Address;
  */
 @Uninterruptible
 public class PauseTimePredictor {
-  static final long PAUSE_TIME_GOAL = VM.statistics.millisToNanos(50); // ms
+  static final long PAUSE_TIME_GOAL = VM.statistics.millisToNanos(40); // ms
 
   // Parameters
   float nurseryRatio = G1.constraints().g1FixedNurseryRatio();
   long V_fixed;
   double U, S, C;
+  double nurserySurvivorRate;
+  double nurseryRemsetCards, nurseryDirtyCards;
   public final Stat stat = new Stat();
 
   // Per-GC data
@@ -64,11 +66,24 @@ public class PauseTimePredictor {
     if (nursery) {
       V_fixed = mix(V_fixed, stat.V_fixed);
       U = mix(U, stat.U);
-      long nurserySizeAwareTime = stat.totalTime - stat.V_fixed - stat.totalRefineTime;
-      if (nurserySizeAwareTime < 0) return;
-      long budget = PAUSE_TIME_GOAL - stat.V_fixed - stat.totalRefineTime;
-      if (budget < 0) budget = 0;
-      nurseryRatio = (float) (nurseryRatio * (((double) budget) / ((double) nurserySizeAwareTime)));
+      S = mix(S, stat.S);
+      C = mix(C, stat.C);
+
+      double survivorRate = ((double) stat.nurserySurvivedBytes.get()) / ((double) (G1.regionSpace.maxRegions() * nurseryRatio * Region.BYTES_IN_REGION));
+      nurserySurvivorRate = mix(nurserySurvivorRate, survivorRate);
+
+      double copyTimePerRegion = Region.BYTES_IN_REGION * survivorRate * stat.C;
+      nurseryRemsetCards = (nurseryRemsetCards + (double) stat.totalRemSetCards.get()) / 2;
+      nurseryDirtyCards = (nurseryDirtyCards + (double) stat.totalRefineCards) / 2;
+      double fixedTime = V_fixed;
+      fixedTime += nurseryDirtyCards * U + nurseryRemsetCards * C;
+      double nurserySizeAwareTime = ((double) PAUSE_TIME_GOAL) - fixedTime;
+      double newNurseryRatio = nurserySizeAwareTime / copyTimePerRegion;
+      nurseryRatio = (nurseryRatio + (float) newNurseryRatio) / 2;
+//      if (nurserySizeAwareTime < 0) return;
+//      long budget = PAUSE_TIME_GOAL - stat.V_fixed - stat.totalRefineTime;
+//      if (budget < 0) budget = 0;
+//      nurseryRatio = (float) (nurseryRatio * (((double) budget) / ((double) nurserySizeAwareTime)));
       if (nurseryRatio < 0.05f) nurseryRatio = 0.05f;
       if (nurseryRatio > 0.40f) nurseryRatio = 0.40f;
     } else {

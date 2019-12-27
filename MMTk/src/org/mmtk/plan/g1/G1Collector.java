@@ -153,6 +153,8 @@ public class G1Collector extends G1CollectorBase {
       if (VM.VERIFY_ASSERTIONS) {
         if (!G1.ENABLE_GENERATIONAL_GC) VM.assertions._assert(G1.gcKind != G1.GCKind.YOUNG);
       }
+      g1Survivor.adjustTLABSize();
+      g1Old.adjustTLABSize();
       g1Survivor.reset();
       g1Old.reset();
       getCurrentTrace().prepare();

@@ -25,9 +25,16 @@ public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.xor.G1Mutator {
   @Inline
   @Override
   protected boolean isCrossRegionRef(ObjectReference src, Address slot, ObjectReference obj) {
-    if (obj.isNull()) return false;
-    Word x = slot.toWord();
-    Word y = VM.objectModel.refToAddress(obj).toWord();
-    return !x.xor(y).rshl(Region.LOG_BYTES_IN_REGION + 5).isZero();
+//    if (obj.isNull()) return false;
+//    Word x = slot.toWord();
+//    Word y = VM.objectModel.refToAddress(obj).toWord();
+//    return !x.xor(y).rshl(Region.LOG_BYTES_IN_REGION + 5).isZero();
+
+    if (obj.toAddress().NE(Address.zero())) {
+      if (src.toAddress().toWord().xor(obj.toAddress().toWord()).GE(Word.fromIntZeroExtend(33554432))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

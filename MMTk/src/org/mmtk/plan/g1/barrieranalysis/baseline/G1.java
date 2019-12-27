@@ -18,7 +18,7 @@ import org.vmmagic.pragma.Uninterruptible;
 
 @Uninterruptible
 public class G1 extends org.mmtk.plan.g1.G1 {
-  public static final boolean MEASURE_TAKERATE = false;
+  public static final boolean MEASURE_TAKERATE = true;
   public static final EventCounter barrierSlow;
   public static final EventCounter barrierFast;
 

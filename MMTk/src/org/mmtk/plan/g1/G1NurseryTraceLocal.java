@@ -16,9 +16,16 @@ import org.vmmagic.unboxed.ObjectReference;
 
 @Uninterruptible
 public class G1NurseryTraceLocal extends TraceLocal {
+  public int copyBytes = 0;
 
   public G1NurseryTraceLocal(Trace trace) {
     super(G1.SCAN_NURSERY, trace);
+  }
+
+  @Override
+  public void release() {
+    super.release();
+    G1.predictor.stat.nurserySurvivedBytes.add(copyBytes);
   }
 
   @Override

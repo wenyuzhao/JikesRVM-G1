@@ -230,11 +230,13 @@ public class G1 extends G1Base {
     super.collectionPhase(phaseId);
   }
 
+  private static final float G1_INITIATING_HEAP_OCCUPANCY_PERCENT = VM.activePlan.constraints().g1InitiatingHeapOccupancy();
+
   @Override
   protected boolean concurrentCollectionRequired() {
     if (!ENABLE_CONCURRENT_MARKING) return false;
     if (!Phase.concurrentPhaseActive()) {
-      if (regionSpace.committedRatio() > 0.45) {
+      if (regionSpace.committedRatio() > G1_INITIATING_HEAP_OCCUPANCY_PERCENT) {
         gcKind = GCKind.MIXED;
         return true;
       }

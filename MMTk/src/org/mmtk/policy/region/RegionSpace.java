@@ -17,6 +17,8 @@ import org.mmtk.plan.Plan;
 import org.mmtk.plan.TraceLocal;
 import org.mmtk.plan.TransitiveClosure;
 import org.mmtk.plan.g1.G1;
+import org.mmtk.plan.g1.G1NurseryTraceLocal;
+import org.mmtk.plan.g1.PauseTimePredictor;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.*;
 import org.mmtk.utility.alloc.EmbeddedMetaData;
@@ -55,6 +57,12 @@ public final class RegionSpace extends Space {
   @Inline
   public Address firstRegion() {
     return headRegion;
+  }
+
+  @Inline
+  public int maxRegions() {
+    float total = (float) (VM.activePlan.global().getTotalPages() >>> Region.LOG_PAGES_IN_REGION) * Region.MEMORY_RATIO;
+    return (int) total;
   }
 
   @Inline
@@ -333,6 +341,10 @@ public final class RegionSpace extends Space {
       ObjectReference newObject = ForwardingWord.spinAndGetForwardedObject(object, priorStatusWord);
       return newObject;
     } else {
+      if (trace instanceof G1NurseryTraceLocal) {
+        G1NurseryTraceLocal ntrace = (G1NurseryTraceLocal) trace;
+        ntrace.copyBytes += VM.objectModel.getSizeWhenCopied(object);
+      }
       ObjectReference newObject = ForwardingWord.forwardObject(object, allocator);
       trace.processNode(newObject);
       return newObject;
