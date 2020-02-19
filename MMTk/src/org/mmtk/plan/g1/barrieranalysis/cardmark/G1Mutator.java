@@ -27,30 +27,6 @@ import org.vmmagic.unboxed.Word;
 public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.baseline.G1Mutator {
   @Inline
   @Override
-  protected void cardMarkingBarrier(ObjectReference src) {
-    if (G1.MEASURE_TAKERATE) G1.barrierFast.inc(1);
-    int index = CardTable.getIndex(src);
-    if (CardTable.get(index) == Card.NOT_DIRTY) {
-      if (G1.MEASURE_TAKERATE) G1.barrierSlow.inc(1);
-      CardTable.set(index, Card.DIRTY);
-      rsEnqueue(Word.fromIntZeroExtend(index).lsh(Card.LOG_BYTES_IN_CARD).toAddress());
-    }
-  }
-
-  @Inline
-  @NoInline
-  private void rsEnqueue(Address card) {
-    if (dirtyCardQueue.isZero()) acquireDirtyCardQueue();
-    if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCardQueueCursor.plus(4).LE(dirtyCardQueueLimit));
-    dirtyCardQueueCursor.store(card);
-    dirtyCardQueueCursor = dirtyCardQueueCursor.plus(Constants.BYTES_IN_ADDRESS);
-    if (dirtyCardQueueCursor.GE(dirtyCardQueueLimit)) {
-      dirtyCardQueueCursor = dirtyCardQueue;
-    }
-  }
-
-  @Inline
-  @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
     VM.barriers.objectReferenceWrite(src, tgt, metaDataA, metaDataB, mode);
     cardMarkingBarrier(src);

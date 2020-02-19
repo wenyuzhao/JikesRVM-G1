@@ -66,7 +66,7 @@ public final class PerfEvent extends LongCounter {
     }
     // Was the counter scaled?
     if (readBuffer[TIME_ENABLED] != readBuffer[TIME_RUNNING]) {
-      scaled = true;
+      // scaled = true;
       dataWasScaled = true;
       double scaleFactor;
       if (readBuffer[TIME_RUNNING] == 0) {

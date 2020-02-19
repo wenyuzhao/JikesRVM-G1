@@ -91,10 +91,10 @@ public class Validation {
 
   private static final Trace trace = new Trace(G1.metaDataSpace);
   private static final Offset GC_HEADER_OFFSET = VM.objectModel.GC_HEADER_OFFSET();
-  public static final short VALIDATE_PLACEHOLDER = Phase.createSimple("validate-placeholder");
-  public static final short VALIDATE_PREPARE = Phase.createSimple("validate-prepare");
-  public static final short VALIDATE_CLOSURE = Phase.createSimple("validate-closure");
-  public static final short VALIDATE_RELEASE = Phase.createSimple("validate-release");
+  public static final short VALIDATE_PLACEHOLDER = Phase.createSimple("validate-placeholder", null);
+  public static final short VALIDATE_PREPARE = Phase.createSimple("validate-prepare", null);
+  public static final short VALIDATE_CLOSURE = Phase.createSimple("validate-closure", null);
+  public static final short VALIDATE_RELEASE = Phase.createSimple("validate-release", null);
   public static final short validatePhase = Phase.createComplex("validate", null,
       Phase.scheduleMutator  (VALIDATE_PREPARE),
       Phase.scheduleGlobal   (VALIDATE_PREPARE),

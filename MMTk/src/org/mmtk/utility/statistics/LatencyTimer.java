@@ -55,18 +55,18 @@ public class LatencyTimer {
 //      VM.assertions._assert(mutatorKinds != null);
       Log.writeln("LatencyTimer Start");
     }
-//    loggingEnabled = true;
+   loggingEnabled = true;
 //    startTime = VM.statistics.nanoTime();
   }
 
   @Inline
   public static void enableLogging() {
-    loggingEnabled = true;
+    // loggingEnabled = true;
   }
 
   @Inline
   public static void disableLogging() {
-    loggingEnabled = false;
+    // loggingEnabled = false;
   }
 
   static long lastStartTime = -1;

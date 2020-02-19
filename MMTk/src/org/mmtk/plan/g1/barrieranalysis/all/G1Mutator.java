@@ -29,30 +29,8 @@ public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.baseline.G1Mutat
   @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
     if (ref.isNull()) return;
-    if (G1.attemptLog(ref)) {
+    // if (G1.attemptLog(ref))
       modbuf.insert(ref);
-    }
-  }
-
-  @Inline
-  @Override
-  protected void cardMarkingBarrier(ObjectReference src) {
-    int index = CardTable.getIndex(src);
-    if (CardTable.get(index) == Card.NOT_DIRTY) {
-      CardTable.set(index, Card.DIRTY);
-    }
-  }
-
-  @NoInline
-  protected void cardMarkingBarrierOutOfLine(ObjectReference src) {
-    cardMarkingBarrier(src);
-  }
-
-  @Inline
-  protected void xorBarrier(ObjectReference src, Address slot, ObjectReference ref) {
-    if (RegionSpace.isCrossRegionRef(src, slot, ref)) {
-      cardMarkingBarrierOutOfLine(src);
-    }
   }
 
   @Inline

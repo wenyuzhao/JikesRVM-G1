@@ -229,7 +229,7 @@ public class G1 extends Concurrent {
       } else {
         currentGCKind = MIXED_GC;
       }
-      Plan.gcCounts.inc();
+      // Plan.gcCounts.inc();
       return;
     }
 
@@ -316,7 +316,7 @@ public class G1 extends Concurrent {
       ConcurrentRemSetRefinement.resume();
       super.collectionPhase(COMPLETE);
       if (currentGCKind == FULL_GC) {
-        Plan.fullGCCounts.inc();
+        // Plan.fullGCCounts.inc();
       }
 
       if (currentGCKind == YOUNG_GC) {

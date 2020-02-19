@@ -203,8 +203,9 @@ public class G1Mutator extends StopTheWorldMutator {
 
   @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
-    if (!ref.isNull() && G1.attemptLog(ref)) {
-      modbuf.insertOutOfLine(ref);
+    // if (!ref.isNull() && G1.attemptLog(ref)) {
+    if (!ref.isNull()) {
+      modbuf.insert(ref);
     }
   }
 

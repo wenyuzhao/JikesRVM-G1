@@ -796,8 +796,8 @@ public abstract class Plan {
     if (LatencyTimer.isEnabled()) LatencyTimer.start();
   }
 
-  public static EventCounter gcCounts = new EventCounter("gc.total", true, true);
-  public static EventCounter fullGCCounts = new EventCounter("gc.full", true, true);
+  // public static EventCounter gcCounts = new EventCounter("gc.total", true, true);
+  // public static EventCounter fullGCCounts = new EventCounter("gc.full", true, true);
 //  public static final int[] remsetLogs = new int[4096 * 2];
 //  public static int remsetLogCursor = 0;
 //    public static EventCounter gcCounts = new EventCounter("gc.total", true, true);

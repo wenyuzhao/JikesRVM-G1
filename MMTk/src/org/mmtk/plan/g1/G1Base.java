@@ -41,18 +41,18 @@ class G1Base extends StopTheWorld {
 
 
   // Collection phases
-  public static final short EVACUATE_PREPARE         = Phase.createSimple("evacuate-prepare");
-  public static final short EVACUATE_CLOSURE         = Phase.createSimple("evacuate-closure");
-  public static final short EVACUATE_RELEASE         = Phase.createSimple("evacuate-release");
-  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection");
-  public static final short FLUSH_MUTATOR            = Phase.createSimple("flush-mutator");
-  public static final short SET_BARRIER_ACTIVE       = Phase.createSimple("set-barrier");
-  public static final short FLUSH_COLLECTOR          = Phase.createSimple("flush-collector");
-  public static final short CLEAR_BARRIER_ACTIVE     = Phase.createSimple("clear-barrier");
-  public static final short FINAL_MARK               = Phase.createSimple("final-mark");
-  public static final short REFINE_CARDS             = Phase.createSimple("refine-cards");
-  public static final short REMSET_ROOTS             = Phase.createSimple("remset-roots");
-  public static final short STAT_REMSET              = Phase.createSimple("stat-remset");
+  public static final short EVACUATE_PREPARE         = Phase.createSimple("evacuate-prepare", null);
+  public static final short EVACUATE_CLOSURE         = Phase.createSimple("evacuate-closure", null);
+  public static final short EVACUATE_RELEASE         = Phase.createSimple("evacuate-release", null);
+  public static final short RELOCATION_SET_SELECTION = Phase.createSimple("relocation-set-selection", null);
+  public static final short FLUSH_MUTATOR            = Phase.createSimple("flush-mutator", null);
+  public static final short SET_BARRIER_ACTIVE       = Phase.createSimple("set-barrier", null);
+  public static final short FLUSH_COLLECTOR          = Phase.createSimple("flush-collector", null);
+  public static final short CLEAR_BARRIER_ACTIVE     = Phase.createSimple("clear-barrier", null);
+  public static final short FINAL_MARK               = Phase.createSimple("final-mark", null);
+  public static final short REFINE_CARDS             = Phase.createSimple("refine-cards", null);
+  public static final short REMSET_ROOTS             = Phase.createSimple("remset-roots", null);
+  public static final short STAT_REMSET              = Phase.createSimple("stat-remset", null);
 
   protected static final short preemptConcurrentClosure = Phase.createComplex("preeempt-concurrent-trace", null,
       Phase.scheduleMutator  (FLUSH_MUTATOR),
@@ -73,7 +73,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleCollector (FINAL_MARK)
   );
 
-  public static final short fullTraceEvacuatePhase = Phase.createComplex("evacuate", null,
+  public static final short fullTraceEvacuatePhase = Phase.createComplex("evacuate",
       Phase.scheduleMutator  (EVACUATE_PREPARE),
       Phase.scheduleGlobal   (EVACUATE_PREPARE),
       Phase.scheduleCollector(EVACUATE_PREPARE),
@@ -101,7 +101,7 @@ class G1Base extends StopTheWorld {
       Phase.scheduleGlobal   (EVACUATE_RELEASE)
   );
 
-  public static final short remsetEvacuatePhase = Phase.createComplex("evacuate", null,
+  public static final short remsetEvacuatePhase = Phase.createComplex("evacuate",
       Phase.scheduleMutator  (EVACUATE_PREPARE),
       Phase.scheduleGlobal   (EVACUATE_PREPARE),
       Phase.scheduleCollector(EVACUATE_PREPARE),

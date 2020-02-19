@@ -24,7 +24,7 @@ import org.vmmagic.unboxed.Address;
  */
 @Uninterruptible
 public class PauseTimePredictor {
-  static final long PAUSE_TIME_GOAL = VM.statistics.millisToNanos(40); // ms
+  static final long PAUSE_TIME_GOAL = VM.statistics.millisToNanos(15); // ms
 
   // Parameters
   float nurseryRatio = G1.constraints().g1FixedNurseryRatio();

@@ -23,12 +23,16 @@ import org.vmmagic.unboxed.Word;
 public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.baseline.G1Mutator {
   @Inline
   protected void checkAndEnqueueReference(ObjectReference ref) {
+    // if (ref.isNull()) return;
+    // if (G1.MEASURE_TAKERATE) G1.barrierFast.inc(1);
+    // if (G1.isUnlogged(ref)) {
+    //   if (G1.MEASURE_TAKERATE) G1.barrierSlow.inc(1);
+    //   G1.markAsLogged(ref);
+    //   modbuf.insertOutOfLine(ref);
+    // }
     if (ref.isNull()) return;
-    if (G1.MEASURE_TAKERATE) G1.barrierFast.inc(1);
-    if (G1.isUnlogged(ref)) {
-      if (G1.MEASURE_TAKERATE) G1.barrierSlow.inc(1);
-      G1.markAsLogged(ref);
-      modbuf.insertOutOfLine(ref);
+    if (G1.attemptLog(ref)) {
+      modbuf.insert(ref);
     }
   }
 

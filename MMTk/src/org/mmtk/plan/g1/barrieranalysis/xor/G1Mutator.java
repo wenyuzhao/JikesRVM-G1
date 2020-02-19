@@ -26,28 +26,6 @@ import org.vmmagic.unboxed.Word;
 
 @Uninterruptible
 public class G1Mutator extends org.mmtk.plan.g1.barrieranalysis.cardmark.G1Mutator {
-  @NoInline
-  protected void cardMarkingBarrierOutOfLine(ObjectReference src) {
-    cardMarkingBarrier(src);
-  }
-
-  @Inline
-  protected boolean isCrossRegionRef(ObjectReference src, Address slot, ObjectReference obj) {
-    if (obj.isNull()) return false;
-    Word x = slot.toWord();
-    Word y = VM.objectModel.refToAddress(obj).toWord();
-    return !x.xor(y).rshl(Region.LOG_BYTES_IN_REGION).isZero();
-  }
-
-  @Inline
-  protected void xorBarrier(ObjectReference src, Address slot, ObjectReference ref) {
-    if (G1.MEASURE_TAKERATE) G1.barrierFast.inc(1);
-    if (isCrossRegionRef(src, slot, ref)) {
-      if (G1.MEASURE_TAKERATE) G1.barrierSlow.inc(1);
-      cardMarkingBarrier(src);
-    }
-  }
-
   @Inline
   @Override
   public void objectReferenceWrite(ObjectReference src, Address slot, ObjectReference tgt, Word metaDataA, Word metaDataB, int mode) {
