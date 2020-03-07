@@ -13,6 +13,7 @@
 package org.mmtk.plan.g1.barrieranalysis.baseline;
 
 import org.vmmagic.pragma.*;
+import org.mmtk.policy.region.Region;
 import org.mmtk.policy.region.Card;
 import org.mmtk.policy.region.CardTable;
 import org.mmtk.policy.region.RegionSpace;
@@ -47,8 +48,16 @@ public class G1Mutator extends org.mmtk.plan.g1.G1Mutator {
 
   @Inline
   protected void xorBarrier(ObjectReference src, Address slot, ObjectReference ref) {
-    if (RegionSpace.isCrossRegionRef(src, slot, ref)) {
+    if (isCrossRegionRef(src, slot, ref)) {
       cardMarkingBarrier(src);
     }
+  }
+
+  @Inline
+  protected boolean isCrossRegionRef(ObjectReference src, Address slot, ObjectReference obj) {
+    if (obj.isNull()) return false;
+    Word x = slot.toWord();
+    Word y = VM.objectModel.refToAddress(obj).toWord();
+    return !x.xor(y).rshl(Region.LOG_BYTES_IN_REGION).isZero();
   }
 }
