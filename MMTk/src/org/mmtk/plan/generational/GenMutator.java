@@ -14,6 +14,7 @@ package org.mmtk.plan.generational;
 
 import org.mmtk.plan.*;
 import org.mmtk.policy.CopyLocal;
+import org.mmtk.utility.alloc.BumpPointer2;
 import org.mmtk.policy.Space;
 import org.mmtk.utility.HeaderByte;
 import org.mmtk.utility.deque.*;
@@ -50,7 +51,7 @@ import org.vmmagic.unboxed.*;
   /**
    *
    */
-  protected final CopyLocal nursery = new CopyLocal(Gen.nurserySpace);
+  protected final BumpPointer2 nursery = new BumpPointer2(Gen.nurserySpace);
 
   private final ObjectReferenceDeque modbuf;    /* remember modified scalars */
   protected final WriteBuffer remset;           /* remember modified array fields */
