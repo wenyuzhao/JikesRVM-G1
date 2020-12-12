@@ -23,7 +23,7 @@ import org.vmmagic.unboxed.*;
 
 @Uninterruptible
 public class G1Mutator extends org.mmtk.plan.g1.G1Mutator {
-  @NoInline
+  @Inline
   @Override
   protected void cardMarkingBarrier(ObjectReference src) {
     if (G1.MEASURE_TAKERATE) G1.barrierFast.inc(1);
@@ -36,7 +36,7 @@ public class G1Mutator extends org.mmtk.plan.g1.G1Mutator {
   }
 
   @NoInline
-  private void rsEnqueue(Address card) {
+  protected void rsEnqueue(Address card) {
     if (dirtyCardQueue.isZero()) acquireDirtyCardQueue();
     if (VM.VERIFY_ASSERTIONS) VM.assertions._assert(dirtyCardQueueCursor.plus(4).LE(dirtyCardQueueLimit));
     dirtyCardQueueCursor.store(card);
